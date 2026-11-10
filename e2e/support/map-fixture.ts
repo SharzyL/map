@@ -3,7 +3,6 @@ const emptyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 
 type ExternalRouteOptions = {
   nominatim?: 'failure' | 'success';
-  grants?: 'default' | 'long';
 };
 
 const baseStyle = {
@@ -389,90 +388,6 @@ async function routeExternalMapResources(page: Page, options: ExternalRouteOptio
   );
 }
 
-async function routeMockAppApis(page: Page, options: ExternalRouteOptions = {}) {
-  await page.route(
-    (url) => url.pathname === '/api/auth/me',
-    (route) => fulfillJson(route, { user: null }),
-  );
-  await page.route(
-    (url) => url.pathname === '/api/rooms',
-    (route) =>
-      fulfillJson(route, {
-        room: {
-          roomId: 'e2e-sync-room',
-          ownerUserId: null,
-          createdByKind: 'guest',
-          persistence: 'persistent',
-          linkAccess: 'edit',
-        },
-      }),
-  );
-  await page.route(
-    (url) => /^\/api\/rooms\/[^/]+\/access$/.test(url.pathname),
-    (route) =>
-      fulfillJson(route, {
-        role: 'manage',
-        canView: true,
-        canEdit: true,
-        canManage: true,
-        room: {
-          roomId: 'e2e-sync-room',
-          ownerUserId: null,
-          createdByKind: 'guest',
-          persistence: 'persistent',
-          linkAccess: 'edit',
-        },
-      }),
-  );
-  await page.route(/\/api\/rooms\/[^/]+\/grants.*/, (route) => {
-    fulfillJson(route, { grants: options.grants === 'long' ? longRoomGrants() : defaultRoomGrants() });
-  });
-}
-
-function defaultRoomGrants() {
-  return [
-    {
-      userId: 'user-mei',
-      githubLogin: 'mei-citywalk',
-      displayName: 'Mei',
-      avatarUrl: null,
-      role: 'edit',
-    },
-    {
-      userId: 'user-lin',
-      githubLogin: 'lin-camera',
-      displayName: 'Lin',
-      avatarUrl: null,
-      role: 'view',
-    },
-    {
-      userId: 'github:8848',
-      githubId: '8848',
-      githubLogin: 'alex-rail',
-      displayName: null,
-      avatarUrl: null,
-      role: 'view',
-      pending: true,
-    },
-  ];
-}
-
-function longRoomGrants() {
-  return Array.from({ length: 36 }, (_, index) => {
-    const number = String(index + 1).padStart(2, '0');
-    const pending = index % 5 === 4;
-    return {
-      userId: pending ? `github:${9000 + index}` : `user-${number}`,
-      githubId: pending ? String(9000 + index) : undefined,
-      githubLogin: pending ? `pending-rail-${number}` : `member-rail-${number}`,
-      displayName: pending ? null : `Member ${number}`,
-      avatarUrl: null,
-      role: index % 3 === 0 ? 'edit' : 'view',
-      pending,
-    };
-  });
-}
-
 function isExpectedBrowserMessage(text: string) {
   return (
     /MapLibre resource load skipped/i.test(text) ||
@@ -503,26 +418,17 @@ export async function installBrowserErrorWatch(page: Page) {
 
 export async function openFixture(
   page: Page,
-  mode: 'overview' | 'layers' | 'annotations' | 'sharing' = 'overview',
+  mode: 'overview' | 'layers' | 'annotations' = 'overview',
   options: ExternalRouteOptions = {},
 ) {
-  await routeExternalMapResources(page);
-  await routeMockAppApis(page, options);
-  await page.goto(`/?screenshot=${mode}&room=shanghai-citywalk`);
+  await routeExternalMapResources(page, options);
+  await page.goto(`/?screenshot=${mode}`);
   await page.waitForFunction(() => document.body.dataset.screenshotReady === 'true');
   await waitForMapShell(page);
 }
 
 export async function openApp(page: Page, params: Record<string, string> = {}, options: ExternalRouteOptions = {}) {
   await routeExternalMapResources(page, options);
-  await routeMockAppApis(page, options);
-  const query = new URLSearchParams(params);
-  await page.goto(query.size ? `/?${query}` : '/');
-  await waitForMapShell(page);
-}
-
-export async function openRealBackendApp(page: Page, params: Record<string, string> = {}) {
-  await routeExternalMapResources(page);
   const query = new URLSearchParams(params);
   await page.goto(query.size ? `/?${query}` : '/');
   await waitForMapShell(page);

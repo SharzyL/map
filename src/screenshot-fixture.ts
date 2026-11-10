@@ -6,12 +6,11 @@ import {
   type AnnotationPointPayload,
   type AnnotationPolygonPayload,
 } from './annotation-model.js';
-import type { AgentParticipant, CollaborationFixtureState, Peer } from './collaboration.js';
 import { METRO_LINE10_POINTS, WALK_NANJING_BUND_POINTS, WALK_WUKANG_ANFU_POINTS } from './screenshot-fixture-data.js';
 import { initialSortKey, type AnnotationFeature, type Layer } from './layer-model.js';
 import type { LayerStore } from './layer-store.js';
 
-export type ScreenshotFixtureMode = 'overview' | 'layers' | 'annotations' | 'sharing';
+export type ScreenshotFixtureMode = 'overview' | 'layers' | 'annotations';
 type ScreenshotFixtureView = {
   center: [number, number];
   zoom: number;
@@ -448,7 +447,6 @@ const SCREENSHOT_VIEWS: Record<ScreenshotFixtureMode, ScreenshotFixtureView> = {
   overview: SCREENSHOT_FIXTURE_VIEW,
   layers: { center: [121.4408, 31.2134], zoom: 14.45 },
   annotations: { center: [121.4356, 31.2107], zoom: 15.45 },
-  sharing: SCREENSHOT_FIXTURE_VIEW,
 };
 
 export function getScreenshotFixtureView(mode: ScreenshotFixtureMode): ScreenshotFixtureView {
@@ -463,7 +461,7 @@ function now() {
 
 export function getScreenshotFixtureMode(): ScreenshotFixtureMode | null {
   const value = new URLSearchParams(window.location.search).get('screenshot');
-  if (value === 'overview' || value === 'layers' || value === 'annotations' || value === 'sharing') {
+  if (value === 'overview' || value === 'layers' || value === 'annotations') {
     return value;
   }
   return null;
@@ -520,17 +518,6 @@ function citywalkFeatures(payloads: DemoFeaturePayload[], layerId = CITYWALK_LAY
   return payloads.map((payload, index) => featureFromPayload(payload, index, layerId));
 }
 
-function viewportCorners(center: [number, number], widthLng: number, aspectRatio: number): [number, number][] {
-  const halfWidth = widthLng / 2;
-  const halfHeight = widthLng / aspectRatio / 2;
-  return [
-    [center[0] - halfWidth, center[1] - halfHeight],
-    [center[0] + halfWidth, center[1] - halfHeight],
-    [center[0] + halfWidth, center[1] + halfHeight],
-    [center[0] - halfWidth, center[1] + halfHeight],
-  ];
-}
-
 export function installScreenshotFixtureData(layerStore: LayerStore, mode: ScreenshotFixtureMode) {
   if (mode === 'layers') {
     layerStore.setLayerList([
@@ -576,136 +563,7 @@ export function installScreenshotFixtureData(layerStore: LayerStore, mode: Scree
   layerStore.setAnnotationFeatureList(features);
 }
 
-export function installScreenshotFixtureMapLayers(_map: unknown, _mode: ScreenshotFixtureMode) {
-  // The README tour uses the same annotation data that exists in the shanghai-citywalk room.
-}
-
-export function createScreenshotCollaborationFixture(
-  mode: ScreenshotFixtureMode,
-  nowMs = Date.now(),
-): CollaborationFixtureState {
-  const view = getScreenshotFixtureView(mode);
-  const currentUser: NonNullable<CollaborationFixtureState['currentUser']> = {
-    userId: 'user-demo-owner',
-    githubLogin: 'shanghai-planner',
-    displayName: fixtureText('Shanghai Weekend Plan', '上海周末计划'),
-    avatarUrl: null,
-  };
-  const peers: Peer[] =
-    mode === 'overview' || mode === 'sharing'
-      ? [
-          {
-            id: 'peer-lin',
-            user: { id: 'peer-lin', name: fixtureText('Lin', '阿林'), color: '#2563eb' },
-            viewport: {
-              center: [121.486, 31.2408] as [number, number],
-              zoom: view.zoom,
-              bearing: 0,
-              pitch: 0,
-              corners: viewportCorners([121.486, 31.2408], 0.011, 16 / 10),
-            },
-            cursor: { visible: true, lngLat: BUND_LIGHTS_COORDINATE },
-            location: { enabled: false, lngLat: null, accuracy: null, heading: null, speed: null, updatedAt: null },
-            updatedAt: nowMs,
-          },
-          {
-            id: 'peer-mei',
-            user: { id: 'peer-mei', name: fixtureText('Mei', '小梅'), color: '#dc2626' },
-            viewport: {
-              center: [121.4359, 31.2124] as [number, number],
-              zoom: view.zoom,
-              bearing: 0,
-              pitch: 0,
-              corners: viewportCorners([121.4359, 31.2124], 0.0062, 9 / 19.5),
-            },
-            cursor: { visible: true, lngLat: [121.4365, 31.2145] },
-            location: {
-              enabled: true,
-              lngLat: ANFU_ROAD,
-              accuracy: 120,
-              heading: 28,
-              speed: null,
-              updatedAt: nowMs,
-            },
-            updatedAt: nowMs,
-          },
-          {
-            id: 'peer-chen',
-            user: { id: 'peer-chen', name: fixtureText('Chen', '陈同学'), color: '#0f766e' },
-            viewport: {
-              center: [121.4802, 31.2396] as [number, number],
-              zoom: view.zoom,
-              bearing: 0,
-              pitch: 0,
-              corners: viewportCorners([121.4802, 31.2396], 0.0104, 4 / 3),
-            },
-            cursor: { visible: true, lngLat: NANJING_EAST_ROAD },
-            location: { enabled: false, lngLat: null, accuracy: null, heading: null, speed: null, updatedAt: null },
-            updatedAt: nowMs,
-          },
-        ]
-      : [];
-  const agents: AgentParticipant[] =
-    mode === 'overview' || mode === 'sharing'
-      ? [
-          {
-            id: 'agent-planner',
-            user: { id: 'agent-planner', name: 'Agent', color: '#7c3aed' },
-            clientType: 'agent',
-            active: true,
-            lastSeenAt: nowMs,
-            expiresAt: nowMs + 60_000,
-            lastAction: fixtureText('Organized the Wukang Road and Bund annotations', '整理了武康路和外滩段标注'),
-          },
-        ]
-      : [];
-
-  return {
-    roomId: 'shanghai-citywalk',
-    currentUser,
-    roomAccess: {
-      role: 'manage',
-      canView: true,
-      canEdit: true,
-      canManage: true,
-      linkAccess: 'edit',
-      room: {
-        ownerUserId: currentUser.userId,
-        createdByKind: 'user',
-        persistence: 'persistent',
-      },
-    },
-    grants: [
-      {
-        userId: 'user-mei',
-        githubLogin: 'mei-citywalk',
-        displayName: fixtureText('Mei', '小梅'),
-        avatarUrl: null,
-        role: 'edit',
-      },
-      {
-        userId: 'user-lin',
-        githubLogin: 'lin-camera',
-        displayName: fixtureText('Lin', '阿林'),
-        avatarUrl: null,
-        role: 'view',
-      },
-      {
-        userId: 'github:8848',
-        githubId: '8848',
-        githubLogin: 'alex-rail',
-        displayName: null,
-        avatarUrl: null,
-        role: 'view',
-        pending: true,
-      },
-    ],
-    peers,
-    agents,
-    connectionState: 'live',
-    connectionLabel: 'Live',
-  };
-}
+export function installScreenshotFixtureMapLayers(_map: unknown, _mode: ScreenshotFixtureMode) {}
 
 function openControl(selector: string) {
   const button = document.querySelector<HTMLButtonElement>(selector);
@@ -726,9 +584,6 @@ function preparePanelState(mode: ScreenshotFixtureMode) {
       (button) => button.textContent?.includes('Area'),
     );
     areaButton?.click();
-  } else if (mode === 'sharing') {
-    document.querySelector<HTMLButtonElement>('.collab-compact-toggle')?.click();
-    document.querySelector<HTMLButtonElement>('.collab-share-button')?.click();
   }
 }
 

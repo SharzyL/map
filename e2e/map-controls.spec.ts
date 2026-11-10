@@ -12,7 +12,6 @@ test.describe('map shell', () => {
     await expect(page.getByRole('button', { name: 'Annotations' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Routing' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pick a point for weather' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Open collaboration controls' })).toBeVisible();
 
     const state = await mapState(page);
     expect(state.hasMap).toBe(true);

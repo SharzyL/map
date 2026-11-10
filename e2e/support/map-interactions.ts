@@ -1,5 +1,4 @@
 import { expect, type Page } from '@playwright/test';
-import { openRealBackendApp } from './map-fixture';
 
 type AnnotationProperties = {
   kind?: unknown;
@@ -94,12 +93,6 @@ export async function createAnnotationLayerFromUi(page: Page, name: string) {
 export async function openAnnotationsForLayer(page: Page, layerName: string) {
   await openAnnotations(page);
   await page.locator('.annotation-layer-field select').selectOption({ label: layerName });
-}
-
-export async function openRealCollaborationRoom(page: Page, room: string) {
-  await openRealBackendApp(page, { room });
-  await expect(page.locator('.collab-panel')).toHaveAttribute('data-connection', 'live');
-  await expect(page.locator('#map')).toHaveAttribute('data-collaboration-can-edit', 'true');
 }
 
 export async function layerNames(page: Page) {

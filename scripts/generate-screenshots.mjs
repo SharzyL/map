@@ -51,12 +51,6 @@ const shots = [
     label: 'Annotation tools',
     viewport: [1280, 860],
   },
-  {
-    mode: 'sharing',
-    file: 'sharing.webp',
-    label: 'Room sharing',
-    viewport: [1280, 860],
-  },
 ];
 
 const contentTypes = {
@@ -105,7 +99,6 @@ function screenshotUrl(mode, locale) {
   const url = new URL(externalBaseUrl || `http://${host}:${port}/`);
   url.searchParams.set('screenshot', mode);
   url.searchParams.set('screenshotLocale', locale);
-  url.searchParams.set('room', url.searchParams.get('room') || 'demo');
   url.hash = '';
   return url.href;
 }

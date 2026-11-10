@@ -4,8 +4,6 @@ import { readFileSync } from 'fs';
 
 import { cloudflare } from '@cloudflare/vite-plugin';
 
-const internalAuthSecret = process.env.INTERNAL_AUTH_SECRET;
-
 function fileHash(path) {
   try {
     return createHash('md5').update(readFileSync(path)).digest('hex').slice(0, 8);
@@ -18,7 +16,6 @@ export default defineConfig({
   plugins: [
     cloudflare({
       remoteBindings: process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0',
-      config: internalAuthSecret ? { vars: { INTERNAL_AUTH_SECRET: internalAuthSecret } } : undefined,
     }),
   ],
   define: {

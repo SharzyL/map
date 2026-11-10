@@ -42,13 +42,12 @@ export default defineConfig({
   webServer: env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: `pnpm exec wrangler d1 migrations apply orm_accounts --local --preview false && pnpm exec vite --host 127.0.0.1 --port ${port}`,
+        command: `pnpm exec vite --host 127.0.0.1 --port ${port}`,
         url: baseURL,
         reuseExistingServer: !isCi,
         timeout: 90_000,
         env: {
           SCREENSHOT_FIXTURES: '1',
-          INTERNAL_AUTH_SECRET: 'e2e-internal-auth-secret',
           CLOUDFLARE_VITE_REMOTE_BINDINGS: '0',
         },
       },

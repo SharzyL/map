@@ -8,7 +8,6 @@ import SatelliteIcon from 'lucide/dist/esm/icons/satellite.mjs';
 import { installGpxDragDrop, drainGpxQueue, processOrQueueGpx, processOrQueueGeoJson, mergeBounds } from './gpx.js';
 import { installOrmPopups, buildFeatureCatalog } from './popup.js';
 import { installPhotonSearch } from './search.js';
-import { installMapCollaboration } from './collaboration.js';
 import { installWeatherPointPicker } from './weather.js';
 import { installLayerManager } from './layer-manager.js';
 import { installOsrmRouting } from './routing.js';
@@ -73,29 +72,8 @@ type SpriteAtlas = {
 };
 type Bounds = [[number, number], [number, number]];
 type SwrCacheEntry = { response: Response; timestamp: number };
-type CollaborationLocationDetail = {
-  enabled: boolean;
-  lngLat?: [number, number];
-  accuracy?: number;
-  heading?: number | null;
-  speed?: number | null;
-  timestamp?: number;
-};
-type ToggleOptions = { silent?: boolean };
-type CollaborationViewState = { terrain?: boolean; satellite?: boolean };
-type MapWithCollaboration = maplibregl.Map & {
-  getCollaborationViewState?: () => { terrain: boolean; satellite: boolean };
-  setCollaborationViewState?: (viewState: CollaborationViewState, options?: ToggleOptions) => void;
-};
-type GeolocateControlWithState = maplibregl.GeolocateControl & {
-  _watchState?: 'OFF' | string;
-};
 type GeolocateControlOptionsWithHeading = maplibregl.GeolocateControlOptions & {
   showUserHeading?: boolean;
-};
-type ToggleControl = maplibregl.IControl & {
-  _enabled: boolean;
-  setEnabled(enabled: boolean, options?: ToggleOptions): void;
 };
 type ScreenshotFixture = typeof ScreenshotFixtureModule;
 
@@ -560,10 +538,6 @@ async function init() {
       screenshotFixtureModule && screenshotFixtureMode
         ? screenshotFixtureModule.getScreenshotFixtureView(screenshotFixtureMode)
         : null;
-    const screenshotFixture =
-      screenshotFixtureModule && screenshotFixtureMode
-        ? screenshotFixtureModule.createScreenshotCollaborationFixture(screenshotFixtureMode)
-        : null;
     const demSource = new mlcontour.DemSource({
       url: MAPTERHORN_TERRAIN_URL,
       encoding: 'terrarium',
@@ -594,31 +568,6 @@ async function init() {
       showUserHeading: true,
     };
     const geolocateControl = new maplibregl.GeolocateControl(geolocateOptions);
-    const emitCollaborationLocation = (detail: CollaborationLocationDetail) => {
-      map.getContainer().dispatchEvent(new CustomEvent('collaboration:locationchange', { detail }));
-    };
-    const clearCollaborationLocation = () => emitCollaborationLocation({ enabled: false });
-    const clearCollaborationLocationIfOff = () => {
-      if ((geolocateControl as GeolocateControlWithState)._watchState === 'OFF') clearCollaborationLocation();
-    };
-    geolocateControl.on('geolocate', (event) => {
-      const coords = event?.coords;
-      if (!coords) {
-        clearCollaborationLocation();
-        return;
-      }
-      emitCollaborationLocation({
-        enabled: true,
-        lngLat: [coords.longitude, coords.latitude],
-        accuracy: coords.accuracy,
-        heading: coords.heading,
-        speed: coords.speed,
-        timestamp: event.timestamp || Date.now(),
-      });
-    });
-    geolocateControl.on('trackuserlocationend', clearCollaborationLocationIfOff);
-    geolocateControl.on('error', clearCollaborationLocation);
-    geolocateControl.on('outofmaxbounds', clearCollaborationLocation);
     map.addControl(geolocateControl, 'top-right');
     map.addControl(new maplibregl.FullscreenControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-right');
@@ -687,31 +636,12 @@ async function init() {
       })();
     }
 
-    let terrainControl: ToggleControl | null = null;
-    let satelliteControl: ToggleControl | null = null;
-    const getCollaborationViewState = () => ({
-      terrain: Boolean(terrainControl?._enabled),
-      satellite: Boolean(satelliteControl?._enabled),
-    });
-    const emitCollaborationViewState = () => {
-      map.getContainer().dispatchEvent(
-        new CustomEvent('collaboration:viewstatechange', {
-          detail: getCollaborationViewState(),
-        }),
-      );
-    };
-
     // Terrain toggle control
     class TerrainToggleControl {
-      _onChange: () => void;
       _map?: maplibregl.Map;
       _enabled = false;
       _container?: HTMLElement;
       _btn?: HTMLButtonElement;
-
-      constructor(onChange: () => void) {
-        this._onChange = onChange;
-      }
       onAdd(map: maplibregl.Map) {
         this._map = map;
         this._enabled = false;
@@ -727,7 +657,7 @@ async function init() {
         this._container.appendChild(this._btn);
         return this._container;
       }
-      setEnabled(enabled: boolean, options: ToggleOptions = {}) {
+      setEnabled(enabled: boolean) {
         const next = Boolean(enabled);
         if (this._enabled === next) return;
         this._enabled = next;
@@ -735,27 +665,20 @@ async function init() {
           this._map.setTerrain(next ? { source: 'hillshadeSource', exaggeration: 1.0 } : null);
         });
         this._btn?.classList.toggle('maplibregl-ctrl-terrain-enabled', next);
-        if (!options.silent) this._onChange?.();
       }
       onRemove() {
         this._container.parentNode?.removeChild(this._container);
         this._map = undefined;
       }
     }
-    terrainControl = new TerrainToggleControl(emitCollaborationViewState);
-    map.addControl(terrainControl, 'top-right');
+    map.addControl(new TerrainToggleControl(), 'top-right');
 
     // Satellite imagery toggle control
     class SatelliteToggleControl {
-      _onChange: () => void;
       _map?: maplibregl.Map;
       _enabled = false;
       _container?: HTMLElement;
       _btn?: HTMLButtonElement;
-
-      constructor(onChange: () => void) {
-        this._onChange = onChange;
-      }
       onAdd(map: maplibregl.Map) {
         this._map = map;
         this._enabled = false;
@@ -774,7 +697,7 @@ async function init() {
       _toggle() {
         this.setEnabled(!this._enabled);
       }
-      setEnabled(enabled: boolean, options: ToggleOptions = {}) {
+      setEnabled(enabled: boolean) {
         const next = Boolean(enabled);
         if (this._enabled === next) return;
         this._enabled = next;
@@ -784,7 +707,6 @@ async function init() {
           this._disable();
         }
         this._btn?.classList.toggle('maplibregl-ctrl-satellite-enabled', next);
-        if (!options.silent) this._onChange?.();
       }
       _enable() {
         runWhenStyleInfrastructureReady(this._map, () => {
@@ -807,8 +729,7 @@ async function init() {
         this._map = undefined;
       }
     }
-    satelliteControl = new SatelliteToggleControl(emitCollaborationViewState);
-    map.addControl(satelliteControl, 'top-right');
+    map.addControl(new SatelliteToggleControl(), 'top-right');
 
     // GitHub link control
     class GitHubControl {
@@ -837,14 +758,6 @@ async function init() {
     }
     map.addControl(new GitHubControl(), 'top-right');
 
-    const mapWithCollaboration = map as MapWithCollaboration;
-    mapWithCollaboration.getCollaborationViewState = getCollaborationViewState;
-    mapWithCollaboration.setCollaborationViewState = (viewState, options: ToggleOptions = {}) => {
-      terrainControl?.setEnabled(Boolean(viewState?.terrain), { silent: true });
-      satelliteControl?.setEnabled(Boolean(viewState?.satellite), { silent: true });
-      if (!options.silent) emitCollaborationViewState();
-    };
-    installMapCollaboration(map, layerStore, { fixture: screenshotFixture });
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.applyScreenshotFixtureScene(screenshotFixtureMode, map);
     }

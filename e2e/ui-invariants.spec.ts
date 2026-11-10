@@ -23,7 +23,6 @@ test.describe('first-principles UI invariants', () => {
       page.locator('.maplibregl-ctrl-annotation'),
       page.getByRole('button', { name: 'Routing' }),
       page.getByRole('button', { name: 'Pick a point for weather' }),
-      page.getByRole('button', { name: 'Open collaboration controls' }),
     ];
     for (const [index, control] of controls.entries()) {
       await expectLocatorInsideViewport(control, `desktop control ${index + 1}`);
@@ -88,7 +87,6 @@ test.describe('first-principles UI invariants', () => {
     for (const [mode, panelSelector] of [
       ['layers', '.layer-manager-panel'],
       ['annotations', '.annotation-panel'],
-      ['sharing', '.collab-panel'],
     ] as const) {
       await openFixture(page, mode);
       const panel = page.locator(panelSelector);
