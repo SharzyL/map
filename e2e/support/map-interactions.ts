@@ -44,6 +44,14 @@ export async function openLayers(page: Page) {
   return panel;
 }
 
+// Opens a foldable section (Import, Navigation) of the Layers panel.
+export async function openLayersFold(page: Page, title: 'Import' | 'Navigation') {
+  const panel = await openLayers(page);
+  const fold = panel.locator('.layers-panel-fold', { hasText: title });
+  if ((await fold.getAttribute('open')) === null) await fold.locator('summary').click();
+  return fold;
+}
+
 export async function closeLayers(page: Page) {
   const panel = page.locator('.layer-manager-panel');
   if ((await panel.getAttribute('aria-hidden')) === 'false') {
@@ -61,12 +69,11 @@ export async function openAnnotations(page: Page) {
   return panel;
 }
 
+// Routing lives in the Navigation fold of the Layers panel.
 export async function openRouting(page: Page) {
+  await openLayersFold(page, 'Navigation');
   const panel = page.locator('.routing-panel');
-  if ((await panel.getAttribute('aria-hidden')) !== 'false') {
-    await page.getByRole('button', { name: 'Routing' }).click();
-    await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  }
+  await expect(panel).toHaveAttribute('aria-hidden', 'false');
   return panel;
 }
 

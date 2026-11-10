@@ -450,8 +450,10 @@ export async function mapState(page: Page) {
       loaded: Boolean(map?.loaded?.()),
       styleLoaded: Boolean(map?.style?._loaded || map?.isStyleLoaded?.()),
       terrain: Boolean(map?.getTerrain?.()),
-      satelliteVisibility: map?.getLayoutProperty?.('satellite-layer', 'visibility'),
-      viewState: map?.getCollaborationViewState?.(),
+      baseMap: map?.getGlobalState?.().baseMap,
+      showHillshade: map?.getGlobalState?.().showHillshade,
+      showContours: map?.getGlobalState?.().showContours,
+      railwayOverlay: map?.getGlobalState?.().railwayOverlay,
       styleLayerCount: map?.getStyle?.().layers?.length ?? 0,
     };
   });
@@ -462,7 +464,6 @@ type FixtureMap = {
   isStyleLoaded?: () => boolean;
   style?: { _loaded?: boolean };
   getTerrain?: () => unknown;
-  getLayoutProperty?: (layerId: string, name: string) => unknown;
-  getCollaborationViewState?: () => { terrain: boolean; satellite: boolean };
+  getGlobalState?: () => Record<string, unknown>;
   getStyle?: () => { layers?: unknown[] };
 };

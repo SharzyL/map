@@ -533,6 +533,11 @@ export function routeToGeoJson(
   };
 }
 
+type RoutingOptions = {
+  // Shown inside another panel (layers-panel.ts) instead of as its own panel.
+  embedded?: boolean;
+};
+
 class OsrmRoutingControl {
   _maplibregl: RoutingMaplibre;
   _map: RoutingMap;
@@ -551,6 +556,7 @@ class OsrmRoutingControl {
   _clearButton: HTMLButtonElement;
   _status: HTMLElement;
   _expanded: boolean;
+  _embedded: boolean;
   _from: LngLatLike | null;
   _to: LngLatLike | null;
   _picking: RoutePointKind | null;
@@ -563,7 +569,8 @@ class OsrmRoutingControl {
   _boundOverlayPanelOpen: () => void;
   _boundAnyPanelOpen: (event: Event) => void;
 
-  constructor(maplibregl: RoutingMaplibre) {
+  constructor(maplibregl: RoutingMaplibre, options: RoutingOptions = {}) {
+    this._embedded = Boolean(options.embedded);
     this._maplibregl = maplibregl;
     this._expanded = false;
     this._from = null;
@@ -704,9 +711,16 @@ class OsrmRoutingControl {
     return input;
   }
 
+  // The panel element; layers-panel.ts moves it into the Layers panel.
+  get panelElement() {
+    return this._panel;
+  }
+
   setExpanded(expanded: boolean) {
     this._expanded = Boolean(expanded);
-    if (this._expanded) {
+    // Embedded in the Layers panel, the host decides when routing is active;
+    // announcing it would make the Layers panel close itself.
+    if (this._expanded && !this._embedded) {
       emitUiPanelOpen(this._map.getContainer(), 'routing');
       this._map.getContainer().dispatchEvent(new CustomEvent('routing:panelopen'));
     }
@@ -919,6 +933,10 @@ class OsrmRoutingControl {
   }
 }
 
+export function createOsrmRouting(maplibregl: RoutingMaplibre, options?: RoutingOptions) {
+  return new OsrmRoutingControl(maplibregl, options);
+}
+
 export function installOsrmRouting(map: RoutingMap, maplibregl: RoutingMaplibre) {
-  map.addControl(new OsrmRoutingControl(maplibregl), 'top-right');
+  map.addControl(createOsrmRouting(maplibregl), 'top-right');
 }

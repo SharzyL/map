@@ -276,6 +276,21 @@ describe('setGlobalStatePropertyWhenReady', () => {
     expect(map._styleInitialized).toBe(true);
   });
 
+  it('sets the property once the style is parsed, without waiting for tiles to load', () => {
+    const map = createMockMap({ styleLoaded: false });
+    map._setStyleInfrastructureLoaded(true);
+    setGlobalStatePropertyWhenReady(map, 'baseMap', 'hybrid');
+    expect(map._globalState.baseMap).toBe('hybrid');
+  });
+
+  it('sets the property on style.load even if the map load event never fires', () => {
+    const map = createMockMap({ styleLoaded: false });
+    setGlobalStatePropertyWhenReady(map, 'baseMap', 'satellite');
+    expect(map._globalState.baseMap).toBeUndefined();
+    map._emit('style.load');
+    expect(map._globalState.baseMap).toBe('satellite');
+  });
+
   it('sets the property synchronously while tiles are still loading, once style has been initialised', () => {
     const map = createMockMap({ styleLoaded: true });
     setGlobalStatePropertyWhenReady(map, 'showBaseMap', false);

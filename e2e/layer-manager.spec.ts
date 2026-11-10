@@ -8,6 +8,7 @@ import {
   mapLayerVisibility,
   openAnnotationsForLayer,
   openLayers,
+  openLayersFold,
   selectLayer,
 } from './support/map-interactions';
 
@@ -86,6 +87,7 @@ test.describe('layer manager workflows in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
     const panel = await openLayers(page);
+    await openLayersFold(page, 'Import');
 
     await page
       .getByRole('textbox', { name: 'Layer URL' })
@@ -104,6 +106,7 @@ test.describe('layer manager workflows in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
     const panel = await openLayers(page);
+    await openLayersFold(page, 'Import');
 
     await page.getByRole('textbox', { name: 'Layer URL' }).fill(new URL('/fixtures/city-loop.gpx', page.url()).href);
     await page.getByRole('button', { name: 'Import from URL' }).click();
@@ -119,6 +122,7 @@ test.describe('layer manager workflows in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
     const panel = await openLayers(page);
+    await openLayersFold(page, 'Import');
 
     await page
       .getByRole('textbox', { name: 'Layer URL' })

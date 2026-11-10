@@ -91,10 +91,12 @@ function runWhenFullStyleReady(map: StyleReadyMap, callback: () => void) {
 
 /**
  * Set a global state property on the map.
- * Once the style has been initialised, always sets synchronously.
+ * Global state only needs the parsed style, not loaded tiles, so this runs as
+ * soon as the style infrastructure is ready rather than waiting for the map's
+ * 'load' event, which in-view tiles can delay indefinitely.
  */
 export function setGlobalStatePropertyWhenReady(map: StyleReadyMap, propertyName: string, value: unknown) {
-  runWhenFullStyleReady(map, () => {
+  runWhenStyleInfrastructureReady(map, () => {
     map.setGlobalStateProperty(propertyName, value);
   });
 }

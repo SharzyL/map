@@ -1,9 +1,7 @@
 html[data-screenshot-fixture] .poi-search,
 html[data-screenshot-fixture] .maplibregl-ctrl-geolocate,
 html[data-screenshot-fixture] .maplibregl-ctrl-fullscreen,
-html[data-screenshot-fixture] .maplibregl-ctrl-weather,
-html[data-screenshot-fixture] .maplibregl-ctrl-terrain,
-html[data-screenshot-fixture] .maplibregl-ctrl-satellite {
+html[data-screenshot-fixture] .maplibregl-ctrl-weather {
   display: none;
 }
 

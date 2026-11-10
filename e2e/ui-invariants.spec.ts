@@ -21,8 +21,8 @@ test.describe('first-principles UI invariants', () => {
       page.getByRole('button', { name: 'Zoom in' }),
       page.locator('.maplibregl-ctrl-layers'),
       page.locator('.maplibregl-ctrl-annotation'),
-      page.getByRole('button', { name: 'Routing' }),
       page.getByRole('button', { name: 'Pick a point for weather' }),
+      page.getByRole('button', { name: 'Railway filter' }),
     ];
     for (const [index, control] of controls.entries()) {
       await expectLocatorInsideViewport(control, `desktop control ${index + 1}`);
@@ -41,7 +41,11 @@ test.describe('first-principles UI invariants', () => {
         open: page.locator('.maplibregl-ctrl-layers'),
         panel: page.locator('.layer-manager-panel'),
         close: page.getByRole('button', { name: 'Close layers' }),
-        afterOpen: async () => {},
+        afterOpen: async () => {
+          for (const title of ['Import', 'Navigation']) {
+            await page.locator('.layers-panel-fold', { hasText: title }).locator('summary').click();
+          }
+        },
       },
       {
         open: page.locator('.maplibregl-ctrl-annotation'),
@@ -50,9 +54,9 @@ test.describe('first-principles UI invariants', () => {
         afterOpen: async () => {},
       },
       {
-        open: page.getByRole('button', { name: 'Routing' }),
-        panel: page.locator('.routing-panel'),
-        close: page.getByRole('button', { name: 'Close routing' }),
+        open: page.getByRole('button', { name: 'Railway filter' }),
+        panel: page.locator('.railway-filter-panel'),
+        close: page.getByRole('button', { name: 'Close railway filter' }),
         afterOpen: async () => {},
       },
       {

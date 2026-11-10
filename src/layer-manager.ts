@@ -726,6 +726,11 @@ class LayerManagerControl {
     this._map = undefined;
   }
 
+  // The floating panel, which layers-panel.ts extends with other panels' content.
+  get panelElement() {
+    return this._panel;
+  }
+
   setExpanded(expanded: boolean) {
     this._expanded = Boolean(expanded);
     if (this._expanded) {
@@ -752,6 +757,8 @@ class LayerManagerControl {
   _syncPanelInteractivity() {
     if (!this._panel) return;
     for (const element of this._panel.querySelectorAll('button, input, select, textarea')) {
+      // Panels nested in this one (layers-panel.ts) manage their own controls.
+      if (element.closest('[data-embedded-panel]')) continue;
       (element as Element & { disabled: boolean }).disabled = !this._expanded;
     }
     if (!this._expanded) return;
@@ -1694,6 +1701,10 @@ function mergeBounds(a: LayerBounds | null, b: BoundsLike | null | undefined): L
   ];
 }
 
+export function createLayerManager(layerStore?: LayerStore) {
+  return new LayerManagerControl(layerStore);
+}
+
 export function installLayerManager(map: LayerManagerMap, layerStore?: LayerStore) {
-  map.addControl(new LayerManagerControl(layerStore), 'top-right');
+  map.addControl(createLayerManager(layerStore), 'top-right');
 }

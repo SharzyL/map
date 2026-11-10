@@ -3,23 +3,39 @@ import './style.css';
 import maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
 import type { GlobalContourTileOptions } from 'maplibre-contour/dist/types';
-import createIconElement from 'lucide/dist/esm/createElement.mjs';
-import SatelliteIcon from 'lucide/dist/esm/icons/satellite.mjs';
 import { installGpxDragDrop, drainGpxQueue, processOrQueueGpx, processOrQueueGeoJson, mergeBounds } from './gpx.js';
 import { installOrmPopups, buildFeatureCatalog } from './popup.js';
 import { installPhotonSearch } from './search.js';
 import { installWeatherPointPicker } from './weather.js';
-import { installLayerManager } from './layer-manager.js';
-import { installOsrmRouting } from './routing.js';
-import { setGlobalStatePropertyWhenReady, runWhenStyleInfrastructureReady } from './style-ready.js';
+import { createLayerManager } from './layer-manager.js';
+import { createOsrmRouting } from './routing.js';
+import { runWhenStyleInfrastructureReady } from './style-ready.js';
 import { LayerStore } from './layer-store.js';
 import { installAnnotationRenderer } from './annotation-renderer.js';
 import { installAnnotationTools } from './annotation-tools.js';
+import { applyRailwayFilterToStyle, loadRailwayFilterSettings, type RailwayFilterSettings } from './railway-filter.js';
+import { installRailwayFilter } from './railway-filter-panel.js';
+import {
+  applyMapLayerState,
+  loadMapLayerSettings,
+  withBaseMapLabelLanguage,
+  withBaseMapSaturation,
+  withBaseMapVisibility,
+  withHybridStyling,
+  withShadedReliefFade,
+  withContourVisibility,
+  withHillshadeVisibility,
+  withRailwayLabelLanguage,
+  withSatelliteVisibility,
+  type MapLayerSettings,
+} from './map-layers.js';
+import { createMapLayers } from './map-layers-panel.js';
+import { installLayersPanel } from './layers-panel.js';
 import type * as ScreenshotFixtureModule from './screenshot-fixture.js';
 
 const LOCAL_ORM_PREFIX = '/orm';
 const STYLE_URL = `${LOCAL_ORM_PREFIX}/style/standard.json?v=${__STYLE_HASH__}`;
-const TILE_VERSION = '20260511a';
+const TILE_VERSION = '20261110a';
 // Optional ?tileset=<archive-name> override to point at a test tileset
 // (e.g. openrailwaymap-test-<run_id>), defaulting to the production archive.
 const TILE_ARCHIVE = new URLSearchParams(window.location.search).get('tileset') ?? 'openrailwaymap';
@@ -28,7 +44,6 @@ const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const MAPTERHORN_TERRAIN_URL = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
 const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
 const FULLSCREEN_ACTIVE_CLASS = 'route-map-fullscreen-active';
-const SHOW_BASE_MAP_STATE = 'showBaseMap';
 
 const app = document.querySelector('#app');
 app.innerHTML = `
@@ -130,16 +145,6 @@ function rewriteOrmSpriteUrl(url: string): string {
   if (url.startsWith('/orm/')) return absoluteUrl(url);
   if (url.startsWith('/')) return absoluteUrl(`/orm${url}`);
   return url;
-}
-
-function appendIcon(parent: Element, icon: LucideIcon, className = 'satellite-icon') {
-  const svg = createIconElement(icon, {
-    class: className,
-    'aria-hidden': 'true',
-    focusable: 'false',
-  });
-  parent.appendChild(svg);
-  return svg;
 }
 
 /**
@@ -328,7 +333,7 @@ function addMapterhornTerrain(style: StyleLike, demSource: DemSourceLike): Style
   };
 
   const terrainBaseLayers = [
-    {
+    withHillshadeVisibility({
       id: 'trip-hillshade',
       type: 'hillshade',
       source: 'hillshadeSource',
@@ -338,8 +343,8 @@ function addMapterhornTerrain(style: StyleLike, demSource: DemSourceLike): Style
         'hillshade-illumination-direction': 315,
         'hillshade-exaggeration': 0.26,
       },
-    },
-    {
+    }),
+    withContourVisibility({
       id: 'trip-contour-lines',
       type: 'line',
       source: 'contourSource',
@@ -350,10 +355,10 @@ function addMapterhornTerrain(style: StyleLike, demSource: DemSourceLike): Style
         'line-width': ['match', ['get', 'level'], 0, 0.45, 1, 1.05, 1.35],
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.26, 11, 0.42, 14, 0.65],
       },
-    },
+    }),
   ];
 
-  const contourLabelLayer = {
+  const contourLabelLayer = withContourVisibility({
     id: 'trip-contour-labels',
     type: 'symbol',
     source: 'contourSource',
@@ -375,7 +380,7 @@ function addMapterhornTerrain(style: StyleLike, demSource: DemSourceLike): Style
       'text-halo-color': 'rgba(255, 255, 255, 0.82)',
       'text-halo-width': 1.1,
     },
-  };
+  });
 
   // Insert hillshade and contour lines before other symbol layers (they render underneath)
   const beforeId = getFirstSymbolLayerId(style);
@@ -399,14 +404,19 @@ function addSatelliteSourceAndLayer(style: StyleLike): StyleLike {
     },
   };
 
-  const insertIdx = style.layers.findIndex((l: StyleLayerLike) => l.id === 'trip-hillshade');
-  const satelliteLayer = {
-    id: 'satellite-layer',
-    type: 'raster',
-    source: 'satellite',
-    layout: { visibility: 'none' },
-    paint: { 'raster-opacity': 1 },
-  };
+  // Imagery goes at the bottom, right above the base map's background, so the
+  // roads and labels hybrid mode keeps are drawn over it. (Inserting it before
+  // the first symbol layer would cover OpenFreeMap's ground-level roads, which
+  // come before its one-way arrows.)
+  const insertIdx = style.layers.findIndex((l: StyleLayerLike) => l.type !== 'background' && l.type !== 'raster');
+  const satelliteLayer = withBaseMapSaturation(
+    withSatelliteVisibility({
+      id: 'satellite-layer',
+      type: 'raster',
+      source: 'satellite',
+      paint: { 'raster-opacity': 1 },
+    }),
+  );
 
   if (insertIdx !== -1) {
     style.layers.splice(insertIdx, 0, satelliteLayer);
@@ -417,32 +427,29 @@ function addSatelliteSourceAndLayer(style: StyleLike): StyleLike {
   return style;
 }
 
-function withGlobalStateVisibility(layer: StyleLayerLike, stateName: string): StyleLayerLike {
-  const layout = { ...(layer.layout || {}) };
-  const originalVisibility = structuredClone(layout.visibility ?? 'visible');
-  layout.visibility = ['case', ['global-state', stateName], originalVisibility, 'none'];
-  return { ...layer, layout };
-}
-
 const STATE_DEFAULTS = {
   date: 2026,
   allDates: false,
   theme: 'light',
-  stationLowZoomLabel: 'label',
+  // Station names rather than short reference codes, which are often bare numbers.
+  stationLowZoomLabel: 'name',
   openHistoricalMap: true,
   showAbandonedInfrastructure: false,
   showRazedInfrastructure: false,
   showConstructionInfrastructure: true,
   showProposedInfrastructure: true,
   hillshade: false,
-  [SHOW_BASE_MAP_STATE]: true,
   electrificationRailwayLine: 'voltageFrequency',
   trackRailwayLine: 'gauge',
 };
 
 function mergeBaseAndOrm(baseStyle: StyleLike, ormStyle: StyleLike): StyleLike {
   const merged = structuredClone(baseStyle);
-  const baseLayers = (baseStyle.layers || []).map((layer) => withGlobalStateVisibility(layer, SHOW_BASE_MAP_STATE));
+  const baseLayers = (baseStyle.layers || []).map((layer) =>
+    withBaseMapLabelLanguage(
+      withBaseMapSaturation(withShadedReliefFade(withHybridStyling(withBaseMapVisibility(layer)))),
+    ),
+  );
   merged.center = ormStyle.center || merged.center;
   merged.zoom = ormStyle.zoom || merged.zoom;
   merged.glyphs = merged.glyphs || ormStyle.glyphs;
@@ -458,7 +465,7 @@ function mergeBaseAndOrm(baseStyle: StyleLike, ormStyle: StyleLike): StyleLike {
   merged.state = state;
   merged.metadata = { ...(merged.metadata || {}), ...(ormStyle.metadata || {}) };
   merged.sources = { ...(merged.sources || {}), ...(ormStyle.sources || {}) };
-  merged.layers = [...baseLayers, ...(ormStyle.layers || [])];
+  merged.layers = [...baseLayers, ...(ormStyle.layers || []).map(withRailwayLabelLanguage)];
   return merged;
 }
 
@@ -477,14 +484,41 @@ function installMapLibreErrorLogging(map: maplibregl.Map) {
   });
 }
 
-async function loadStyle(demSource: DemSourceLike): Promise<StyleLike> {
+async function loadStyle(
+  demSource: DemSourceLike,
+  railwayFilter: RailwayFilterSettings,
+  mapLayers: MapLayerSettings,
+): Promise<StyleLike> {
   const [baseStyle, ormStyleRaw] = await Promise.all([
     loadJson<StyleLike>(OPENFREEMAP_STYLE),
     loadJson<StyleLike>(STYLE_URL),
   ]);
-  const merged = mergeBaseAndOrm(baseStyle, rewriteOrmStyle(ormStyleRaw));
+  const ormStyle = rewriteOrmStyle(ormStyleRaw);
+  const railwaySources = (ormStyle.metadata?.ormRewrittenSources as string[] | undefined) ?? [];
+  const merged = applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter);
   const withTerrain = addMapterhornTerrain(merged, demSource);
-  return addSatelliteSourceAndLayer(withTerrain);
+  return withGlobe(applyMapLayerState(addSatelliteSourceAndLayer(withTerrain), mapLayers));
+}
+
+// Always a globe: MapLibre draws a sphere at low zoom and blends into the flat
+// map around zoom 10-12. Outside the sphere the canvas is transparent and the
+// map container's starfield (style.css) shows through; `sky` adds the
+// atmosphere glow around the globe and a sky gradient above the horizon when
+// the map is tilted.
+function withGlobe(style: StyleLike): StyleLike {
+  return {
+    ...style,
+    projection: { type: 'globe' },
+    sky: {
+      'sky-color': '#2f6fb3',
+      'horizon-color': '#cfe3f7',
+      'sky-horizon-blend': 0.6,
+      'fog-color': '#cfe3f7',
+      'horizon-fog-blend': 0.5,
+      'fog-ground-blend': 0.8,
+      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 5, 1, 7, 0],
+    },
+  };
 }
 
 function isSpriteIndex(value: unknown): value is SpriteAtlas['index'] {
@@ -545,7 +579,9 @@ async function init() {
       worker: true,
     });
     demSource.setupMaplibre(maplibregl);
-    const [style, atlases] = await Promise.all([loadStyle(demSource), loadSpriteAtlases()]);
+    const railwayFilter = loadRailwayFilterSettings();
+    const mapLayers = loadMapLayerSettings();
+    const [style, atlases] = await Promise.all([loadStyle(demSource, railwayFilter, mapLayers), loadSpriteAtlases()]);
 
     window._mlmap = null;
     const map = new maplibregl.Map({
@@ -573,13 +609,17 @@ async function init() {
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-right');
     installPhotonSearch(map, maplibregl);
     installWeatherPointPicker(map, maplibregl);
-    installOsrmRouting(map, maplibregl);
+    installRailwayFilter(map, railwayFilter);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }
     installAnnotationRenderer(map, layerStore);
     installAnnotationTools(map, layerStore);
-    installLayerManager(map, layerStore);
+    installLayersPanel(map, {
+      layerManager: createLayerManager(layerStore),
+      mapLayers: createMapLayers(mapLayers),
+      routing: createOsrmRouting(maplibregl, { embedded: true }),
+    });
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }
@@ -635,101 +675,6 @@ async function init() {
         if (bounds) map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
       })();
     }
-
-    // Terrain toggle control
-    class TerrainToggleControl {
-      _map?: maplibregl.Map;
-      _enabled = false;
-      _container?: HTMLElement;
-      _btn?: HTMLButtonElement;
-      onAdd(map: maplibregl.Map) {
-        this._map = map;
-        this._enabled = false;
-        this._container = document.createElement('div');
-        this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-        this._btn = document.createElement('button');
-        this._btn.type = 'button';
-        this._btn.title = '3D Terrain';
-        this._btn.setAttribute('aria-label', '3D Terrain');
-        this._btn.className = 'maplibregl-ctrl-terrain';
-        this._btn.textContent = '3D';
-        this._btn.addEventListener('click', () => this.setEnabled(!this._enabled));
-        this._container.appendChild(this._btn);
-        return this._container;
-      }
-      setEnabled(enabled: boolean) {
-        const next = Boolean(enabled);
-        if (this._enabled === next) return;
-        this._enabled = next;
-        runWhenStyleInfrastructureReady(this._map, () => {
-          this._map.setTerrain(next ? { source: 'hillshadeSource', exaggeration: 1.0 } : null);
-        });
-        this._btn?.classList.toggle('maplibregl-ctrl-terrain-enabled', next);
-      }
-      onRemove() {
-        this._container.parentNode?.removeChild(this._container);
-        this._map = undefined;
-      }
-    }
-    map.addControl(new TerrainToggleControl(), 'top-right');
-
-    // Satellite imagery toggle control
-    class SatelliteToggleControl {
-      _map?: maplibregl.Map;
-      _enabled = false;
-      _container?: HTMLElement;
-      _btn?: HTMLButtonElement;
-      onAdd(map: maplibregl.Map) {
-        this._map = map;
-        this._enabled = false;
-        this._container = document.createElement('div');
-        this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-        this._btn = document.createElement('button');
-        this._btn.type = 'button';
-        this._btn.title = 'Satellite Imagery';
-        this._btn.setAttribute('aria-label', 'Satellite Imagery');
-        this._btn.className = 'maplibregl-ctrl-satellite';
-        appendIcon(this._btn, SatelliteIcon);
-        this._btn.addEventListener('click', () => this._toggle());
-        this._container.appendChild(this._btn);
-        return this._container;
-      }
-      _toggle() {
-        this.setEnabled(!this._enabled);
-      }
-      setEnabled(enabled: boolean) {
-        const next = Boolean(enabled);
-        if (this._enabled === next) return;
-        this._enabled = next;
-        if (next) {
-          this._enable();
-        } else {
-          this._disable();
-        }
-        this._btn?.classList.toggle('maplibregl-ctrl-satellite-enabled', next);
-      }
-      _enable() {
-        runWhenStyleInfrastructureReady(this._map, () => {
-          setGlobalStatePropertyWhenReady(this._map, SHOW_BASE_MAP_STATE, false);
-          if (this._map.getLayer('satellite-layer')) {
-            this._map.setLayoutProperty('satellite-layer', 'visibility', 'visible');
-          }
-        });
-      }
-      _disable() {
-        runWhenStyleInfrastructureReady(this._map, () => {
-          if (this._map.getLayer('satellite-layer')) {
-            this._map.setLayoutProperty('satellite-layer', 'visibility', 'none');
-          }
-          setGlobalStatePropertyWhenReady(this._map, SHOW_BASE_MAP_STATE, true);
-        });
-      }
-      onRemove() {
-        this._container.parentNode?.removeChild(this._container);
-        this._map = undefined;
-      }
-    }
-    map.addControl(new SatelliteToggleControl(), 'top-right');
 
     // GitHub link control
     class GitHubControl {

@@ -54,6 +54,14 @@ type FormatSpec = {
   template?: string;
   lookup?: string;
   country_prefix?: unknown;
+  // Unit-aware formatting for the structured popup sections.
+  unit?: 'voltage' | 'frequency' | 'current' | 'speed' | 'gauge';
+  // Value labels; unlisted values fall back to `humanize`.
+  labels?: Record<string, string>;
+  // 'words' turns light_rail into "Light rail"; 'code' upper-cases short codes (pzb -> PZB, etcs_2 -> ETCS 2).
+  humanize?: 'words' | 'code';
+  // Splits one string value into several (e.g. gauges are joined with ', ').
+  separator?: string;
 };
 type ListSpec = {
   colorProperty: string;
@@ -69,6 +77,12 @@ type FeaturePropertyDefinition = {
   paragraph?: boolean;
   list?: ListSpec;
   description?: string;
+  // Skip the row when it would repeat this other property's value.
+  hideIfSameAs?: string;
+};
+type PopupSection = {
+  title: string;
+  properties: string[];
 };
 type FeatureCatalog = {
   featureProperty?: string;
@@ -77,6 +91,11 @@ type FeatureCatalog = {
   featureLinks?: FeatureLinks;
   features?: Record<string, FeatureContent>;
   properties?: Record<string, FeaturePropertyDefinition>;
+  // When set, properties render as titled sections of rows instead of badges,
+  // followed by an "Other" section for any property not listed here.
+  sections?: PopupSection[];
+  // Internal properties never shown in the "Other" section.
+  hiddenProperties?: string[];
 };
 type FeaturesCatalog = Record<string, FeatureCatalog>;
 type FormattedValue = string | Array<[string, string]>;
@@ -256,6 +275,38 @@ function determineOsmFeatures(
 }
 
 // ---------------------------------------------------------------------------
+// Value humanizing for the structured popup sections
+// ---------------------------------------------------------------------------
+function humanizeWords(value: string) {
+  const text = value.replace(/[_-]+/g, ' ').trim();
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+// Short lowercase codes are acronyms (pzb, kvb, gsm-r, etcs_2); longer words are not.
+function humanizeCode(value: string) {
+  const letters = value.replace(/[^a-z]/gi, '');
+  if (letters.length > 0 && letters.length <= 5) return value.replace(/_/g, ' ').toUpperCase();
+  return humanizeWords(value);
+}
+
+function formatUnit(value: string, unit: NonNullable<FormatSpec['unit']>) {
+  const number = Number(value);
+  if (value === '' || !Number.isFinite(number)) return value;
+  switch (unit) {
+    case 'voltage':
+      return number >= 1000 ? `${Number((number / 1000).toFixed(2))} kV` : `${number} V`;
+    case 'frequency':
+      return number === 0 ? 'DC' : `${Number(number.toFixed(2))} Hz`;
+    case 'current':
+      return `${number} A`;
+    case 'speed':
+      return `${Number(number.toFixed(1))} km/h`;
+    case 'gauge':
+      return `${number} mm`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Format a property value according to its format specification
 // ---------------------------------------------------------------------------
 function formatPropertyValue(value: unknown, format?: FormatSpec, features?: FeaturesCatalog): FormattedValue {
@@ -280,9 +331,17 @@ function formatPropertyValue(value: unknown, format?: FormatSpec, features?: Fea
 
   return String(value)
     .split('\u001e')
+    .flatMap((part) => (format?.separator ? part.split(format.separator) : [part]))
     .map((stringValue) => {
       if (!format) {
         return stringValue;
+      } else if (format.unit) {
+        return formatUnit(stringValue, format.unit);
+      } else if (format.labels || format.humanize) {
+        return (
+          format.labels?.[stringValue] ??
+          (format.humanize === 'code' ? humanizeCode(stringValue) : humanizeWords(stringValue))
+        );
       } else if (format.template) {
         return format.template
           .replace('%s', () => stringValue)
@@ -355,7 +414,7 @@ function closestPointOnLine(maplibregl: MaplibreLike, point: unknown, line: unkn
 // here we define the subset we need inline.
 // ---------------------------------------------------------------------------
 export function buildFeatureCatalog() {
-  const railwayLineFeatures = {
+  const railwayLineFeatures: FeatureCatalog = {
     labelProperties: ['ref', 'name'],
     featureLinks: FEATURE_LINKS,
     features: {
@@ -375,34 +434,104 @@ export function buildFeatureCatalog() {
       razed: { name: 'Razed railway', type: 'line' },
       preserved: { name: 'Preserved railway', type: 'line' },
     },
+    sections: [
+      {
+        title: 'Line',
+        properties: [
+          'state',
+          'usage',
+          'service',
+          'traffic_mode',
+          'highspeed',
+          'preferred_direction',
+          'track_ref',
+          'reporting_marks',
+          'tunnel',
+          'bridge',
+        ],
+      },
+      { title: 'Speed', properties: ['maxspeed', 'speed_label'] },
+      {
+        title: 'Electrification',
+        properties: [
+          'electrification_state',
+          'voltage',
+          'frequency',
+          'maximum_current',
+          'future_voltage',
+          'future_frequency',
+          'future_maximum_current',
+        ],
+      },
+      { title: 'Track', properties: ['gauges', 'loading_gauge', 'track_class'] },
+      {
+        title: 'Signalling & radio',
+        properties: [
+          'train_protection0',
+          'train_protection1',
+          'train_protection2',
+          'train_protection_construction',
+          'radio',
+        ],
+      },
+      { title: 'Operation', properties: ['operator', 'primary_operator', 'owner'] },
+      { title: 'Links', properties: ['wikidata', 'wikipedia', 'wikimedia_commons', 'mapillary'] },
+    ],
+    hiddenProperties: [
+      'id',
+      'rank',
+      'way_length',
+      'gauge0',
+      'gauge1',
+      'gauge2',
+      'gaugeint0',
+      'gaugeint1',
+      'gaugeint2',
+      'train_protection_rank',
+      'train_protection_construction_rank',
+      'route_count',
+    ],
     properties: {
-      state: { name: 'State' },
-      usage: { name: 'Usage' },
-      service: { name: 'Service' },
+      state: { name: 'State', format: { humanize: 'words' } },
+      usage: { name: 'Usage', format: { humanize: 'words' } },
+      service: { name: 'Service', format: { humanize: 'words' } },
       highspeed: { name: 'High speed' },
-      preferred_direction: { name: 'Preferred direction' },
+      preferred_direction: {
+        name: 'Preferred direction',
+        format: { labels: { forward: 'Forward', backward: 'Backward', both: 'Both directions' }, humanize: 'words' },
+      },
       tunnel: { name: 'Tunnel' },
       bridge: { name: 'Bridge' },
       ref: { name: 'Reference' },
       track_ref: { name: 'Track' },
-      speed_label: { name: 'Speed' },
-      train_protection0: { name: 'Train protection' },
-      train_protection1: { name: 'Train protection' },
-      train_protection2: { name: 'Train protection' },
-      electrification_state: { name: 'Electrification' },
-      frequency: { name: 'Frequency', format: { template: '%.2d Hz' } },
-      voltage: { name: 'Voltage', format: { template: '%d V' } },
-      maximum_current: { name: 'Maximum current', format: { template: '%d A' } },
-      future_frequency: { name: 'Future frequency', format: { template: '%.2d Hz' } },
-      future_voltage: { name: 'Future voltage', format: { template: '%d V' } },
-      gauges: { name: 'Gauge' },
+      maxspeed: { name: 'Maximum speed', format: { unit: 'speed' } },
+      speed_label: { name: 'Speed label', hideIfSameAs: 'maxspeed' },
+      train_protection0: { name: 'Train protection', format: { humanize: 'code' } },
+      train_protection1: { name: 'Train protection', format: { humanize: 'code' } },
+      train_protection2: { name: 'Train protection', format: { humanize: 'code' } },
+      train_protection_construction: { name: 'Train protection (planned)', format: { humanize: 'code' } },
+      electrification_state: {
+        name: 'Electrification',
+        format: {
+          labels: { present: 'Electrified', no: 'Not electrified', deelectrified: 'De-electrified' },
+          humanize: 'words',
+        },
+      },
+      frequency: { name: 'Frequency', format: { unit: 'frequency' } },
+      voltage: { name: 'Voltage', format: { unit: 'voltage' } },
+      maximum_current: { name: 'Maximum current', format: { unit: 'current' } },
+      future_frequency: { name: 'Future frequency', format: { unit: 'frequency' } },
+      future_voltage: { name: 'Future voltage', format: { unit: 'voltage' } },
+      future_maximum_current: { name: 'Future maximum current', format: { unit: 'current' } },
+      gauges: { name: 'Gauge', format: { unit: 'gauge', separator: ', ' } },
       loading_gauge: { name: 'Loading gauge' },
       track_class: { name: 'Track class' },
       reporting_marks: { name: 'Reporting marks' },
       operator: { name: 'Operator' },
+      primary_operator: { name: 'Primary operator', hideIfSameAs: 'operator' },
       owner: { name: 'Owner' },
-      traffic_mode: { name: 'Traffic mode' },
-      radio: { name: 'Radio' },
+      traffic_mode: { name: 'Traffic', format: { humanize: 'words' } },
+      radio: { name: 'Radio', format: { humanize: 'code' } },
       wikidata: { name: 'Wikidata', link: LINKS.wikidata },
       wikimedia_commons: { name: 'Wikimedia', link: LINKS.wikimedia_commons },
       mapillary: { name: 'Mapillary', link: LINKS.mapillary },
@@ -421,7 +550,7 @@ export function buildFeatureCatalog() {
     },
   };
 
-  const stationFeatures = {
+  const stationFeatures: FeatureCatalog = {
     featureProperty: 'feature',
     labelProperties: ['localized_name', 'name'],
     featureLinks: FEATURE_LINKS,
@@ -436,9 +565,17 @@ export function buildFeatureCatalog() {
       crossover: { name: 'Crossover' },
       site: { name: 'Railway site' },
     },
+    sections: [
+      { title: 'Station', properties: ['station', 'state', 'station_size', 'position', 'yard_purpose', 'yard_hump'] },
+      { title: 'Operation', properties: ['operator', 'network'] },
+      { title: 'References', properties: ['references'] },
+      { title: 'Links', properties: ['wikidata', 'wikipedia', 'wikimedia_commons', 'mapillary'] },
+    ],
+    hiddenProperties: ['id', 'discr_iso', 'count', 'label'],
     properties: {
-      station: { name: 'Type' },
-      state: { name: 'State' },
+      station: { name: 'Type', format: { humanize: 'words' } },
+      state: { name: 'State', format: { humanize: 'words' } },
+      station_size: { name: 'Size', format: { humanize: 'words' } },
       references: {
         name: 'References',
         format: {
@@ -451,7 +588,7 @@ export function buildFeatureCatalog() {
       operator: { name: 'Operator' },
       network: { name: 'Network' },
       position: { name: 'Position' },
-      yard_purpose: { name: 'Yard purpose' },
+      yard_purpose: { name: 'Yard purpose', format: { humanize: 'words' } },
       yard_hump: { name: 'Yard hump' },
       wikidata: { name: 'Wikidata', link: LINKS.wikidata },
       wikimedia_commons: { name: 'Wikimedia', link: LINKS.wikimedia_commons },
@@ -922,7 +1059,7 @@ function fetchCommonsImage(linkEl: HTMLAnchorElement, commonsFile: string, abort
     });
 }
 
-function popupContent(
+export function popupContent(
   feature: RenderedFeatureLike,
   featuresCatalog: FeaturesCatalog,
   abortController: AbortController,
@@ -1064,9 +1201,11 @@ function popupContent(
     }
   }
 
-  // Property badges (non-paragraph, non-list)
+  // Property sections (structured catalogs) or badges (non-paragraph, non-list)
   const badgeProps = propertyValues.filter((it) => !it.paragraph && !it.list);
-  if (badgeProps.length > 0) {
+  if (featureCatalog.sections) {
+    renderPropertySections(popupContainer, properties, featureCatalog, featuresCatalog);
+  } else if (badgeProps.length > 0) {
     const badgeContainer = el('h6', 'orm-popup-badges', popupContainer);
     badgeProps.forEach(({ title, body, value, link, tooltip }) => {
       const badge = el('span', 'orm-badge', badgeContainer);
@@ -1169,6 +1308,112 @@ function popupContent(
   }
 
   return popupContainer;
+}
+
+// ---------------------------------------------------------------------------
+// Structured property sections: titled groups of label/value rows, then an
+// "Other" group with every remaining property so no metadata is hidden.
+// ---------------------------------------------------------------------------
+type PropertyRow = { label: string; value: string; href?: string };
+
+const POPUP_HANDLED_PROPERTIES = ['osm_id', 'osm_type', 'icon', 'image', 'wikimedia_commons_file'];
+
+function hasDisplayValue(value: unknown) {
+  return value !== undefined && value !== null && value !== '' && value !== false;
+}
+
+function catalogPropertyRows(
+  property: string,
+  properties: JsonRecord,
+  featuresCatalog: FeaturesCatalog,
+  catalog: FeatureCatalog,
+) {
+  const value = properties[property];
+  if (!hasDisplayValue(value)) return [];
+  const definition = catalog.properties?.[property] || {};
+  const { hideIfSameAs } = definition;
+  if (hideIfSameAs && stringValue(properties[hideIfSameAs]) === stringValue(value)) return [];
+  const label = definition.name || humanizeWords(property);
+  if (value === true) return [{ label, value: 'Yes' }];
+  const formatted = formatPropertyValue(value, definition.format, featuresCatalog);
+  if (Array.isArray(formatted)) {
+    return formatted
+      .filter(([, item]) => item)
+      .map(([key, item]): PropertyRow => ({ label: key || label, value: item }));
+  }
+  const href = definition.link
+    ? definition.link.replace('%s', () => encodeURIComponent(stringValue(value)))
+    : undefined;
+  return [{ label, value: formatted, href }];
+}
+
+function otherPropertyRow(property: string, value: unknown): PropertyRow {
+  return {
+    label: humanizeWords(property),
+    value: value === true ? 'Yes' : stringValue(value).split('\u001d').join('; ').split('\u001e').join(', '),
+  };
+}
+
+// Rows sharing a label (e.g. up to three train protection systems) merge into one.
+function mergeRows(rows: PropertyRow[]) {
+  const merged: PropertyRow[] = [];
+  for (const row of rows) {
+    const previous = merged.find((item) => item.label === row.label && !item.href && !row.href);
+    if (previous) previous.value = `${previous.value}, ${row.value}`;
+    else merged.push({ ...row });
+  }
+  return merged;
+}
+
+function renderSection(container: Element, title: string, rows: PropertyRow[]) {
+  if (rows.length === 0) return;
+  const section = el('section', 'orm-popup-section', container);
+  el('h6', 'orm-popup-section-title', section).innerText = title;
+  const list = el('dl', 'orm-popup-fields', section);
+  for (const row of mergeRows(rows)) {
+    el('dt', undefined, list).innerText = row.label;
+    const dd = el('dd', undefined, list);
+    if (row.href) {
+      const link = el('a', undefined, dd);
+      link.href = row.href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.innerText = row.value;
+    } else {
+      dd.innerText = row.value;
+    }
+  }
+}
+
+function renderPropertySections(
+  container: Element,
+  properties: JsonRecord,
+  catalog: FeatureCatalog,
+  featuresCatalog: FeaturesCatalog,
+) {
+  const sectionContainer = el('div', 'orm-popup-sections', container);
+  const shown = new Set<string>([
+    ...POPUP_HANDLED_PROPERTIES,
+    ...(catalog.hiddenProperties || []),
+    ...(catalog.labelProperties || []),
+    catalog.featureProperty || 'feature',
+    catalog.colorProperty || 'color',
+  ]);
+  for (const [property, definition] of Object.entries(catalog.properties || {})) {
+    if (definition.paragraph || definition.list) shown.add(property);
+  }
+  for (const section of catalog.sections || []) {
+    const rows = section.properties.flatMap((property) => {
+      shown.add(property);
+      return catalogPropertyRows(property, properties, featuresCatalog, catalog);
+    });
+    renderSection(sectionContainer, section.title, rows);
+  }
+  const otherRows = Object.keys(properties)
+    .filter((property) => !shown.has(property) && hasDisplayValue(properties[property]))
+    .sort()
+    .map((property) => otherPropertyRow(property, properties[property]));
+  renderSection(sectionContainer, 'Other', otherRows);
 }
 
 // ---------------------------------------------------------------------------
