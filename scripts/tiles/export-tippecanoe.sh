@@ -332,7 +332,7 @@ ORDER BY rank NULLS LAST
 export_layer "standard_railway_text_stations" "
 SELECT
   id,
-  way,
+  center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature,
@@ -376,7 +376,7 @@ ORDER BY
 for z in 4 5 6 7; do
   export_layer "standard_railway_text_stations_low_z${z}" "
 SELECT
-  id, way,
+  id, center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature, state, station,
@@ -416,7 +416,7 @@ done
 for z in 7 8; do
   export_layer "standard_railway_text_stations_med_z${z}" "
 SELECT
-  id, way,
+  id, center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature, state, station,
@@ -453,7 +453,9 @@ done
 
 # standard_railway_turntables (z10+)
 export_layer "standard_railway_turntables" "
-SELECT id, osm_id, osm_type, way, feature FROM standard_railway_turntables_view
+SELECT id, osm_id, osm_type, way, replace(feature, 'general/', '') AS feature FROM pois
+WHERE feature IN ('general/turntable', 'general/traverser')
+  AND ST_GeometryType(way) IN ('ST_Polygon', 'ST_MultiPolygon')
 "
 
 # standard_station_entrances (z16+)
@@ -476,12 +478,13 @@ if (( MAX_ZOOM < 17 )); then
 fi
 export_layer "standard_railway_symbols" "
 SELECT
-  id, osm_id, osm_type, way, feature, ref, name, minzoom,
+  id, osm_id, osm_type, center AS way, feature, ref, name, minzoom,
   nullif(array_to_string(position, U&'\001E'), '') as position,
   wikidata, wikimedia_commons, wikimedia_commons_file,
   image, mapillary, wikipedia, note, description
-FROM poi_view
-WHERE layer = 'standard' AND minzoom <= ${symbols_effective_max_zoom}
+FROM pois
+WHERE feature IN ('general/aei','general/buffer_stop','general/car-dumper','general/car-shuttle','general/carrier-truck-pit','general/coaling_facility','general/compressed_air_supply','general/container-terminal','general/crossing','general/defect_detector','general/derail','general/engine_shed','general/ferry-terminal','general/fuel','general/gauge-conversion','general/hirail_access','general/hump_yard','general/level-crossing','general/level-crossing-barrier','general/level-crossing-light','general/level-crossing-light-barrier','general/loading-rack','general/loading-ramp','general/loading-tower','general/loading_gauge','general/lubricator','general/museum','general/museum-rail-transport','general/phone','general/pit','general/preheating','general/radio-antenna','general/radio-mast','general/retarder','general/rolling_highway','general/sand_store','general/track-scale','general/unloading-hole','general/wash','general/waste_disposal','general/water_crane','general/water_tower','general/workshop')
+  AND minzoom <= ${symbols_effective_max_zoom}
 ORDER BY rank DESC
 "
 
