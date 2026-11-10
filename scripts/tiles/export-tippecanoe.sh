@@ -195,31 +195,8 @@ ORDER BY
 export_railway_line_high "railway_line_high" "true" true
 
 # railway_text_km — kilometer markers
-# Split into two layers matching Martin's zoom-dependent filtering:
-# z10-12: only zero markers (zero=true), z13+: all markers
-export_layer "railway_text_km_low" "
-SELECT
-  id,
-  osm_id,
-  way,
-  railway,
-  position_text as pos,
-  position_exact as pos_exact,
-  zero,
-  round(position_numeric) as pos_int,
-  type,
-  wikidata,
-  wikimedia_commons,
-  wikimedia_commons_file,
-  image,
-  mapillary,
-  wikipedia,
-  note,
-  description
-FROM railway_positions
-WHERE zero = true
-"
-
+# Martin serves only zero markers at z10-12 and all markers at z13+. Export
+# everything once; the Phase 2 feature filter applies the zoom rule.
 export_layer "railway_text_km" "
 SELECT
   id,
@@ -371,10 +348,18 @@ ORDER BY
   importance DESC NULLS LAST
 "
 
-# Station low-zoom layers. Split per zoom to match Martin's z-dependent
-# discr_iso threshold while keeping discr_iso available in the PMTiles.
-for z in 4 5 6 7; do
-  export_layer "standard_railway_text_stations_low_z${z}" "
+# Station low-zoom layers. Martin applies a z-dependent discr_iso threshold
+# (213000 * exp(-0.33 * z) - 18000 < discr_iso). The threshold loosens as z
+# grows, so export once at the highest zoom of each range; the Phase 2 feature
+# filter tightens it per zoom using the discr_iso attribute.
+STATIONS_LOW_ZOOMS=(4 5 6 7)
+STATIONS_MED_ZOOMS=(7 8)
+station_discr_threshold() {
+  awk -v z="$1" 'BEGIN { printf "%.3f", 213000 * exp(-0.33 * z) - 18000 }'
+}
+
+z="${STATIONS_LOW_ZOOMS[-1]}"
+export_layer "standard_railway_text_stations_low" "
 SELECT
   id, center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
@@ -410,11 +395,10 @@ WHERE feature = 'station' AND state = 'present'
   AND station_size IN ('large', 'normal')
 ORDER BY importance DESC NULLS LAST
 "
-done
 
 # z7-8: all station types except light_rail/monorail/subway.
-for z in 7 8; do
-  export_layer "standard_railway_text_stations_med_z${z}" "
+z="${STATIONS_MED_ZOOMS[-1]}"
+export_layer "standard_railway_text_stations_med" "
 SELECT
   id, center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
@@ -449,7 +433,6 @@ WHERE feature = 'station' AND state = 'present'
   AND 213000 * exp(-0.33 * ${z}) - 18000 < discr_iso
 ORDER BY importance DESC NULLS LAST
 "
-done
 
 # standard_railway_turntables (z10+)
 export_layer "standard_railway_turntables" "
@@ -638,6 +621,7 @@ FROM railway_line_low
 export_layer "signals_signal_boxes_low" "
 SELECT
   id,
+  0 as zoom_part,
   center as way,
   feature,
   ref,
@@ -650,6 +634,7 @@ FROM signal_boxes_view
 export_layer "signals_signal_boxes_high" "
 SELECT
   id,
+  1 as zoom_part,
   way,
   feature,
   ref,
@@ -707,15 +692,13 @@ FROM electrification_signals_view
 "
 
 # electrification_railway_symbols (z13+) — from poi_view, electrification layer
-for z in 13 14 15 16 17; do
-  export_layer "electrification_railway_symbols_z${z}" "
+export_layer "electrification_railway_symbols" "
 SELECT
   id, way, feature, ref, minzoom
 FROM poi_view
-WHERE layer = 'electrification' AND minzoom <= ${z}
+WHERE layer = 'electrification' AND minzoom <= 17
 ORDER BY rank DESC
 "
-done
 
 # electrification_catenary (z14+)
 export_layer "electrification_catenary" "
@@ -771,15 +754,13 @@ FROM railway_line_low
 "
 
 # operator_railway_symbols (z13+) — from poi_view, operator layer
-for z in 13 14 15 16 17; do
-  export_layer "operator_railway_symbols_z${z}" "
+export_layer "operator_railway_symbols" "
 SELECT
   id, way, feature, ref, minzoom
 FROM poi_view
-WHERE layer = 'operator' AND minzoom <= ${z}
+WHERE layer = 'operator' AND minzoom <= 17
 ORDER BY rank DESC
 "
-done
 
 # ============================================================
 # Route style layers
@@ -863,6 +844,7 @@ TIPPECANOE_ARGS=(
   -T discr_iso:float
   -T pos_int:int
   -T minzoom:int
+  -T zoom_part:int
   -T way_area:float
   # Signal feature columns (expanded from arrays by the *_signals_view)
   -T offset0:float
@@ -881,91 +863,124 @@ TIPPECANOE_ARGS=(
   -T direction_both:bool
 )
 
-# Add each layer with zoom range from martin configuration
-add_layer() {
-  local name="$1"
-  local minzoom="$2"
-  local maxzoom="$3"
-  local file="${FGB_DIR}/${name}.fgb"
+# Register each layer with the zoom range from the martin configuration.
+#
+# tippecanoe's -L accepts only file/layer/description/format, so zoom ranges
+# cannot go there (they would be silently ignored and every layer would land
+# in every zoom). Instead each output layer gets a feature filter (-j) that
+# tests $zoom, plus any attribute rules Martin applies per zoom.
+#
+# Filter caveat: tippecanoe's ["==", attr, true] matches every feature, so
+# boolean tests must be written as ["!=", attr, false].
+declare -A LAYER_FILTERS=()
 
+zoom_range_filter() {
+  local minzoom="$1" maxzoom="$2"
+  printf '["all",[">=","$zoom",%s],["<=","$zoom",%s]]' "${minzoom}" "${maxzoom}"
+}
+
+# Clamp a zoom range to MAX_ZOOM. Prints "min max", or nothing if empty.
+clamp_zoom_range() {
+  local minzoom="$1" maxzoom="$2"
   if (( minzoom > MAX_ZOOM )); then
-    echo "  [skip] ${name} (minzoom ${minzoom} > MAX_ZOOM ${MAX_ZOOM})"
     return 0
   fi
   if (( maxzoom > MAX_ZOOM )); then
     maxzoom="${MAX_ZOOM}"
   fi
-  if (( maxzoom < minzoom )); then
-    echo "  [skip] ${name} (empty zoom range ${minzoom}-${maxzoom})"
-    return 0
-  fi
-
-  if [ -f "${file}" ] && [ -s "${file}" ]; then
-    TIPPECANOE_ARGS+=("-L" "{\"file\":\"${file}\",\"layer\":\"${name}\",\"minzoom\":${minzoom},\"maxzoom\":${maxzoom}}")
-  else
-    echo "  [skip] ${name} (no data)"
+  if (( maxzoom >= minzoom )); then
+    echo "${minzoom} ${maxzoom}"
   fi
 }
 
-# Add a layer with a different file name than layer name
-# Useful for splitting one logical layer into multiple zoom-ranged FGBs
-add_layer_named() {
+# Add an input file under an output layer name, with a full filter expression.
+add_layer_filtered() {
   local file_name="$1"
   local layer_name="$2"
-  local minzoom="$3"
-  local maxzoom="$4"
+  local filter="$3"
   local file="${FGB_DIR}/${file_name}.fgb"
 
-  if (( minzoom > MAX_ZOOM )); then
-    echo "  [skip] ${file_name} -> ${layer_name} (minzoom ${minzoom} > MAX_ZOOM ${MAX_ZOOM})"
-    return 0
-  fi
-  if (( maxzoom > MAX_ZOOM )); then
-    maxzoom="${MAX_ZOOM}"
-  fi
-  if (( maxzoom < minzoom )); then
-    echo "  [skip] ${file_name} -> ${layer_name} (empty zoom range ${minzoom}-${maxzoom})"
-    return 0
-  fi
-
-  if [ -f "${file}" ] && [ -s "${file}" ]; then
-    TIPPECANOE_ARGS+=("-L" "{\"file\":\"${file}\",\"layer\":\"${layer_name}\",\"minzoom\":${minzoom},\"maxzoom\":${maxzoom}}")
-  else
+  if [ ! -s "${file}" ]; then
     echo "  [skip] ${file_name} -> ${layer_name} (no data)"
+    return 0
+  fi
+  TIPPECANOE_ARGS+=("-L" "{\"file\":\"${file}\",\"layer\":\"${layer_name}\"}")
+  if [ -n "${filter}" ]; then
+    LAYER_FILTERS[${layer_name}]="${filter}"
   fi
 }
 
-add_layer_capped_to_max() {
+# Add a layer whose features all share one zoom range.
+add_layer() {
   local name="$1"
-  local minzoom="$2"
-  local maxzoom="$3"
-
-  if (( minzoom > MAX_ZOOM )); then
-    add_layer_named "${name}" "${name}" "${MAX_ZOOM}" "${MAX_ZOOM}"
-  else
-    add_layer "${name}" "${minzoom}" "${maxzoom}"
+  local range
+  range=$(clamp_zoom_range "$2" "$3")
+  if [ -z "${range}" ]; then
+    echo "  [skip] ${name} (zoom range $2-$3 outside 0-${MAX_ZOOM})"
+    return 0
   fi
+  add_layer_filtered "${name}" "${name}" "$(zoom_range_filter ${range})"
+}
+
+# Layers whose official minzoom is above MAX_ZOOM are still included at
+# MAX_ZOOM, so clients can overzoom them.
+add_layer_capped_to_max() {
+  local name="$1" minzoom="$2" maxzoom="$3"
+  if (( minzoom > MAX_ZOOM )); then
+    minzoom="${MAX_ZOOM}"
+  fi
+  add_layer "${name}" "${minzoom}" "${maxzoom}"
+}
+
+# Layers carrying a per-feature minzoom attribute: from the layer's minzoom,
+# keep a feature at zoom z only if minzoom <= z. At MAX_ZOOM keep everything,
+# since clients overzoom that level.
+add_layer_with_feature_minzoom() {
+  local name="$1" layer_minzoom="$2"
+  if (( layer_minzoom > MAX_ZOOM )); then
+    layer_minzoom="${MAX_ZOOM}"
+  fi
+  local clauses=("[\">=\",\"\$zoom\",${MAX_ZOOM}]")
+  local z
+  for (( z = layer_minzoom; z < MAX_ZOOM; z++ )); do
+    clauses+=("[\"all\",[\"==\",\"\$zoom\",${z}],[\"<=\",\"minzoom\",${z}]]")
+  done
+  local IFS=,
+  add_layer_filtered "${name}" "${name}" "[\"all\",[\">=\",\"\$zoom\",${layer_minzoom}],[\"any\",${clauses[*]}]]"
+}
+
+# Station label layers: Martin's discr_iso threshold for each zoom.
+add_station_layer() {
+  local name="$1"
+  shift
+  local clauses=() z
+  for z in "$@"; do
+    if (( z <= MAX_ZOOM )); then
+      clauses+=("[\"all\",[\"==\",\"\$zoom\",${z}],[\">\",\"discr_iso\",$(station_discr_threshold "${z}")]]")
+    fi
+  done
+  if (( ${#clauses[@]} == 0 )); then
+    echo "  [skip] ${name} (zooms $* outside 0-${MAX_ZOOM})"
+    return 0
+  fi
+  local IFS=,
+  add_layer_filtered "${name}" "${name}" "[\"any\",${clauses[*]}]"
 }
 
 # Shared
 add_layer "railway_line_high" 7 "${MAX_ZOOM}"
 # railway_text_km: z10-12 zero markers only, z13+ all markers
-# Both use the same tippecanoe layer name for seamless zoom transitions
-add_layer_named "railway_text_km_low" "railway_text_km" 10 12
-add_layer "railway_text_km"                       13 "${MAX_ZOOM}"
+add_layer_filtered "railway_text_km" "railway_text_km" \
+  "[\"any\",[\">=\",\"\$zoom\",13],[\"all\",[\">=\",\"\$zoom\",10],[\"!=\",\"zero\",false]]]"
 
 # Standard
 add_layer "standard_railway_line_low"             0  7
-for z in 4 5 6 7; do
-  add_layer_named "standard_railway_text_stations_low_z${z}" "standard_railway_text_stations_low" "${z}" "${z}"
-done
-for z in 7 8; do
-  add_layer_named "standard_railway_text_stations_med_z${z}" "standard_railway_text_stations_med" "${z}" "${z}"
-done
+add_station_layer "standard_railway_text_stations_low" "${STATIONS_LOW_ZOOMS[@]}"
+add_station_layer "standard_railway_text_stations_med" "${STATIONS_MED_ZOOMS[@]}"
 add_layer "standard_railway_text_stations"        8  "${MAX_ZOOM}"
 add_layer "standard_railway_turntables"           10 "${MAX_ZOOM}"
 add_layer_capped_to_max "standard_station_entrances"     16 "${MAX_ZOOM}"
-add_layer "standard_railway_symbols"              12 "${MAX_ZOOM}"
+add_layer_with_feature_minzoom "standard_railway_symbols" 12
 add_layer "standard_railway_platforms"             15 "${MAX_ZOOM}"
 add_layer_capped_to_max "standard_railway_platform_edges" 17 "${MAX_ZOOM}"
 add_layer_capped_to_max "standard_railway_stop_positions" 16 "${MAX_ZOOM}"
@@ -980,16 +995,16 @@ add_layer "speed_railway_signals"                 13 "${MAX_ZOOM}"
 
 # Signals
 add_layer "signals_railway_line_low"              0  7
-add_layer_named "signals_signal_boxes_low" "signals_signal_boxes" 8  13
-add_layer_named "signals_signal_boxes_high" "signals_signal_boxes" 14 14
+# Signal boxes: points (zoom_part 0) at z8-13, full geometry (zoom_part 1) at z14
+signal_boxes_filter="[\"any\",[\"all\",[\"==\",\"zoom_part\",0],$(zoom_range_filter 8 13)],[\"all\",[\"==\",\"zoom_part\",1],$(zoom_range_filter 14 14)]]"
+add_layer_filtered "signals_signal_boxes_low" "signals_signal_boxes" "${signal_boxes_filter}"
+add_layer_filtered "signals_signal_boxes_high" "signals_signal_boxes" "${signal_boxes_filter}"
 add_layer "signals_railway_signals"               13 "${MAX_ZOOM}"
 
 # Electrification
 add_layer "electrification_railway_line_low"      0  7
 add_layer "electrification_signals"               13 "${MAX_ZOOM}"
-for z in 13 14 15 16 17; do
-  add_layer_named "electrification_railway_symbols_z${z}" "electrification_railway_symbols" "${z}" "${z}"
-done
+add_layer_with_feature_minzoom "electrification_railway_symbols" 13
 add_layer "electrification_catenary"              14 "${MAX_ZOOM}"
 add_layer "electrification_substation"            13 "${MAX_ZOOM}"
 
@@ -998,13 +1013,17 @@ add_layer "track_railway_line_low"                0  7
 
 # Operator
 add_layer "operator_railway_line_low"             0  7
-for z in 13 14 15 16 17; do
-  add_layer_named "operator_railway_symbols_z${z}" "operator_railway_symbols" "${z}" "${z}"
-done
+add_layer_with_feature_minzoom "operator_railway_symbols" 13
 
 # Route
 add_layer "route_railway_line_low"                0  7
 fi  # end LAYERS=all
+
+filter_json=""
+for layer_name in "${!LAYER_FILTERS[@]}"; do
+  filter_json+="${filter_json:+,}\"${layer_name}\":${LAYER_FILTERS[${layer_name}]}"
+done
+TIPPECANOE_ARGS+=(-j "{${filter_json}}")
 
 echo ""
 echo "Running tippecanoe with ${#TIPPECANOE_ARGS[@]} arguments..."
