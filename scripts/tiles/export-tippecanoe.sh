@@ -126,6 +126,14 @@ echo "[Shared layers]"
 # so zoom-split FGBs would stack duplicate railway_line_high features in z12+.
 # That is especially visible for tunnel layers because the semitransparent
 # tunnel cover is drawn repeatedly.
+# Only attributes something reads are kept: the style, the client-side railway
+# filter, the route highlight or the popup. Left out as unused or redundant:
+# id (osm_id plus a segment suffix; hover uses tippecanoe's generated ids),
+# rank (only orders features here), osm_type (always W for lines),
+# gauge0-2 (text copies of gaugeint0-2 and gauges) and route_count (the
+# length of line_routes). way_length only gates tunnel and bridge decorations
+# while zoomed out, so other segments go without it and it is rounded to
+# metres; as a unique decimal per segment it was the largest attribute.
 export_railway_line_high() {
   local layer_name="$1"
   local where_clause="$2"
@@ -135,7 +143,6 @@ export_railway_line_high() {
   if [ "${include_popup_fields}" = "true" ]; then
     popup_columns=",
   osm_id,
-  osm_type,
   track_class,
   nullif(array_to_string(reporting_marks, U&'\001E'), '') as reporting_marks,
   maxspeed,
@@ -154,11 +161,8 @@ export_railway_line_high() {
   future_frequency,
   future_maximum_current,
   gaugeint0,
-  gauge0,
   gaugeint1,
-  gauge1,
   gaugeint2,
-  gauge2,
   array_to_string(gauges, ', ') as gauges,
   loading_gauge,
   nullif(array_to_string(operator, U&'\001E'), '') as operator,
@@ -172,7 +176,6 @@ export_railway_line_high() {
     coalesce(route_item -> 'label', '')
     ORDER BY route_item -> 'route_id'
   ), U&'\001D'), '') FROM unnest(lv.line_routes) AS route_items(route_item)) as line_routes,
-  route_count,
   wikidata,
   wikimedia_commons,
   wikimedia_commons_file,
@@ -185,9 +188,8 @@ export_railway_line_high() {
 
   export_layer "${layer_name}" "
 SELECT
-  id,
   way,
-  way_length,
+  CASE WHEN tunnel OR bridge THEN round(way_length) END AS way_length,
   feature,
   state,
   usage,
@@ -198,8 +200,7 @@ SELECT
   name,
   ref,
   track_ref,
-  preferred_direction,
-  rank${popup_columns}
+  preferred_direction${popup_columns}
 FROM railway_line_view lv
 WHERE ${where_clause}
 ORDER BY
@@ -246,15 +247,26 @@ ORDER BY zero
 # index and scans every route per station (~15 min per query on a planet DB).
 # Rebuild the same serialized value through the routes primary key instead;
 # PostgreSQL skips the view's subquery when the column is not selected.
+# The import links stations to routes only through stop positions with the
+# station's name, nearby platforms or stop areas, so a route that lists the
+# station node itself as a stop (common for mainline trains, e.g. JR lines in
+# Japan) was missing. Those routes are added through route_stop's stop_id
+# index; stop members carry no OSM type, so only node ids are matched.
 STATION_ROUTES_SQL="(SELECT nullif(array_to_string(array_agg(
     r.osm_id::text || U&'\001E' ||
     coalesce(r.color, '') || U&'\001E' ||
     coalesce(r.name, '')
     ORDER BY r.osm_id::text
   ), U&'\001D'), '')
-  FROM grouped_stations_with_importance g
-  JOIN routes r ON r.osm_id = ANY(g.route_ids)
-  WHERE g.id = s.id)"
+  FROM routes r
+  WHERE r.osm_id IN (
+    SELECT unnest(g.route_ids) FROM grouped_stations_with_importance g WHERE g.id = s.id
+    UNION
+    SELECT rs.route_id
+    FROM unnest(s.osm_id, s.osm_type) AS member(osm_id, osm_type)
+    JOIN route_stop rs ON rs.stop_id = member.osm_id
+    WHERE member.osm_type = 'N'
+  ))"
 
 echo ""
 echo "[Standard style layers]"
