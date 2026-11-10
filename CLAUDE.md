@@ -50,11 +50,20 @@ Local dev environment notes:
 
 ### Tiles
 
-The browser requests `/tiles/openrailwaymap/{z}/{x}/{y}.mvt?v=<TILE_VERSION>`, served from the R2 object `openrailwaymap.pmtiles`. `TILE_ARCHIVE` and `TILE_VERSION` are constants in `src/main.ts`, and `?tileset=` overrides the archive name. Bump `TILE_VERSION` after replacing the archive, because the version in the URL is what busts browser and edge caches. The archive is built by the export pipeline in the OpenRailwayMap-vector fork (`scripts/export-tippecanoe.sh`). It is several GB, so upload it with an S3 client against the R2 endpoint, since `wrangler r2 object put` caps at 300 MiB.
+The browser requests `/tiles/openrailwaymap/{z}/{x}/{y}.mvt?v=<TILE_VERSION>`, served from the R2 object `openrailwaymap.pmtiles`. `TILE_ARCHIVE` and `TILE_VERSION` are constants in `src/main.ts`, and `?tileset=` overrides the archive name. Bump `TILE_VERSION` after replacing the archive, because the version in the URL is what busts browser and edge caches. The worker serves tiles gzip-compressed as stored (`Content-Encoding: gzip`); the Cloudflare Vite plugin's dev proxy decompresses them, so `pnpm dev` transfers raw tiles. The archive is built by the export pipeline in the OpenRailwayMap-vector fork (`scripts/export-tippecanoe.sh`). It is several GB, so upload it with an S3 client against the R2 endpoint, since `wrangler r2 object put` caps at 300 MiB.
 
 ### Browser app (`src/main.ts`)
 
-`main.ts` creates the MapLibre map (OpenRailwayMap style, PMTiles, contours, terrain and satellite toggles) and wires feature modules, each exposed as an `install*` function: GPX/GeoJSON import (`gpx.ts`), popups, Photon search, OSRM routing, weather picker, layer manager UI, and annotation renderer and tools. `LayerStore` (`src/layer-store.ts`) is the in-browser state for layers and features. Use `src/style-ready.ts` helpers when touching the map style, because imports can arrive before the style has loaded.
+`main.ts` merges the OpenFreeMap base style with the OpenRailwayMap style, adds hillshade, contours and satellite imagery, sets the globe projection with a sky/atmosphere (space backdrop is CSS on `#map`), and wires feature modules, each exposed as an `install*`/`create*` function: GPX/GeoJSON import (`gpx.ts`), popups (`popup.ts`, structured sections for lines and stations), Photon search, weather picker, the railway filter, the Layers panel, and annotation renderer and tools. `LayerStore` (`src/layer-store.ts`) is the in-browser state for layers and features. Use `src/style-ready.ts` helpers when touching the map style, because imports can arrive before the style has loaded.
+
+Display settings are applied by rewriting the style once at load and then flipping MapLibre `global-state`, never by editing layers one by one:
+
+- `railway-filter.ts` adds filter clauses to railway line/station layers and an overlay visibility switch; `railway-filter-panel.ts` is its panel.
+- `map-layers.ts` handles base map / satellite / hybrid visibility, hybrid road and label styling, base map saturation, label language and terrain layer switches; `map-layers-panel.ts` is its UI.
+- `layers-panel.ts` builds the single Layers panel: the layer manager's panel with the map display toggles on top and foldable Import and Navigation (routing, `routing.ts` in `embedded` mode) sections.
+- `map-panel.ts` holds the shared panel markup; `stored-settings.ts` persists settings in localStorage.
+
+Zoom curves cannot be nested inside other expressions, so the rewrites map over a curve's stop outputs (`mapZoomOutputs`). Unit tests validate rewritten styles with `@maplibre/maplibre-gl-style-spec` and evaluate the expressions directly.
 
 Leftovers from the collaboration era still shape some modules: `layer-sync.ts` and `file-layer-sync.ts` hold layer ordering and file-layer content helpers used by the layer store and manager, and `collaboration-permissions.ts` gates editing on a `data-collaboration-can-edit` attribute that nothing sets any more, so editing is always enabled.
 
