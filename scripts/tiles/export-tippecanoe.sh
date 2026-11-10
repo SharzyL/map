@@ -10,6 +10,8 @@
 #   MAX_ZOOM      - Maximum zoom level (default: 15)
 #   LAYERS        - Which style layers to export: "standard" (default) or "all"
 #   CONCURRENCY   - parallel PostGIS exports in Phase 1 (default: nproc)
+#   PROGRESS_INTERVAL - seconds between tippecanoe progress updates (default: 60;
+#                   each update becomes a log line in CI)
 
 set -euo pipefail
 
@@ -19,6 +21,7 @@ MAX_ZOOM="${MAX_ZOOM:-15}"
 CONCURRENCY="${CONCURRENCY:-$(nproc)}"
 BBOX="${BBOX:-}"
 LAYERS="${LAYERS:-standard}"
+PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 FGB_DIR="${OUTPUT_DIR}/fgb"
 
 mkdir -p "${FGB_DIR}"
@@ -827,6 +830,7 @@ TIPPECANOE_ARGS=(
   --no-tile-size-limit
   --no-feature-limit
   --generate-ids
+  --progress-interval="${PROGRESS_INTERVAL}"
   -r1  # Keep all features at all zoom levels (no density-based dropping)
 
   # Attribution
