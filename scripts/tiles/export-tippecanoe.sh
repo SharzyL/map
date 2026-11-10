@@ -9,7 +9,7 @@
 #   OUTPUT_DIR    - Output directory (default: ./output)
 #   MAX_ZOOM      - Maximum zoom level (default: 15)
 #   LAYERS        - Which style layers to export: "standard" (default) or "all"
-#   CONCURRENCY   - tippecanoe parallelism (default: nproc)
+#   CONCURRENCY   - parallel PostGIS exports in Phase 1 (default: nproc)
 
 set -euo pipefail
 
@@ -49,7 +49,7 @@ fi
 echo ""
 
 # Helper: export a SQL query to FlatGeobuf
-export_layer() {
+export_layer_now() {
   local layer_name="$1"
   local sql="$2"
   local geom_col="${3:-way}"
@@ -92,6 +92,20 @@ export_layer() {
   local size=$(du -sh "${outfile}" 2>/dev/null | cut -f1)
   echo "  [done] ${layer_name}: ${size} in ${duration}s"
 }
+
+# Run exports in the background, at most CONCURRENCY at a time. The queries
+# are independent, and the slow ones are database-bound, so overlapping them
+# shortens Phase 1 considerably. A failed export leaves a marker file that is
+# checked once all exports have finished.
+export_layer() {
+  while (( $(jobs -rp | wc -l) >= CONCURRENCY )); do
+    wait -n || true
+  done
+  local layer_name="$1"
+  ( export_layer_now "$@" || touch "${FGB_DIR}/.failed-${layer_name}" ) &
+}
+
+rm -f "${FGB_DIR}"/.failed-*
 
 echo "--- Phase 1: Export layers from PostGIS to FlatGeobuf ---"
 echo ""
@@ -224,6 +238,21 @@ ORDER BY zero
 # Standard style layers
 # ============================================================
 
+# station_routes for railway_text_stations rows. The view's own station_routes
+# column looks routes up with ARRAY[osm_id] <@ route_ids, which cannot use an
+# index and scans every route per station (~15 min per query on a planet DB).
+# Rebuild the same serialized value through the routes primary key instead;
+# PostgreSQL skips the view's subquery when the column is not selected.
+STATION_ROUTES_SQL="(SELECT nullif(array_to_string(array_agg(
+    r.osm_id::text || U&'\001E' ||
+    coalesce(r.color, '') || U&'\001E' ||
+    coalesce(r.name, '')
+    ORDER BY r.osm_id::text
+  ), U&'\001D'), '')
+  FROM grouped_stations_with_importance g
+  JOIN routes r ON r.osm_id = ANY(g.route_ids)
+  WHERE g.id = s.id)"
+
 echo ""
 echo "[Standard style layers]"
 
@@ -334,12 +363,7 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  (SELECT nullif(array_to_string(array_agg(
-    (route_item -> 'route_id') || U&'\001E' ||
-    coalesce(route_item -> 'color', '') || U&'\001E' ||
-    coalesce(route_item -> 'label', '')
-    ORDER BY route_item -> 'route_id'
-  ), U&'\001D'), '') FROM unnest(s.station_routes) AS route_items(route_item)) as station_routes,
+  ${STATION_ROUTES_SQL} as station_routes,
   discr_iso
 FROM railway_text_stations s
 WHERE name IS NOT NULL
@@ -381,12 +405,7 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  (SELECT nullif(array_to_string(array_agg(
-    (route_item -> 'route_id') || U&'\001E' ||
-    coalesce(route_item -> 'color', '') || U&'\001E' ||
-    coalesce(route_item -> 'label', '')
-    ORDER BY route_item -> 'route_id'
-  ), U&'\001D'), '') FROM unnest(s.station_routes) AS route_items(route_item)) as station_routes,
+  ${STATION_ROUTES_SQL} as station_routes,
   discr_iso
 FROM railway_text_stations s
 WHERE feature = 'station' AND state = 'present'
@@ -420,12 +439,7 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  (SELECT nullif(array_to_string(array_agg(
-    (route_item -> 'route_id') || U&'\001E' ||
-    coalesce(route_item -> 'color', '') || U&'\001E' ||
-    coalesce(route_item -> 'label', '')
-    ORDER BY route_item -> 'route_id'
-  ), U&'\001D'), '') FROM unnest(s.station_routes) AS route_items(route_item)) as station_routes,
+  ${STATION_ROUTES_SQL} as station_routes,
   discr_iso
 FROM railway_text_stations s
 WHERE feature = 'station' AND state = 'present'
@@ -546,12 +560,7 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  (SELECT nullif(array_to_string(array_agg(
-    (route_item -> 'route_id') || U&'\001E' ||
-    coalesce(route_item -> 'color', '') || U&'\001E' ||
-    coalesce(route_item -> 'label', '')
-    ORDER BY route_item -> 'route_id'
-  ), U&'\001D'), '') FROM unnest(s.station_routes) AS route_items(route_item)) as station_routes
+  ${STATION_ROUTES_SQL} as station_routes
 FROM railway_text_stations s
 "
 
@@ -781,6 +790,13 @@ FROM railway_line_low l
 fi  # end LAYERS=all
 
 echo ""
+wait
+failed_exports=("${FGB_DIR}"/.failed-*)
+if [ -e "${failed_exports[0]}" ]; then
+  echo "Phase 1 failed for: ${failed_exports[*]##*/.failed-}" >&2
+  exit 1
+fi
+
 echo "--- Phase 1 complete ---"
 echo ""
 
