@@ -4,9 +4,7 @@ main = "src/worker.ts"
 compatibility_date = "2025-09-27"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
-routes = [
-  { pattern = "map.shz.al", custom_domain = true },
-]
+routes = [{ pattern = "map.shz.al", custom_domain = true }]
 
 [observability]
 enabled = true

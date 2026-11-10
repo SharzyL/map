@@ -17,12 +17,6 @@
     "noEmit": true,
     "types": ["@cloudflare/workers-types", "vitest/importMeta"]
   },
-  "include": [
-    "src/**/*.ts",
-    "vite.config.js",
-    "vitest.config.js",
-    "vitest.worker.config.js",
-    "node_modules/@cloudflare/vitest-pool-workers/types/cloudflare-test.d.ts"
-  ],
+  "include": ["src/**/*.ts", "vite.config.js", "vitest.config.js"],
   "exclude": ["dist", "scripts/styles"]
 }
