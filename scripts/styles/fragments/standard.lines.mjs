@@ -129,18 +129,8 @@ const {
 } = shared
 export const standardRailwayLineLayers = [
   ...railwayLine(
-    [
-      'step',
-      ['zoom'],
-      ['coalesce', ['get', 'ref'], ''],
-      14,
-      [
-        'concat',
-        ['coalesce', ['get', 'ref'], ''],
-        ['case', ['all', ['!=', ['get', 'ref'], null], ['!=', ['get', 'name'], null]], ' ', ''],
-        ['coalesce', ['get', 'name'], ''],
-      ],
-    ],
+    // Line names only: line refs are mostly bare numbers (e.g. "0002").
+    ['coalesce', ['get', 'name'], ''],
     [
       {
         id: 'railway_line_main_low',

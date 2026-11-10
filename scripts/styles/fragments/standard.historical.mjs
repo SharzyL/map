@@ -211,7 +211,8 @@ export const standardHistoricalLanduseLayers = [
 
 export const standardHistoricalRailwayLineLayers = [
   ...historicalRailwayLine(
-    ['step', ['zoom'], ['coalesce', ['get', 'ref'], ''], 11, ['coalesce', ['get', 'name'], '']],
+    // Line names only, like the current railway lines.
+    ['coalesce', ['get', 'name'], ''],
     [
       {
         id: 'railway_line_historical_miniature',

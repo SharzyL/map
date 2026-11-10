@@ -33,7 +33,7 @@ export const colors = {
   styles: {
     standard: {
       main: themeSwitch('#ff8100', '#ff8100'),
-      highspeed: themeSwitch('#ff0c00', '#ff0c00'),
+      highspeed: themeSwitch('#9b19d4', '#9b19d4'),
       branch: themeSwitch('#c4b600', '#c4b600'),
       narrowGauge: themeSwitch('#c0da00', '#c0da00'),
       no_usage: themeSwitch('#000000', '#000000'),
@@ -1296,6 +1296,9 @@ export const railwayLine = (text, layers) => [
           'all',
           ['==', ['get', 'state'], 'present'],
           ['==', ['get', 'bridge'], true],
+          // High-speed lines run on long viaducts mapped as bridges; railings
+          // would outline them in black end to end.
+          ['!=', ['get', 'highspeed'], true],
           ['>=', ['get', 'way_length'], ['interpolate', ['exponential', 0.5], ['zoom'], 8, 1500, 16, 0]],
           filter ?? true,
         ].filter((it) => it !== true),
