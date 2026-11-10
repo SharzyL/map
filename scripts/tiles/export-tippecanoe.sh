@@ -259,79 +259,55 @@ STATION_ROUTES_SQL="(SELECT nullif(array_to_string(array_agg(
 echo ""
 echo "[Standard style layers]"
 
-# standard_railway_line_low (z0-7) — simplified low-zoom lines
-# Note: Martin aggregates with GROUP BY + st_collect + st_simplify, but this
-# produces MULTILINESTRING geometries that cause tippecanoe segfaults.
-# With -r1 (no feature dropping), individual segments render correctly at low zoom.
+# standard_railway_line_low (z0-7) — main lines for the zoomed-out map.
+# Only the attributes the low-zoom style and the client-side railway filter
+# read; everything else (routes, links, ids, signalling...) lives in
+# railway_line_high from z7. Tunnel and bridge flags are left out too: their
+# decorations are invisible at these zooms, the main line layers draw lines
+# without the flags as ordinary track, and they split lines more than anything
+# else (way_length only gated those decorations, so it goes as well).
+# Without per-segment values, adjacent segments with identical attributes are
+# merged: ST_LineMerge joins them and ST_Dump splits the result into plain
+# LineStrings (MULTILINESTRINGs crashed tippecanoe). This turns ~1.2M short
+# segments into ~200k line sections, shrinking a z2 tile several times over.
 export_layer "standard_railway_line_low" "
 SELECT
-  id,
-  osm_id,
-  osm_type,
-  way,
-  way_length,
   feature,
   state,
   usage,
-  service,
   highspeed,
-  tunnel,
-  bridge,
   name,
-  ref,
-  track_ref,
-  track_class,
-  nullif(array_to_string(reporting_marks, U&'\001E'), '') as reporting_marks,
-  preferred_direction,
-  rank,
   maxspeed,
-  speed_label,
-  train_protection_rank,
-  train_protection[1] as train_protection0,
-  train_protection[2] as train_protection1,
-  train_protection[3] as train_protection2,
-  train_protection_construction_rank,
-  train_protection_construction,
   electrification_state,
-  voltage,
-  frequency,
-  maximum_current,
-  future_voltage,
-  future_frequency,
-  future_maximum_current,
   gaugeint0,
-  gauge0,
   gaugeint1,
-  gauge1,
-  gaugeint2,
-  gauge2,
-  array_to_string(gauges, ', ') as gauges,
-  loading_gauge,
-  nullif(array_to_string(operator, U&'\001E'), '') as operator,
-  primary_operator,
-  owner,
   traffic_mode,
-  radio,
-  (SELECT nullif(array_to_string(array_agg(
-    (route_item -> 'route_id') || U&'\001E' ||
-    coalesce(route_item -> 'color', '') || U&'\001E' ||
-    coalesce(route_item -> 'label', '')
-    ORDER BY route_item -> 'route_id'
-  ), U&'\001D'), '') FROM unnest(lv.line_routes) AS route_items(route_item)) as line_routes,
-  route_count,
-  wikidata,
-  wikimedia_commons,
-  wikimedia_commons_file,
-  image,
-  mapillary,
-  wikipedia,
-  note,
-  description
-FROM railway_line_view lv
-WHERE state = 'present'
-  AND feature IN ('rail', 'ferry')
-  AND usage = 'main'
-  AND service IS NULL
+  operator,
+  way
+FROM (
+  SELECT
+    feature,
+    state,
+    usage,
+    highspeed,
+    name,
+    maxspeed,
+    electrification_state,
+    gaugeint0,
+    gaugeint1,
+    traffic_mode,
+    nullif(array_to_string(operator, U&'\001E'), '') as operator,
+    max(rank) as rank,
+    (ST_Dump(ST_LineMerge(ST_Collect(way)))).geom AS way
+  FROM railway_line_view
+  WHERE state = 'present'
+    AND feature IN ('rail', 'ferry')
+    AND usage = 'main'
+    AND service IS NULL
+  GROUP BY
+    feature, state, usage, highspeed, name, maxspeed, electrification_state,
+    gaugeint0, gaugeint1, traffic_mode, nullif(array_to_string(operator, U&'\001E'), '')
+) merged
 ORDER BY rank NULLS LAST
 "
 
