@@ -1,4 +1,12 @@
-import { PMTiles, ResolvedValueCache, type RangeResponse, type Source, TileType } from 'pmtiles';
+import {
+  Compression,
+  EtagMismatch,
+  PMTiles,
+  ResolvedValueCache,
+  type RangeResponse,
+  type Source,
+  TileType,
+} from 'pmtiles';
 
 const TILE_RE = /^\/tiles\/(?<name>[0-9a-zA-Z/!\-_.*'()]+)\/(?<z>\d+)\/(?<x>\d+)\/(?<y>\d+)\.(?<ext>[a-z]+)$/;
 const TILEJSON_RE = /^\/tiles\/(?<name>[0-9a-zA-Z/!\-_.*'()]+)\.json$/;
@@ -57,7 +65,9 @@ class R2Source implements Source {
       throw new Error('Archive not found: ' + key);
     }
     if (!('body' in resp) || !resp.body || !('arrayBuffer' in resp)) {
-      throw new Error('ETag mismatch');
+      // The archive was replaced since its header was cached. PMTiles catches
+      // this error type, drops the cached header and retries once.
+      throw new EtagMismatch(`Archive changed: ${key}`);
     }
     const a = await resp.arrayBuffer();
     return {
@@ -70,6 +80,13 @@ class R2Source implements Source {
 }
 
 const CACHE = new ResolvedValueCache(25, undefined, nativeDecompress);
+
+// Tiles stay gzip-compressed and go out with Content-Encoding: gzip; low-zoom
+// railway tiles are several MB compressed and 3-5x that raw. The cache above
+// still decompresses directories, which the reader needs.
+async function keepGzipTiles(buf: ArrayBuffer, compression: number): Promise<ArrayBuffer> {
+  return compression === Compression.Gzip ? buf : nativeDecompress(buf, compression);
+}
 
 const CONTENT_TYPES: Partial<Record<TileType, string>> = {
   [TileType.Mvt]: 'application/x-protobuf',
@@ -92,7 +109,8 @@ export async function handleTileRequest(
   if (cached) return cached;
 
   const source = new R2Source(env, parsed.name);
-  const p = new PMTiles(source, CACHE, nativeDecompress);
+  // TileJSON reads the archive metadata, which must be decompressed.
+  const p = new PMTiles(source, CACHE, parsed.tile ? keepGzipTiles : nativeDecompress);
   const header = await p.getHeader();
 
   if (!parsed.tile) {
@@ -120,13 +138,14 @@ export async function handleTileRequest(
   }
 
   const contentType = CONTENT_TYPES[header.tileType] || 'application/octet-stream';
-  const resp = new Response(tiledata.data, {
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=86400',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+  const headers: Record<string, string> = {
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=86400',
+    'Access-Control-Allow-Origin': '*',
+  };
+  if (header.tileCompression === Compression.Gzip) headers['Content-Encoding'] = 'gzip';
+  // 'manual' sends the body as is instead of letting the runtime encode it.
+  const resp = new Response(tiledata.data, { headers, encodeBody: 'manual' });
   ctx.waitUntil(cache.put(request.url, resp.clone()));
   return resp;
 }
