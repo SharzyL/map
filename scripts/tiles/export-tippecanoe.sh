@@ -568,14 +568,30 @@ FROM railway_text_stations s
 "
 
 # standard_railway_grouped_station_areas (z13+)
+# Station area outlines group several stops (an interchange). Flag which kinds
+# of station they contain so clients can hide urban-only interchanges together
+# with urban transit stations (same member path as stop_area_groups_buffered).
 export_layer "standard_railway_grouped_station_areas" "
 SELECT
-  id,
-  osm_id,
-  osm_type,
-  feature,
-  way
-FROM standard_railway_grouped_station_areas_view
+  v.id,
+  v.osm_id,
+  v.osm_type,
+  v.feature,
+  v.way,
+  coalesce(k.has_urban_station, false) as has_urban_station,
+  coalesce(k.has_rail_station, true) as has_rail_station
+FROM standard_railway_grouped_station_areas_view v
+LEFT JOIN (
+  SELECT
+    sag.osm_id,
+    bool_or(s.station IN ('subway', 'light_rail', 'monorail', 'funicular', 'tram')) as has_urban_station,
+    bool_or(s.station IS NULL OR s.station NOT IN ('subway', 'light_rail', 'monorail', 'funicular', 'tram')) as has_rail_station
+  FROM stop_area_groups sag
+  JOIN stop_areas sa ON sa.osm_id = ANY(sag.stop_area_ref_ids)
+  JOIN stations_stop_areas ssa ON ssa.stop_area_osm_id = sa.osm_id
+  JOIN stations s ON ssa.station_id = s.id
+  GROUP BY sag.osm_id
+) k ON k.osm_id = v.osm_id
 "
 
 # ============================================================
