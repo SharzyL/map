@@ -43,7 +43,7 @@ until it exists, every tile request fails. The archive (several GB, worldwide, z
    the archive (about 40 minutes) and uploads it to `orm/openrailwaymap.pmtiles`. Railway line
    relations (`route=railway`) are not in the database, so the workflow also streams the planet file
    through osmium to collect them and updates them with hourly diffs
-   (`scripts/tiles/update-line-relations.sh`; input `line_relations_pbf`, `none` skips them):
+   (`scripts/tiles/fetch-line-relations.sh`; input `line_relations_pbf`, `none` skips them):
 
    ```bash
    REPO=<owner>/<repo>

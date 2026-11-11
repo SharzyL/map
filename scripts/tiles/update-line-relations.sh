@@ -60,9 +60,15 @@ fetch_diff() {
   local sequence="$1"
   curl -sSfL --retry 5 --retry-all-errors "${SERVER}/$(sequence_path "${sequence}").osc.gz" \
     | osmium tags-filter -F osc.gz - r/route=railway -R -O -o "${WORK}/${sequence}.osc.gz" --output-format osc.gz
+  # Report every 25 finished diffs.
+  touch "${WORK}/${sequence}.ok"
+  local finished
+  finished="$(find "${WORK}" -name '*.ok' | wc -l)"
+  if (( finished % 25 == 0 )); then echo "  ${finished} of ${TOTAL} diffs"; fi
 }
+TOTAL="$(( latest_sequence - first_sequence + 1 ))"
 export -f fetch_diff sequence_path
-export SERVER WORK
+export SERVER WORK TOTAL
 
 seq "${first_sequence}" "${latest_sequence}" | xargs -P "${PARALLEL}" -I{} bash -c 'fetch_diff {}'
 

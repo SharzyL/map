@@ -44,39 +44,6 @@ jobs:
           sudo docker system prune -af
           df -h /
 
-      # The import database has no route=railway relations, so they come from
-      # the planet file. It is streamed through osmium without being stored
-      # (~95 GB, more than the runner's disk); -R keeps only the relations, a
-      # few MB. The weekly planet is then brought up to date with hourly diffs,
-      # since the database is rebuilt nightly and ways added to a line since
-      # the planet would otherwise miss it. This runs in the background while
-      # the database starts.
-      - name: Start line relation download
-        env:
-          LINE_RELATIONS_PBF: ${{ github.event.inputs.line_relations_pbf || 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf' }}
-        run: |
-          mkdir -p line-relations
-          if [ "${LINE_RELATIONS_PBF}" = "none" ]; then
-            touch line-relations/skipped
-            exit 0
-          fi
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq osmium-tool
-          osmium --version | head -1
-          nohup bash -c '
-            set -o pipefail
-            start=$(date +%s)
-            if curl -sSfL "${LINE_RELATIONS_PBF}" \
-                | osmium tags-filter -F pbf - r/route=railway -R -O -o line-relations/planet.osm.pbf \
-              && ./scripts/tiles/update-line-relations.sh line-relations/planet.osm.pbf line-relations/lines.osm.pbf \
-              && osmium cat line-relations/lines.osm.pbf -f opl,add_metadata=false -O -o line-relations/lines.opl; then
-              echo "Line relations ready after $(( $(date +%s) - start ))s"
-              touch line-relations/done
-            else
-              touch line-relations/failed
-            fi
-          ' > line-relations/log 2>&1 &
-
       - name: Pull upstream DB image
         run: |
           OWNER="${{ github.event.inputs.upstream_repo || 'hiddewie' }}"
@@ -137,15 +104,21 @@ jobs:
           sudo mv pmtiles /usr/local/bin/
           pmtiles version
 
-      - name: Wait for line relations
+      # The import database has no route=railway relations, so they come from
+      # the planet file.
+      - name: Fetch railway line relations
         timeout-minutes: 120
+        env:
+          LINE_RELATIONS_PBF: ${{ github.event.inputs.line_relations_pbf || 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf' }}
         run: |
-          until [ -e line-relations/done ] || [ -e line-relations/failed ] || [ -e line-relations/skipped ]; do
-            sleep 30
-          done
-          cat line-relations/log 2>/dev/null || true
+          if [ "${LINE_RELATIONS_PBF}" = "none" ]; then
+            echo "Skipped: no line relations in this export"
+            exit 0
+          fi
+          sudo apt-get install -y -qq osmium-tool
+          osmium --version | head -1
+          ./scripts/tiles/fetch-line-relations.sh "${LINE_RELATIONS_PBF}" line-relations
           ls -lh line-relations
-          [ ! -e line-relations/failed ]
 
       - name: Export layers and generate PMTiles
         env:
@@ -156,7 +129,7 @@ jobs:
           BBOX: ${{ github.event.inputs.bbox || '' }}
           CONCURRENCY: '4'
         run: |
-          if [ -e line-relations/done ]; then
+          if [ -e line-relations/lines.opl ]; then
             export LINE_RELATIONS_OPL=./line-relations/lines.opl
           fi
           ./scripts/tiles/export-tippecanoe.sh
