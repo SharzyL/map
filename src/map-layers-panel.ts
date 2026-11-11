@@ -64,6 +64,7 @@ class MapLayersPanel {
   _baseInputs = new Map<MapBase, HTMLInputElement>();
   _saturationInput: HTMLInputElement;
   _saturationValue: HTMLElement;
+  _grayRoadsInput: HTMLInputElement;
   _labelSelect: HTMLSelectElement;
   _hillshadeInput: HTMLInputElement;
   _contoursInput: HTMLInputElement;
@@ -127,6 +128,10 @@ class MapLayersPanel {
     this._saturationValue = saturation.value;
     this._saturationInput.addEventListener('input', () =>
       this._update((s) => (s.saturation = Number(this._saturationInput.value) / 100)),
+    );
+    this._grayRoadsInput = checkboxRow(baseGroup, 'Gray roads', 'Roads drawn without color');
+    this._grayRoadsInput.addEventListener('change', () =>
+      this._update((s) => (s.grayRoads = this._grayRoadsInput.checked)),
     );
 
     this._labelSelect = selectField(
@@ -206,6 +211,7 @@ class MapLayersPanel {
     const saturationPercent = Math.round(settings.saturation * 100);
     this._saturationInput.value = String(saturationPercent);
     this._saturationValue.textContent = `${saturationPercent}%`;
+    this._grayRoadsInput.checked = settings.grayRoads;
     this._labelSelect.value = settings.labels;
     this._hillshadeInput.checked = settings.hillshade;
     this._contoursInput.checked = settings.contours;

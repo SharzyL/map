@@ -23,6 +23,7 @@ import {
   withBaseMapLabelLanguage,
   withBaseMapSaturation,
   withBaseMapVisibility,
+  withGrayRoads,
   withHybridStyling,
   withShadedRelief,
   withContourVisibility,
@@ -461,7 +462,9 @@ const STATE_DEFAULTS = {
 function mergeBaseAndOrm(baseStyle: StyleLike, ormStyle: StyleLike): StyleLike {
   const merged = structuredClone(baseStyle);
   const baseLayers = (baseStyle.layers || []).map((layer) =>
-    withBaseMapLabelLanguage(withBaseMapSaturation(withShadedRelief(withHybridStyling(withBaseMapVisibility(layer))))),
+    withBaseMapLabelLanguage(
+      withBaseMapSaturation(withShadedRelief(withGrayRoads(withHybridStyling(withBaseMapVisibility(layer))))),
+    ),
   );
   merged.center = ormStyle.center || merged.center;
   merged.zoom = ormStyle.zoom || merged.zoom;

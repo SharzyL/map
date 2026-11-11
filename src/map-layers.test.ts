@@ -13,6 +13,7 @@ import {
   withBaseMapSaturation,
   withBaseMapVisibility,
   withContourVisibility,
+  withGrayRoads,
   withHybridStyling,
   withShadedRelief,
   withHillshadeVisibility,
@@ -222,6 +223,28 @@ describe('hybrid styling', () => {
     expect(evaluate(road.paint['line-width'], lineWidth, { base: 'hybrid' }, {}, 20)).toBeCloseTo(16.5);
   });
 
+  it('grays roads out by default, keeping their brightness, with hybrid colors on top', () => {
+    // The same chain as main.ts, saturation included, so the expression types are checked together.
+    const road = withBaseMapSaturation(
+      withGrayRoads(
+        withHybridStyling(paintLayer({ id: 'road_motorway', type: 'line', paint: { 'line-color': '#e9ac77' } })),
+      ),
+    );
+    // Rec. 601 luma of #e9ac77 is 184.6.
+    expect(rgb(evaluate(road.paint['line-color'], lineColor, { base: 'map', grayRoads: true }))).toEqual([
+      184, 184, 184,
+    ]);
+    expect(rgb(evaluate(road.paint['line-color'], lineColor, { base: 'map', grayRoads: false }))).toEqual([
+      233, 172, 119,
+    ]);
+    const hybridColor = evaluate(road.paint['line-color'], lineColor, { base: 'hybrid', grayRoads: true }) as {
+      a: number;
+    };
+    expect(rgb(hybridColor).map((channel) => Math.round(channel / hybridColor.a))).toEqual([255, 214, 102]);
+    const rail = paintLayer({ id: 'road_major_rail', type: 'line', paint: { 'line-color': '#bbbbbb' } });
+    expect(withGrayRoads(rail)).toBe(rail);
+  });
+
   it('gives labels white text with a dark halo in hybrid mode', () => {
     const label = withHybridStyling(
       paintLayer({
@@ -298,11 +321,20 @@ describe('map layer settings', () => {
   it('seeds global state defaults from the settings', () => {
     const style = applyMapLayerState(
       { state: {} },
-      { base: 'hybrid', saturation: 0.4, labels: 'en', hillshade: false, contours: true, terrain3d: true },
+      {
+        base: 'hybrid',
+        saturation: 0.4,
+        grayRoads: false,
+        labels: 'en',
+        hillshade: false,
+        contours: true,
+        terrain3d: true,
+      },
     );
     expect(style.state).toEqual({
       baseMap: { default: 'hybrid' },
       baseSaturation: { default: 0.4 },
+      grayRoads: { default: false },
       labelLanguage: { default: 'en' },
       showHillshade: { default: false },
       showContours: { default: true },
@@ -311,10 +343,18 @@ describe('map layer settings', () => {
 
   it('normalizes stored values and survives broken storage', () => {
     expect(
-      normalizeMapLayerSettings({ base: 'terrain', hillshade: 'yes', terrain3d: true, saturation: 3, labels: 'xx' }),
+      normalizeMapLayerSettings({
+        base: 'terrain',
+        hillshade: 'yes',
+        terrain3d: true,
+        saturation: 3,
+        grayRoads: 'no',
+        labels: 'xx',
+      }),
     ).toEqual({ ...defaultMapLayerSettings(), terrain3d: true, saturation: 1 });
-    expect(normalizeMapLayerSettings({ saturation: 0.25, labels: 'ja' })).toMatchObject({
+    expect(normalizeMapLayerSettings({ saturation: 0.25, grayRoads: false, labels: 'ja' })).toMatchObject({
       saturation: 0.25,
+      grayRoads: false,
       labels: 'ja',
     });
     const values = new Map<string, string>();
@@ -327,6 +367,7 @@ describe('map layer settings', () => {
     const settings: MapLayerSettings = {
       base: 'satellite',
       saturation: 0.3,
+      grayRoads: false,
       labels: 'local',
       hillshade: false,
       contours: false,
