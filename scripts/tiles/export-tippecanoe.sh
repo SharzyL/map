@@ -12,6 +12,8 @@
 #   CONCURRENCY   - parallel PostGIS exports in Phase 1 (default: nproc)
 #   PROGRESS_INTERVAL - seconds between tippecanoe progress updates (default: 60;
 #                   each update becomes a log line in CI)
+#   LINE_RELATIONS_OPL - optional OPL file of route=railway relations (see
+#                   line-relations.py); adds line_relations to railway_line_high
 
 set -euo pipefail
 
@@ -22,6 +24,7 @@ CONCURRENCY="${CONCURRENCY:-$(nproc)}"
 BBOX="${BBOX:-}"
 LAYERS="${LAYERS:-standard}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
+LINE_RELATIONS_OPL="${LINE_RELATIONS_OPL:-}"
 FGB_DIR="${OUTPUT_DIR}/fgb"
 
 mkdir -p "${FGB_DIR}"
@@ -110,6 +113,39 @@ export_layer() {
 
 rm -f "${FGB_DIR}"/.failed-*
 
+# Railway line relations (route=railway, e.g. a national line number such as
+# DB 6100 or 京沪线) list every way of a line, bridges and tunnels included.
+# The import database leaves them out, so they come from a separate planet
+# extract and are joined to segments through the way id.
+LINE_RELATIONS_SQL=""
+if [ -n "${LINE_RELATIONS_OPL}" ]; then
+  echo "--- Loading line relations from ${LINE_RELATIONS_OPL} ---"
+  python3 -I "$(dirname "$0")/line-relations.py" "${LINE_RELATIONS_OPL}" "${OUTPUT_DIR}/line-relations"
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS line_relation_members, line_relations;
+CREATE TABLE line_relations (osm_id int8 PRIMARY KEY, name text, ref text, color text);
+CREATE TABLE line_relation_members (relation_id int8 NOT NULL, way_id int8 NOT NULL);
+\copy line_relations FROM '${OUTPUT_DIR}/line-relations/line_relations.csv' WITH (FORMAT csv)
+\copy line_relation_members FROM '${OUTPUT_DIR}/line-relations/line_relation_members.csv' WITH (FORMAT csv)
+CREATE INDEX ON line_relation_members (way_id);
+ANALYZE line_relations, line_relation_members;
+SQL
+  # Same id/color/label layout as line_routes, plus the line's ref.
+  LINE_RELATIONS_SQL=",
+  (SELECT nullif(array_to_string(array_agg(
+    r.osm_id::text || U&'\001E' ||
+    coalesce(r.color, '') || U&'\001E' ||
+    coalesce(r.name, r.ref, '') || U&'\001E' ||
+    coalesce(r.ref, '')
+    ORDER BY r.osm_id
+  ), U&'\001D'), '')
+  FROM line_relation_members m
+  JOIN line_relations r ON r.osm_id = m.relation_id
+  WHERE m.way_id = lv.osm_id) as line_relations"
+  echo ""
+fi
+
 echo "--- Phase 1: Export layers from PostGIS to FlatGeobuf ---"
 echo ""
 
@@ -175,7 +211,7 @@ export_railway_line_high() {
     coalesce(route_item -> 'color', '') || U&'\001E' ||
     coalesce(route_item -> 'label', '')
     ORDER BY route_item -> 'route_id'
-  ), U&'\001D'), '') FROM unnest(lv.line_routes) AS route_items(route_item)) as line_routes,
+  ), U&'\001D'), '') FROM unnest(lv.line_routes) AS route_items(route_item)) as line_routes${LINE_RELATIONS_SQL},
   wikidata,
   wikimedia_commons,
   wikimedia_commons_file,

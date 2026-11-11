@@ -23,6 +23,10 @@ on:
         description: 'Upstream repo owner for DB image (e.g. "hiddewie")'
         required: false
         default: 'hiddewie'
+      line_relations_pbf:
+        description: 'OSM .pbf to read route=railway line relations from ("none" skips them)'
+        required: false
+        default: 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf'
 
 jobs:
   export:
@@ -39,6 +43,35 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo docker system prune -af
           df -h /
+
+      # The import database has no route=railway relations, so they come from
+      # the planet file. It is streamed through osmium without being stored
+      # (~95 GB, more than the runner's disk); -R keeps only the relations, a
+      # few MB. This runs in the background while the database starts.
+      - name: Start line relation download
+        env:
+          LINE_RELATIONS_PBF: ${{ github.event.inputs.line_relations_pbf || 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf' }}
+        run: |
+          mkdir -p line-relations
+          if [ "${LINE_RELATIONS_PBF}" = "none" ]; then
+            touch line-relations/skipped
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool
+          osmium --version | head -1
+          nohup bash -c '
+            set -o pipefail
+            start=$(date +%s)
+            if curl -sSfL "${LINE_RELATIONS_PBF}" \
+                | osmium tags-filter -F pbf - r/route=railway -R -O -o line-relations/lines.osm.pbf \
+              && osmium cat line-relations/lines.osm.pbf -f opl,add_metadata=false -O -o line-relations/lines.opl; then
+              echo "Line relations ready after $(( $(date +%s) - start ))s"
+              touch line-relations/done
+            else
+              touch line-relations/failed
+            fi
+          ' > line-relations/log 2>&1 &
 
       - name: Pull upstream DB image
         run: |
@@ -100,6 +133,16 @@ jobs:
           sudo mv pmtiles /usr/local/bin/
           pmtiles version
 
+      - name: Wait for line relations
+        timeout-minutes: 120
+        run: |
+          until [ -e line-relations/done ] || [ -e line-relations/failed ] || [ -e line-relations/skipped ]; do
+            sleep 30
+          done
+          cat line-relations/log 2>/dev/null || true
+          ls -lh line-relations
+          [ ! -e line-relations/failed ]
+
       - name: Export layers and generate PMTiles
         env:
           DATABASE_URL: postgresql://postgres@localhost:5432/gis
@@ -109,6 +152,9 @@ jobs:
           BBOX: ${{ github.event.inputs.bbox || '' }}
           CONCURRENCY: '4'
         run: |
+          if [ -e line-relations/done ]; then
+            export LINE_RELATIONS_OPL=./line-relations/lines.opl
+          fi
           ./scripts/tiles/export-tippecanoe.sh
 
       - name: Show output info
