@@ -5,8 +5,15 @@
 // setFilter on each of them, the style is rewritten once at load time: every
 // layer on a line or station source-layer gets an extra filter clause, and
 // every layer on a railway source gets a visibility switch, all reading
-// `global-state`. The panel then only flips global state properties.
+// `global-state`. The panel then only flips global state properties. Line
+// layers also get the alternative line colors from railway-colors.ts.
 
+import {
+  RAILWAY_COLOR_MODES,
+  RAILWAY_COLOR_STATE,
+  withRailwayLineColors,
+  type RailwayColorMode,
+} from './railway-colors.js';
 import { readStoredSettings, writeStoredSettings } from './stored-settings.js';
 
 export const RAILWAY_FILTER_STORAGE_KEY = 'atlas-realm:railway-filter';
@@ -53,6 +60,8 @@ export type RailwayTraffic = (typeof RAILWAY_TRAFFIC_OPTIONS)[number];
 
 export type RailwayFilterSettings = {
   overlay: boolean;
+  // How line colors are chosen; not a filter, so resetting filters keeps it.
+  colorBy: RailwayColorMode;
   categories: Record<RailwayCategory, boolean>;
   statuses: Record<RailwayStatus, boolean>;
   minSpeed: number;
@@ -95,6 +104,7 @@ export function railwayCategoryStateName(category: RailwayCategory) {
 export function defaultRailwayFilterSettings(): RailwayFilterSettings {
   return {
     overlay: true,
+    colorBy: 'usage',
     categories: Object.fromEntries(RAILWAY_CATEGORIES.map((category) => [category, true])) as Record<
       RailwayCategory,
       boolean
@@ -123,6 +133,9 @@ export function normalizeRailwayFilterSettings(value: unknown): RailwayFilterSet
   const settings = defaultRailwayFilterSettings();
   if (!isRecord(value)) return settings;
   if (typeof value.overlay === 'boolean') settings.overlay = value.overlay;
+  if ((RAILWAY_COLOR_MODES as readonly unknown[]).includes(value.colorBy)) {
+    settings.colorBy = value.colorBy as RailwayColorMode;
+  }
   if (isRecord(value.categories)) {
     for (const category of RAILWAY_CATEGORIES) {
       if (typeof value.categories[category] === 'boolean') settings.categories[category] = value.categories[category];
@@ -159,6 +172,7 @@ export function saveRailwayFilterSettings(settings: RailwayFilterSettings, stora
 export function railwayFilterGlobalState(settings: RailwayFilterSettings): Record<string, unknown> {
   const state: Record<string, unknown> = {
     [OVERLAY_STATE]: settings.overlay,
+    [RAILWAY_COLOR_STATE]: settings.colorBy,
     [MIN_SPEED_STATE]: settings.minSpeed,
     [INCLUDE_UNKNOWN_STATE]: settings.includeUnknown,
     [ELECTRIFICATION_STATE]: settings.electrification,
@@ -348,9 +362,9 @@ function withFilter(layer: StyleLayerLike, clause: unknown[]): StyleLayerLike {
 }
 
 // Wires the filter into a style: layers on `railwaySources` follow the
-// overlay switch, line and station layers get their filter clause, and the
-// global state defaults come from `settings` so the first render already
-// matches them.
+// overlay switch, line and station layers get their filter clause (line
+// layers also the alternative colors), and the global state defaults come
+// from `settings` so the first render already matches them.
 export function applyRailwayFilterToStyle<T extends StyleLike>(
   style: T,
   railwaySources: readonly string[],
@@ -363,7 +377,9 @@ export function applyRailwayFilterToStyle<T extends StyleLike>(
     if (!layer.source || !sources.has(layer.source)) return layer;
     const withVisibility = withRailwayOverlayVisibility(layer);
     const sourceLayer = layer['source-layer'] || '';
-    if (lineSourceLayers.has(sourceLayer)) return withFilter(withVisibility, RAILWAY_LINE_FILTER);
+    if (lineSourceLayers.has(sourceLayer)) {
+      return withFilter(withRailwayLineColors(withVisibility), RAILWAY_LINE_FILTER);
+    }
     if (stationSourceLayers.has(sourceLayer)) return withFilter(withVisibility, RAILWAY_STATION_FILTER);
     if (sourceLayer === RAILWAY_STATION_AREA_SOURCE_LAYER)
       return withFilter(withVisibility, RAILWAY_STATION_AREA_FILTER);

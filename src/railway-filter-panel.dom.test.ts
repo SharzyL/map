@@ -54,10 +54,11 @@ function setup(settings: RailwayFilterSettings = defaultRailwayFilterSettings())
     panel,
     button,
     checkbox,
-    speedSelect: selects[0],
-    gaugeSelect: selects[1],
-    trafficSelect: selects[2],
-    electrificationSelect: selects[3],
+    colorSelect: selects[0],
+    speedSelect: selects[1],
+    gaugeSelect: selects[2],
+    trafficSelect: selects[3],
+    electrificationSelect: selects[4],
     operatorInput: panel.querySelector<HTMLInputElement>('input[type="search"]'),
   };
 }
@@ -170,13 +171,39 @@ describe('railway filter panel', () => {
     const settings = defaultRailwayFilterSettings();
     settings.categories.main = false;
     settings.minSpeed = 160;
-    const { map, panel, checkbox, speedSelect } = setup(settings);
+    settings.colorBy = 'speed';
+    const { map, panel, checkbox, speedSelect, colorSelect } = setup(settings);
     expect(checkbox('Main lines').checked).toBe(false);
     expect(speedSelect.value).toBe('160');
+    expect(colorSelect.value).toBe('speed');
 
     panel.querySelector<HTMLButtonElement>('.railway-filter-reset').click();
     expect(map.globalState).toEqual({ railwayShowMain: true, railwayMinSpeed: 0 });
     expect(checkbox('Main lines').checked).toBe(true);
+    expect(colorSelect.value).toBe('speed');
     expect(panel.querySelector('.railway-filter-summary').textContent).toBe('All railways shown');
+  });
+
+  it('switches line colors and shows a legend for attribute colors', () => {
+    const { map, panel, colorSelect } = setup();
+    const legend = panel.querySelector<HTMLElement>('.railway-filter-legend');
+    const legendLabels = () =>
+      Array.from(legend.querySelectorAll('.railway-filter-legend-item')).map((item) => item.textContent);
+    expect(colorSelect.value).toBe('usage');
+    expect(legend.hidden).toBe(true);
+
+    choose(colorSelect, 'gauge');
+    expect(map.globalState).toEqual({ railwayColorBy: 'gauge' });
+    expect(legend.hidden).toBe(false);
+    expect(legendLabels()).toContain('Standard (1435 mm)');
+    expect(panel.querySelector('.railway-filter-summary').textContent).toBe('All railways shown');
+    expect(loadRailwayFilterSettings().colorBy).toBe('gauge');
+
+    choose(colorSelect, 'electrification');
+    expect(legendLabels()).toContain('AC 15 kV 16.7 Hz');
+    expect(legendLabels()).not.toContain('Standard (1435 mm)');
+
+    choose(colorSelect, 'usage');
+    expect(legend.hidden).toBe(true);
   });
 });

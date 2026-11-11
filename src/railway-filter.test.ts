@@ -274,9 +274,11 @@ describe('applyRailwayFilterToStyle', () => {
       next.overlay = false;
       next.minSpeed = 160;
       next.statuses.showAbandonedInfrastructure = true;
+      next.colorBy = 'electrification';
     });
     const styled = applyRailwayFilterToStyle(ormStyle, railwaySources, settings);
     expect(styled.state.railwayOverlay.default).toBe(false);
+    expect(styled.state.railwayColorBy.default).toBe('electrification');
     expect(styled.state.railwayMinSpeed.default).toBe(160);
     expect(styled.state.showAbandonedInfrastructure.default).toBe(true);
   });
@@ -287,6 +289,7 @@ describe('railway filter settings', () => {
     expect(normalizeRailwayFilterSettings(null)).toEqual(defaultRailwayFilterSettings());
     const normalized = normalizeRailwayFilterSettings({
       overlay: 'no',
+      colorBy: 'rainbow',
       categories: { main: false, bogus: false },
       minSpeed: 123,
       electrification: 'electrified',
@@ -295,6 +298,8 @@ describe('railway filter settings', () => {
       operator: '  DB Netz  ',
     });
     expect(normalized.overlay).toBe(true);
+    expect(normalized.colorBy).toBe('usage');
+    expect(normalizeRailwayFilterSettings({ colorBy: 'gauge' }).colorBy).toBe('gauge');
     expect(normalized.categories.main).toBe(false);
     expect(normalized.minSpeed).toBe(0);
     expect(normalized.electrification).toBe('electrified');
@@ -338,6 +343,7 @@ describe('railway filter settings', () => {
       next.gauge = 'broad';
       next.traffic = 'passenger';
       next.operator = 'SNCF';
+      next.colorBy = 'speed';
     });
     expect(countActiveRailwayFilters(settings)).toBe(7);
   });

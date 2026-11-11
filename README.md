@@ -104,7 +104,7 @@ CLOUDFLARE_VITE_REMOTE_BINDINGS=0 pnpm dev
   adds terrain, contours and satellite imagery, and installs the feature modules.
 - `src/worker/` is the Cloudflare Worker: static assets plus `/tiles/*` served from PMTiles in R2.
 - Panels: `map-layers-panel.ts` (Layers: base map, labels, terrain), `railway-filter-panel.ts`
-  (Railway filter), `annotation-tools.ts` (Annotations: drawing tools, with the layer list and
+  (Railways: filter and line colors by usage, speed, electrification or gauge from `railway-colors.ts`), `annotation-tools.ts` (Annotations: drawing tools, with the layer list and
   GPX/GeoJSON import from `layer-manager.ts` mounted inside), and the weather picker.
 - `popup.ts` renders info boxes; `route-highlight.ts` and `route-trace.ts` highlight a whole route or
   railway line picked from one.
@@ -112,7 +112,7 @@ CLOUDFLARE_VITE_REMOTE_BINDINGS=0 pnpm dev
   unless exported.
 - `scripts/styles/` generates the railway style, `scripts/tiles/` builds the tile archive.
 
-Display settings (base map, railway filter, highlight) are applied by rewriting the style once at load
+Display settings (base map, railway filter and line colors, highlight) are applied by rewriting the style once at load
 and then flipping MapLibre `global-state`, not by editing layers one by one.
 
 ### Map style
@@ -124,8 +124,8 @@ the subset misses. Commit the regenerated files; a unit test fails when they are
 
 ### Tiles
 
-The tile export and the frontend share layer names and attributes: the style, the railway filter, the
-info boxes and the highlight read what `scripts/tiles/export-tippecanoe.sh` writes, and its per-layer
+The tile export and the frontend share layer names and attributes: the style, the railway filter and
+line colors, the info boxes and the highlight read what `scripts/tiles/export-tippecanoe.sh` writes, and its per-layer
 zoom filters mirror the zooms the style draws each layer at. Change them together, test with a `bbox`
 export (see above), and bump `TILE_VERSION` once the new archive is live.
 

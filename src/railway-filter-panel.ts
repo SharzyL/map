@@ -15,6 +15,7 @@ import {
   type RailwayStatus,
   type RailwayTraffic,
 } from './railway-filter.js';
+import { RAILWAY_COLOR_LEGENDS, type RailwayColorMode } from './railway-colors.js';
 import { createPanelButton, createPanelFields, createPanelShell, el } from './map-panel.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
@@ -53,6 +54,13 @@ const STATUS_LABELS: Record<RailwayStatus, string> = {
   showRazedInfrastructure: 'Razed',
 };
 
+const COLOR_MODE_LABELS: Record<RailwayColorMode, string> = {
+  usage: 'Usage',
+  speed: 'Maximum speed',
+  electrification: 'Electrification',
+  gauge: 'Gauge',
+};
+
 const ELECTRIFICATION_LABELS: Record<RailwayElectrification, string> = {
   any: 'Any',
   electrified: 'Electrified',
@@ -83,6 +91,9 @@ class RailwayFilterPanel {
   _summary: HTMLElement;
   _overlayInput: HTMLInputElement;
   _filters: HTMLElement;
+  _colorSelect: HTMLSelectElement;
+  _legend: HTMLUListElement;
+  _legendMode: RailwayColorMode | null = null;
   _categoryInputs = new Map<RailwayCategory, HTMLInputElement>();
   _statusInputs = new Map<RailwayStatus, HTMLInputElement>();
   _speedSelect: HTMLSelectElement;
@@ -140,6 +151,14 @@ class RailwayFilterPanel {
     this._overlayInput.addEventListener('change', () => this._update((s) => (s.overlay = this._overlayInput.checked)));
 
     this._filters = el('div', 'railway-filter-options', body);
+    const colors = group(this._filters, 'Line colors');
+    this._colorSelect = selectField(colors, 'Color by', Object.entries(COLOR_MODE_LABELS));
+    this._colorSelect.addEventListener('change', () =>
+      this._update((s) => (s.colorBy = this._colorSelect.value as RailwayColorMode)),
+    );
+    this._legend = el('ul', 'railway-filter-legend', colors);
+    this._legend.setAttribute('aria-label', 'Line color legend');
+
     const types = group(this._filters, 'Line and station types');
     for (const category of RAILWAY_CATEGORIES) {
       const input = checkboxRow(types, CATEGORY_LABELS[category].label, CATEGORY_LABELS[category].hint);
@@ -201,7 +220,7 @@ class RailwayFilterPanel {
     this._resetButton.type = 'button';
     this._resetButton.textContent = 'Reset filters';
     this._resetButton.addEventListener('click', () =>
-      this._update((s) => Object.assign(s, defaultRailwayFilterSettings(), { overlay: s.overlay })),
+      this._update((s) => Object.assign(s, defaultRailwayFilterSettings(), { overlay: s.overlay, colorBy: s.colorBy })),
     );
 
     this._sync();
@@ -268,6 +287,21 @@ class RailwayFilterPanel {
     );
   }
 
+  _renderLegend(mode: RailwayColorMode) {
+    if (this._legendMode === mode) return;
+    this._legendMode = mode;
+    const classes = mode === 'usage' ? [] : RAILWAY_COLOR_LEGENDS[mode];
+    this._legend.hidden = classes.length === 0;
+    this._legend.replaceChildren(
+      ...classes.map(({ label, color }) => {
+        const item = el('li', 'railway-filter-legend-item');
+        el('span', 'railway-filter-legend-swatch', item).style.background = color;
+        el('span', '', item).textContent = label;
+        return item;
+      }),
+    );
+  }
+
   _update(mutate: (settings: RailwayFilterSettings) => void) {
     const previous = railwayFilterGlobalState(this._settings);
     mutate(this._settings);
@@ -307,11 +341,19 @@ class RailwayFilterPanel {
     // The style only draws razed tracks while abandoned ones are shown.
     this._statusInputs.get('showRazedInfrastructure').disabled =
       !settings.overlay || !settings.statuses.showAbandonedInfrastructure;
+    this._colorSelect.value = settings.colorBy;
+    this._renderLegend(settings.colorBy);
     this._speedSelect.value = String(settings.minSpeed);
     this._gaugeSelect.value = settings.gauge;
     this._trafficSelect.value = settings.traffic;
     this._electrificationSelect.value = settings.electrification;
-    for (const field of [this._speedSelect, this._gaugeSelect, this._trafficSelect, this._electrificationSelect]) {
+    for (const field of [
+      this._colorSelect,
+      this._speedSelect,
+      this._gaugeSelect,
+      this._trafficSelect,
+      this._electrificationSelect,
+    ]) {
       field.disabled = !settings.overlay;
     }
     if (document.activeElement !== this._operatorInput) this._operatorInput.value = settings.operator;

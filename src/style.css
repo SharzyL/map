@@ -2100,6 +2100,35 @@ body,
   width: 100%;
 }
 
+.railway-filter-legend {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0 4px;
+  padding: 0 6px;
+  list-style: none;
+}
+
+.railway-filter-legend[hidden] {
+  display: none;
+}
+
+.railway-filter-legend-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* A short stroke drawn like the map's railway lines. */
+.railway-filter-legend-swatch {
+  height: 4px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
 .map-layers-range-field {
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;

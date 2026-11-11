@@ -1,0 +1,241 @@
+// Alternative railway line colors: by maximum speed, electrification or gauge
+// instead of the style's usage colors.
+//
+// Like the railway filter, the style is rewritten once at load time: the fill
+// of every active railway line layer and its direction arrows get a `match` on
+// global state that keeps the original color for 'usage'. Each mode first
+// sorts a line into a legend class, so the map and the panel legend read the
+// same table.
+//
+// The palettes were checked for color vision deficiency: speed follows
+// viridis, darkening from yellow to blue with the high-speed purple at 350
+// km/h and a dark plum above it (the three fastest bands stay apart under
+// protan and deutan simulation), electrification and gauge keep every pair of
+// hues apart, and grays mark lines without data.
+import { mapZoomOutputs } from './map-layers.js';
+
+export const RAILWAY_COLOR_MODES = ['usage', 'speed', 'electrification', 'gauge'] as const;
+export type RailwayColorMode = (typeof RAILWAY_COLOR_MODES)[number];
+export type RailwayLegendMode = Exclude<RailwayColorMode, 'usage'>;
+
+export const RAILWAY_COLOR_STATE = 'railwayColorBy';
+
+export type RailwayColorClass = {
+  key: string;
+  label: string;
+  color: string;
+  // Hover color for classes the default red hover would not stand out from.
+  hover?: string;
+};
+
+const HOVER = '#ff0000';
+const ALTERNATIVE_HOVER = '#ffc107';
+const NO_DATA = '#b8b8b8';
+
+export const RAILWAY_COLOR_LEGENDS: Record<RailwayLegendMode, RailwayColorClass[]> = {
+  // The filter's minimum speed options, then finer steps for high-speed lines.
+  speed: [
+    { key: 'lt80', label: 'Under 80 km/h', color: '#ddad09' },
+    { key: '80', label: '80–119 km/h', color: '#93ad05' },
+    { key: '120', label: '120–159 km/h', color: '#15a64f' },
+    { key: '160', label: '160–199 km/h', color: '#058b77' },
+    { key: '200', label: '200–249 km/h', color: '#02717e' },
+    { key: '250', label: '250–299 km/h', color: '#005783' },
+    { key: '300', label: '300–349 km/h', color: '#122ba2' },
+    { key: '350', label: '350 km/h', color: '#9b19d4' },
+    { key: 'gt350', label: 'Over 350 km/h', color: '#3c013c' },
+    { key: 'unknown', label: 'No speed data', color: NO_DATA },
+  ],
+  electrification: [
+    { key: 'ac25', label: 'AC 20–25 kV', color: '#a90017', hover: ALTERNATIVE_HOVER },
+    { key: 'ac15', label: 'AC 15 kV 16.7 Hz', color: '#68cb6e' },
+    { key: 'ac-other', label: 'Other AC', color: '#b58300' },
+    { key: 'dc3', label: 'DC 3 kV', color: '#75aaff' },
+    { key: 'dc1500', label: 'DC 1.5 kV', color: '#008caa' },
+    { key: 'dc-low', label: 'DC up to 1 kV', color: '#891e90' },
+    { key: 'electrified', label: 'Electrified, system unknown', color: '#3d3d3d' },
+    { key: 'none', label: 'Not electrified', color: '#8f8f8f' },
+    { key: 'unknown', label: 'No electrification data', color: NO_DATA },
+  ],
+  // By a line's first gauge; the popup lists every gauge of dual-gauge lines.
+  gauge: [
+    { key: 'narrow', label: 'Narrow (under 900 mm)', color: '#ef82e7' },
+    { key: 'metre', label: 'Metre (900–1049 mm)', color: '#623bab' },
+    { key: 'cape', label: 'Cape (1050–1099 mm)', color: '#76c963' },
+    { key: 'scotch', label: 'Scotch (1372 mm)', color: '#9769dc' },
+    { key: 'standard', label: 'Standard (1435 mm)', color: '#3b4252' },
+    { key: 'russian', label: 'Russian (1520 mm)', color: '#a90017', hover: ALTERNATIVE_HOVER },
+    { key: 'irish', label: 'Irish (1600 mm)', color: '#b86000' },
+    { key: 'iberian', label: 'Iberian & Indian (1668–1676 mm)', color: '#008f90' },
+    { key: 'other', label: 'Other gauges', color: '#8f8f8f' },
+    { key: 'unknown', label: 'No gauge data', color: NO_DATA },
+  ],
+};
+
+const SPEED_CLASS = [
+  'case',
+  ['has', 'maxspeed'],
+  // 350 is its own band: Chinese high-speed lines run at exactly 350 km/h.
+  [
+    'step',
+    ['to-number', ['get', 'maxspeed'], 0],
+    'lt80',
+    80,
+    '80',
+    120,
+    '120',
+    160,
+    '160',
+    200,
+    '200',
+    250,
+    '250',
+    300,
+    '300',
+    350,
+    '350',
+    350.5,
+    'gt350',
+  ],
+  'unknown',
+];
+
+const VOLTAGE = ['to-number', ['coalesce', ['get', 'voltage'], 0], 0];
+const FREQUENCY = ['to-number', ['coalesce', ['get', 'frequency'], 0], 0];
+// Lines tagged without a frequency: high voltages are AC, low ones DC.
+const IS_AC = ['case', ['has', 'frequency'], ['>', FREQUENCY, 0], ['>=', VOLTAGE, 6000]];
+
+// The low-zoom tiles carry no voltage, so zoomed far out electrified lines
+// only show as electrified.
+const ELECTRIFICATION_CLASS = [
+  'match',
+  ['to-string', ['coalesce', ['get', 'electrification_state'], '']],
+  'present',
+  [
+    'case',
+    ['<=', VOLTAGE, 0],
+    'electrified',
+    IS_AC,
+    [
+      'case',
+      ['>=', VOLTAGE, 20000],
+      'ac25',
+      [
+        'all',
+        ['>=', VOLTAGE, 14000],
+        ['<=', VOLTAGE, 16000],
+        ['any', ['!', ['has', 'frequency']], ['<', FREQUENCY, 20]],
+      ],
+      'ac15',
+      'ac-other',
+    ],
+    ['>=', VOLTAGE, 3000],
+    'dc3',
+    ['>', VOLTAGE, 1000],
+    'dc1500',
+    'dc-low',
+  ],
+  // Construction and proposed are electrification planned on a line without it.
+  ['no', 'deelectrified', 'abandoned', 'construction', 'proposed'],
+  'none',
+  'unknown',
+];
+
+// Ranges match the railway filter's: standard gauge covers lines tagged a few
+// mm off 1435.
+const GAUGE_CLASS = [
+  'case',
+  ['has', 'gaugeint0'],
+  [
+    'step',
+    ['to-number', ['get', 'gaugeint0'], 0],
+    'unknown',
+    1,
+    'narrow',
+    900,
+    'metre',
+    1050,
+    'cape',
+    1100,
+    'other',
+    1360,
+    'scotch',
+    1385,
+    'other',
+    1430,
+    'standard',
+    1440.5,
+    'other',
+    1495,
+    'russian',
+    1535,
+    'other',
+    1580,
+    'irish',
+    1610.5,
+    'other',
+    1660,
+    'iberian',
+    1690.5,
+    'other',
+  ],
+  'unknown',
+];
+
+export const RAILWAY_COLOR_CLASS_EXPRESSIONS: Record<RailwayLegendMode, unknown[]> = {
+  speed: SPEED_CLASS,
+  electrification: ELECTRIFICATION_CLASS,
+  gauge: GAUGE_CLASS,
+};
+
+const MODE = ['to-string', ['global-state', RAILWAY_COLOR_STATE]];
+const LEGEND_MODES = Object.keys(RAILWAY_COLOR_LEGENDS) as RailwayLegendMode[];
+
+function byMode(valueFor: (mode: RailwayLegendMode) => unknown, fallback: string) {
+  return ['match', MODE, ...LEGEND_MODES.flatMap((mode) => [mode, valueFor(mode)]), fallback];
+}
+
+const COLOR = byMode(
+  (mode) => [
+    'match',
+    RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
+    ...RAILWAY_COLOR_LEGENDS[mode].flatMap(({ key, color }) => [key, color]),
+    NO_DATA,
+  ],
+  NO_DATA,
+);
+
+const HOVER_COLOR = byMode((mode) => {
+  const alternatives = RAILWAY_COLOR_LEGENDS[mode].filter(({ hover }) => hover);
+  if (alternatives.length === 0) return HOVER;
+  return [
+    'match',
+    RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
+    ...alternatives.flatMap(({ key, hover }) => [key, hover]),
+    HOVER,
+  ];
+}, HOVER);
+
+export const RAILWAY_ATTRIBUTE_COLOR = ['case', ['boolean', ['feature-state', 'hover'], false], HOVER_COLOR, COLOR];
+
+// Layers built by the style's railwayLine(): fills of lines in use (abandoned,
+// razed and disused tracks keep their muted colors, ferries their own) and the
+// preferred direction arrows drawn over them.
+const RECOLORED_FILL = /^railway_line_.*_fill_(present|construction|proposed|preserved)$/;
+const RECOLORED_ARROWS = /^railway_line_.*_preferred_direction$/;
+
+type StyleLayerLike = { id?: string; paint?: Record<string, unknown>; [key: string]: unknown };
+
+export function withRailwayLineColors<T extends StyleLayerLike>(layer: T): T {
+  const id = layer.id || '';
+  const property = RECOLORED_FILL.test(id) ? 'line-color' : RECOLORED_ARROWS.test(id) ? 'icon-color' : null;
+  if (!property || layer.paint?.[property] === undefined) return layer;
+  const color = mapZoomOutputs(layer.paint[property], (original) => [
+    'match',
+    MODE,
+    'usage',
+    original,
+    RAILWAY_ATTRIBUTE_COLOR,
+  ]);
+  return { ...layer, paint: { ...layer.paint, [property]: color } };
+}
