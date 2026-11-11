@@ -33,6 +33,7 @@ const LINE_PROPERTIES = {
   radio: 'gsm-r',
   wikipedia: 'de:A-Strecke',
   line_routes: '66615\u001e#4a5eaa\u001eU3: Oberursel Hohemark => Südbahnhof',
+  line_relations: '1924436\u001e\u001eA-Strecke\u001eA\u001d5611\u001e\u001e3\u001e3',
   unexpected_tag: 'kept',
 };
 
@@ -119,7 +120,7 @@ describe('structured railway line popup', () => {
     const { content } = render('high', 'railway_line_high', LINE_PROPERTIES);
     const link = content.querySelector<HTMLAnchorElement>('.orm-popup-fields a');
     expect(link.href).toBe('https://wikipedia.org/wiki/de%3AA-Strecke');
-    expect(content.querySelector('.orm-popup-route-list').textContent).toContain('U3: Oberursel Hohemark');
+    expect(content.querySelectorAll('.orm-popup-route-list')[1].textContent).toContain('U3: Oberursel Hohemark');
     expect(content.querySelector('.orm-popup-badges')).toBeNull();
   });
 
@@ -134,7 +135,8 @@ describe('structured railway line popup', () => {
 
   it('asks the map to highlight a route when it is clicked', () => {
     const { content } = render('high', 'railway_line_high', LINE_PROPERTIES);
-    const item = content.querySelector<HTMLElement>('.orm-popup-route-list li');
+    // The Routes list comes after the Lines list.
+    const item = content.querySelectorAll('.orm-popup-route-list')[1].querySelector<HTMLElement>('li');
     const selected = vi.fn();
     content.addEventListener(ROUTE_SELECT_EVENT, (event) => selected((event as CustomEvent).detail));
     expect(item.getAttribute('role')).toBe('button');
@@ -146,6 +148,26 @@ describe('structured railway line popup', () => {
       color: '#4a5eaa',
       label: 'U3: Oberursel Hohemark => Südbahnhof',
     });
+  });
+
+  it('lists the railway lines a segment belongs to and highlights one when clicked', () => {
+    const { content, sections } = render('high', 'railway_line_high', LINE_PROPERTIES);
+    const [linesHeader, routesHeader] = [...content.querySelectorAll('.orm-popup-lists > .orm-badge-title')];
+    expect(linesHeader.textContent).toBe('Lines (2):');
+    expect(routesHeader.textContent).toBe('Routes (1):');
+    expect(sections.Other).toEqual([['Unexpected tag', 'kept']]);
+
+    const [line, refOnly] = content.querySelectorAll<HTMLElement>('.orm-popup-route-list')[0].querySelectorAll('li');
+    expect(line.textContent).toBe('A-StreckeA');
+    expect(line.querySelector('.orm-popup-list-detail').textContent).toBe('A');
+    expect(line.title).toBe('Highlight this line on the map');
+    // A line named only by its number shows it once.
+    expect(refOnly.querySelector('.orm-popup-list-detail')).toBeNull();
+
+    const selected = vi.fn();
+    content.addEventListener(ROUTE_SELECT_EVENT, (event) => selected((event as CustomEvent).detail));
+    line.click();
+    expect(selected).toHaveBeenCalledWith({ id: '1924436', color: null, label: 'A-Strecke · A' });
   });
 
   it('shows DC lines without a frequency in hertz', () => {

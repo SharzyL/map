@@ -45,7 +45,8 @@ function readTile(buffer: ArrayBuffer, x: number, y: number, routeId: string) {
   if (!layer) return { features, neighbours };
   for (let index = 0; index < layer.length; index += 1) {
     const feature = layer.feature(index);
-    if (!routeListHasRoute(feature.properties.line_routes, routeId)) continue;
+    const { line_routes, line_relations } = feature.properties;
+    if (!routeListHasRoute(line_routes, routeId) && !routeListHasRoute(line_relations, routeId)) continue;
     const geojson = feature.toGeoJSON(x, y, ROUTE_TRACE_ZOOM);
     features.push({ type: 'Feature', properties: {}, geometry: geojson.geometry });
     // Lines are clipped a little outside the tile, so a vertex on or past an

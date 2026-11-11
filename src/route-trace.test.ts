@@ -7,8 +7,8 @@ type TestFeature = { routes: string; line: Array<[number, number]> };
 const zigzag = (value: number) => (value << 1) ^ (value >> 31);
 
 // A minimal MVT with one `railway_line_high` layer of LineStrings carrying a
-// `line_routes` attribute, enough for the tracer to read.
-function encodeTile(features: TestFeature[]) {
+// `line_routes` (or `line_relations`) attribute, enough for the tracer to read.
+function encodeTile(features: TestFeature[], key = 'line_routes') {
   const values = [...new Set(features.map((feature) => feature.routes))];
   const pbf = new Pbf();
   pbf.writeMessage(
@@ -35,7 +35,7 @@ function encodeTile(features: TestFeature[]) {
           null,
         );
       });
-      layer.writeStringField(3, 'line_routes');
+      layer.writeStringField(3, key);
       values.forEach((value) => layer.writeMessage(4, (__: unknown, out: Pbf) => out.writeStringField(1, value), null));
       layer.writeVarintField(5, 4096);
     },
@@ -125,6 +125,38 @@ describe('traceRoute', () => {
     const [start] = (geometry.features[0].geometry as GeoJSON.LineString).coordinates;
     expect(start[0]).toBeGreaterThan(120);
     expect(start[0]).toBeLessThan(123);
+  });
+
+  it('follows a railway line through its line_relations', async () => {
+    const jinghu = '163022\u001e\u001e京沪线\u001e0002';
+    const tiles: Record<string, ArrayBuffer> = {
+      '7/107/52': encodeTile(
+        [
+          {
+            routes: jinghu,
+            line: [
+              [1000, 2000],
+              [4096 + 40, 2100],
+            ],
+          },
+        ],
+        'line_relations',
+      ),
+      '7/108/52': encodeTile(
+        [
+          {
+            routes: jinghu,
+            line: [
+              [-40, 2100],
+              [900, 1200],
+            ],
+          },
+        ],
+        'line_relations',
+      ),
+    };
+    const geometry = await traceRoute('163022', [[107, 52]], async (z, x, y) => tiles[`${z}/${x}/${y}`] ?? null);
+    expect(geometry.features).toHaveLength(2);
   });
 
   it('stops when aborted', async () => {

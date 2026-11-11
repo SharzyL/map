@@ -2950,6 +2950,11 @@ body,
   background-color: #eef2ff;
   font-weight: 600;
 }
+.orm-popup-list-detail {
+  margin-left: 6px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Route highlight: names the highlighted route, with a clear button */
 .route-highlight-chip {

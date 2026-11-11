@@ -1,11 +1,13 @@
-// Highlights one OSM route relation (e.g. a metro line in one direction) on
-// the map. Line segments and stations carry the routes they belong to as
-// `line_routes` / `station_routes`: groups of `id\x1Ecolor\x1Elabel` joined by
-// `\x1D`. The highlight layers sit on the same railway sources and keep only
-// features whose route list contains the selected id, so the whole route shows
-// wherever tiles load, not just the clicked segment. Below z7 no tiles carry
-// route ids, so route-trace.ts collects the route from z7 tiles and a GeoJSON
-// overlay draws it.
+// Highlights one OSM relation on the map: a route (e.g. a metro line in one
+// direction) or a railway line (route=railway, e.g. 京沪线). Line segments carry
+// the routes and lines they belong to as `line_routes` / `line_relations`, and
+// stations their routes as `station_routes`: groups of `id\x1Ecolor\x1Elabel`
+// (lines add `\x1Eref`) joined by `\x1D`. Both are relation ids, so one
+// selected id matches in either list. The highlight layers sit on the same
+// railway sources and keep only features whose lists contain the selected id,
+// so the whole route or line shows wherever tiles load, not just the clicked
+// segment. Below z7 no tiles carry these ids, so route-trace.ts collects the
+// geometry from z7 tiles and a GeoJSON overlay draws it.
 import { mapZoomOutputs } from './map-layers.js';
 import { el, stopMapControlPropagation } from './map-panel.js';
 import { withRailwayOverlayVisibility } from './railway-filter.js';
@@ -50,6 +52,8 @@ export type RouteHighlightMap = Parameters<typeof setGlobalStatePropertyWhenRead
 };
 
 const SELECTED_ID = ['to-string', ['global-state', ROUTE_HIGHLIGHT_ID_STATE]];
+// Line segment attributes listing the relations a segment belongs to.
+export const LINE_LIST_PROPERTIES = ['line_routes', 'line_relations'] as const;
 const ROUTE_COLOR = ['to-color', ['global-state', ROUTE_HIGHLIGHT_COLOR_STATE], FALLBACK_COLOR];
 
 export function routeListFilter(property: string) {
@@ -101,7 +105,7 @@ const LINE_PAINT = {
 function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
   const lineRanges = sourceRanges(layers, (sourceLayer) => sourceLayer === LINE_SOURCE_LAYER);
   const stationRanges = sourceRanges(layers, (sourceLayer) => sourceLayer.startsWith(STATION_SOURCE_LAYER_PREFIX));
-  const filter = routeListFilter('line_routes');
+  const filter = ['any', ...LINE_LIST_PROPERTIES.map(routeListFilter)];
   const overview = { source: OVERVIEW_SOURCE, maxzoom: ROUTE_TRACE_ZOOM, layout: LINE_LAYOUT };
   return [
     { id: 'route_highlight_overview_casing', type: 'line', ...overview, paint: CASING_PAINT },
@@ -214,8 +218,8 @@ class RouteHighlightChip {
     this._label = el('span', 'route-highlight-label', this.element);
     const clear = el('button', 'route-highlight-clear', this.element);
     clear.type = 'button';
-    clear.title = 'Clear route highlight';
-    clear.setAttribute('aria-label', 'Clear route highlight');
+    clear.title = 'Clear highlight';
+    clear.setAttribute('aria-label', 'Clear highlight');
     clear.textContent = 'x';
     clear.addEventListener('click', onClear);
   }

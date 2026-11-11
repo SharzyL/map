@@ -74,6 +74,24 @@ describe('addRouteHighlightToStyle', () => {
     }
   });
 
+  it('highlights a line segment by its routes or its railway lines', () => {
+    const line = highlight.find((layer) => layer.id === 'route_highlight_line_0');
+    const matches = (id: string, properties: Record<string, unknown>) =>
+      featureFilter((line as unknown as { filter: never }).filter, { [ROUTE_HIGHLIGHT_ID_STATE]: id }).filter(
+        { zoom: 12 },
+        {
+          type: 2,
+          properties,
+        } as never,
+      );
+    const jinghu = '163022\u001e\u001e京沪线\u001e0002\u001d356778\u001e\u001e京沪高铁\u001e3002';
+    expect(matches('5611108', { line_routes: LINE_ROUTES })).toBe(true);
+    expect(matches('163022', { line_relations: jinghu })).toBe(true);
+    expect(matches('356778', { line_routes: LINE_ROUTES, line_relations: jinghu })).toBe(true);
+    expect(matches('16302', { line_relations: jinghu })).toBe(false);
+    expect(matches('', { line_relations: jinghu })).toBe(false);
+  });
+
   it('draws the highlight above every railway line and below the station labels', () => {
     const ids = styled.layers.map((layer) => layer.id);
     const first = ids.indexOf(highlight[0].id);

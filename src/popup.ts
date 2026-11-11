@@ -67,8 +67,11 @@ type FormatSpec = {
 type ListSpec = {
   colorProperty: string;
   labelProperty: string;
+  // Shown after the label, e.g. a railway line's number.
+  detailProperty?: string;
   properties: string[];
   routeIdProperty?: string;
+  selectTitle?: string;
 };
 type FeatureLinks = typeof FEATURE_LINKS;
 type FeaturePropertyDefinition = {
@@ -545,6 +548,17 @@ export function buildFeatureCatalog() {
       wikipedia: { name: 'Wikipedia', link: LINKS.wikipedia, format: { country_prefix: {} } },
       note: { name: 'Note', paragraph: true },
       description: { name: 'Description', paragraph: true },
+      line_relations: {
+        name: 'Lines',
+        list: {
+          routeIdProperty: 'route_id',
+          colorProperty: 'color',
+          labelProperty: 'label',
+          detailProperty: 'ref',
+          properties: ['route_id', 'color', 'label', 'ref'],
+          selectTitle: 'Highlight this line on the map',
+        },
+      },
       line_routes: {
         name: 'Routes',
         list: {
@@ -1300,10 +1314,15 @@ export function popupContent(
       groups.forEach((group) => {
         const groupColor = group[list.colorProperty];
         const label = group[list.labelProperty];
+        const detail = list.detailProperty && group[list.detailProperty];
+        const showDetail = detail && detail !== label;
 
         const li = el('li', undefined, ul);
         const routeId = list.routeIdProperty && group[list.routeIdProperty];
-        if (routeId) makeRouteSelectable(li, { id: routeId, color: groupColor, label });
+        if (routeId) {
+          const selectionLabel = showDetail ? `${label} · ${detail}` : label;
+          makeRouteSelectable(li, { id: routeId, color: groupColor, label: selectionLabel }, list.selectTitle);
+        }
         if (groupColor) {
           const marker = el('span', 'orm-color-marker', li);
           marker.style.backgroundColor = groupColor;
@@ -1312,6 +1331,10 @@ export function popupContent(
           const labelSpan = el('span', undefined, li);
           labelSpan.innerText = label;
         }
+        if (showDetail) {
+          const detailSpan = el('span', 'orm-popup-list-detail', li);
+          detailSpan.innerText = detail;
+        }
       });
     });
   }
@@ -1319,14 +1342,14 @@ export function popupContent(
   return popupContainer;
 }
 
-// Clicking a route asks route-highlight.ts (listening on the map container) to
-// highlight the whole route.
-function makeRouteSelectable(item: HTMLElement, route: RouteSelection) {
+// Clicking a route or line asks route-highlight.ts (listening on the map
+// container) to highlight all of it.
+function makeRouteSelectable(item: HTMLElement, route: RouteSelection, title = 'Highlight this route on the map') {
   item.dataset.routeId = route.id;
   item.tabIndex = 0;
   item.setAttribute('role', 'button');
   item.setAttribute('aria-pressed', 'false');
-  item.title = 'Highlight this route on the map';
+  item.title = title;
   const select = () => item.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: route }));
   item.addEventListener('click', select);
   item.addEventListener('keydown', (event) => {
