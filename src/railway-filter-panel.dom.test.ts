@@ -87,7 +87,7 @@ describe('railway filter panel', () => {
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(map.container.dataset.railwayFilterPanelOpen).toBe('true');
 
-    emitUiPanelOpen(map.container, 'layers');
+    emitUiPanelOpen(map.container, 'map-layers');
     expect(panel.classList.contains('railway-filter-panel-visible')).toBe(false);
   });
 

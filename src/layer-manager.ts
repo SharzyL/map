@@ -9,7 +9,6 @@ import { ANNOTATION_DEFAULT_LAYER_ID, createAnnotationId } from './annotation-mo
 import { annotationRenderLayerIdList, annotationRenderSourceId } from './annotation-renderer.js';
 import { initialSortKey } from './layer-model.js';
 import { fileLayerManifestPatch } from './file-layer-sync.js';
-import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 import {
   collaborationCanEdit,
   COLLABORATION_ACCESS_EVENT,
@@ -20,14 +19,11 @@ import DownloadIcon from 'lucide/dist/esm/icons/download.mjs';
 import EyeIcon from 'lucide/dist/esm/icons/eye.mjs';
 import EyeOffIcon from 'lucide/dist/esm/icons/eye-off.mjs';
 import GripVerticalIcon from 'lucide/dist/esm/icons/grip-vertical.mjs';
-import LayersIcon from 'lucide/dist/esm/icons/layers.mjs';
 import LinkIcon from 'lucide/dist/esm/icons/link.mjs';
 import LocateFixedIcon from 'lucide/dist/esm/icons/locate-fixed.mjs';
-import PencilIcon from 'lucide/dist/esm/icons/pencil.mjs';
 import PlusIcon from 'lucide/dist/esm/icons/plus.mjs';
 import TrashIcon from 'lucide/dist/esm/icons/trash-2.mjs';
 import UploadIcon from 'lucide/dist/esm/icons/upload.mjs';
-import XIcon from 'lucide/dist/esm/icons/x.mjs';
 import type { LayerStore, LayerStoreEvent } from './layer-store.js';
 
 const DEFAULT_COLOR = '#3b82f6';
@@ -57,10 +53,6 @@ type LayerEaseOptions = {
   zoom: number;
   duration: number;
 };
-type MapControlLike = {
-  onAdd(map: LayerManagerMap): HTMLElement;
-  onRemove(): void;
-};
 type LayerItem = AnyRecord & {
   id: string;
   type: LayerItemType;
@@ -89,8 +81,7 @@ type LayerItem = AnyRecord & {
   annotationSegmentCount?: number;
 };
 type MapStyleLayer = { source?: string; type?: string };
-type LayerManagerMap = {
-  addControl(control: MapControlLike, position?: string): void;
+export type LayerManagerMap = {
   getContainer(): HTMLElement;
   addSource(id: string, source: object): void;
   addLayer(layer: object): void;
@@ -178,14 +169,6 @@ function appendIconLabel(parent: Element, icon: LucideIcon, label: string) {
   const labelNode = el('span', 'layer-manager-action-label', parent);
   labelNode.textContent = label;
   return labelNode;
-}
-
-function stopMapControlPropagation(node: Element) {
-  node.addEventListener('contextmenu', (event: Event) => event.stopPropagation());
-  node.addEventListener('dblclick', (event: Event) => event.stopPropagation());
-  node.addEventListener('mousedown', (event: Event) => event.stopPropagation());
-  node.addEventListener('touchstart', (event: Event) => event.stopPropagation(), { passive: true });
-  node.addEventListener('wheel', (event: Event) => event.stopPropagation(), { passive: true });
 }
 
 function clamp(value: number | string | null | undefined, min: number, max: number) {
@@ -426,15 +409,15 @@ function fileLayerManifestMetadata(manifest: LayerItem & { type: 'gpx' | 'geojso
   return metadata;
 }
 
-class LayerManagerControl {
+// The layer list (annotation layers and imported GPX/GeoJSON files), the
+// selected layer's settings and the import controls. It has no panel of its
+// own: the annotation panel mounts it and turns it on while the panel is open.
+class LayerManager {
   _map: LayerManagerMap;
-  _control: HTMLElement;
-  _button: HTMLButtonElement;
   _panel: HTMLElement;
-  _title: HTMLElement;
+  _reveal?: () => void;
   _summary: HTMLElement;
   _importButton: HTMLButtonElement;
-  _closeButton: HTMLButtonElement;
   _dropZone: HTMLButtonElement;
   _fileInput: HTMLInputElement;
   _urlForm: HTMLFormElement;
@@ -456,14 +439,13 @@ class LayerManagerControl {
   _opacityValue: HTMLElement;
   _opacityInput: HTMLInputElement;
   _zoomButton: HTMLButtonElement;
-  _editButton: HTMLButtonElement;
   _exportButton: HTMLButtonElement;
   _deleteButton: HTMLButtonElement;
   _layerStore?: LayerStore;
   _unsubscribeLayerStore: (() => void) | null;
   _layerItems: LayerItem[];
   _selectedId: string | null;
-  _expanded: boolean;
+  _active: boolean;
   _importStatusTimer: number;
   _isImportingUrl: boolean;
   _dragState: LayerDragState | null;
@@ -479,16 +461,14 @@ class LayerManagerControl {
   _boundReorderPointerCancel: (event: PointerEvent) => void;
   _boundAccessChange: (event: Event) => void;
   _boundViewportChange: () => void;
-  _boundRoutingPanelOpen: () => void;
   _boundActiveLayerChange: (event: Event) => void;
-  _boundAnyPanelOpen: (event: Event) => void;
 
   constructor(layerStore?: LayerStore) {
     this._layerStore = layerStore;
     this._unsubscribeLayerStore = null;
     this._layerItems = [];
     this._selectedId = null;
-    this._expanded = false;
+    this._active = false;
     this._importStatusTimer = 0;
     this._isImportingUrl = false;
     this._dragState = null;
@@ -507,33 +487,20 @@ class LayerManagerControl {
       this._setCanEdit(detail?.canEdit !== false);
     };
     this._boundViewportChange = () => this._syncViewportMode();
-    this._boundRoutingPanelOpen = () => this.setExpanded(false);
     this._boundActiveLayerChange = (event) => this._handleActiveLayerChange(event);
-    this._boundAnyPanelOpen = (event) => {
-      if (isOtherUiPanelOpen(event, 'layers')) this.setExpanded(false);
-    };
   }
 
-  onAdd(map: LayerManagerMap) {
+  // reveal opens the hosting panel, e.g. when a file is imported by drag and drop.
+  mount(map: LayerManagerMap, host: HTMLElement, reveal?: () => void) {
     this._map = map;
-    this._control = el('div', 'maplibregl-ctrl maplibregl-ctrl-group layer-manager-control');
-    this._button = el('button', 'maplibregl-ctrl-layers', this._control);
-    this._button.type = 'button';
-    this._button.title = 'Layers';
-    this._button.setAttribute('aria-label', 'Layers');
-    this._button.setAttribute('aria-expanded', 'false');
-    appendIcon(this._button, LayersIcon);
-    this._button.addEventListener('click', () => this.setExpanded(!this._expanded));
+    this._panel = host;
+    this._reveal = reveal;
+    host.classList.add('layer-manager');
+    host.setAttribute('aria-label', 'Layers');
 
-    this._panel = el('section', 'layer-manager-panel', map.getContainer());
-    this._panel.setAttribute('aria-label', 'Layer manager');
-    this._panel.setAttribute('aria-hidden', 'true');
-    stopMapControlPropagation(this._panel);
-
-    const header = el('div', 'layer-manager-header', this._panel);
+    const header = el('div', 'layer-manager-header', host);
     const titleWrap = el('div', 'layer-manager-title-wrap', header);
-    this._title = el('div', 'layer-manager-title', titleWrap);
-    this._title.textContent = 'Layers';
+    el('div', 'layer-manager-title', titleWrap).textContent = 'Layers';
     this._summary = el('div', 'layer-manager-summary', titleWrap);
 
     this._importButton = el('button', 'layer-manager-import', header);
@@ -543,15 +510,12 @@ class LayerManagerControl {
     appendIcon(this._importButton, PlusIcon);
     this._importButton.addEventListener('click', () => this._createAnnotationLayer());
 
-    this._closeButton = el('button', 'layer-manager-close', header);
-    this._closeButton.type = 'button';
-    this._closeButton.title = 'Close layers';
-    this._closeButton.setAttribute('aria-label', 'Close layers');
-    appendIcon(this._closeButton, XIcon);
-    this._closeButton.addEventListener('click', () => this.setExpanded(false));
-
-    const body = el('div', 'layer-manager-body', this._panel);
-    const importRow = el('div', 'layer-manager-import-row', body);
+    const body = el('div', 'layer-manager-body', host);
+    const importFold = el('details', 'layer-manager-import-fold');
+    const importSummary = el('summary', 'layer-manager-import-summary', importFold);
+    el('span', 'layer-manager-import-title', importSummary).textContent = 'Import';
+    el('span', 'layer-manager-import-hint', importSummary).textContent = 'GPX or GeoJSON file or URL';
+    const importRow = el('div', 'layer-manager-import-row', importFold);
     this._dropZone = el('button', 'layer-manager-dropzone', importRow);
     this._dropZone.type = 'button';
     appendIcon(this._dropZone, UploadIcon);
@@ -571,7 +535,7 @@ class LayerManagerControl {
       this._importFiles(files);
     });
 
-    this._urlForm = el('form', 'layer-manager-url-form', body);
+    this._urlForm = el('form', 'layer-manager-url-form', importFold);
     this._urlInput = el('input', 'layer-manager-url-input', this._urlForm);
     this._urlInput.type = 'url';
     this._urlInput.placeholder = 'https://example.com/track.gpx';
@@ -659,11 +623,6 @@ class LayerManagerControl {
     appendIconLabel(this._zoomButton, LocateFixedIcon, 'Zoom');
     this._zoomButton.addEventListener('click', () => fitLayerItemBounds(this._map, this._selectedLayerItem()));
 
-    this._editButton = el('button', 'layer-manager-action layer-manager-edit', detailActions);
-    this._editButton.type = 'button';
-    appendIconLabel(this._editButton, PencilIcon, 'Edit');
-    this._editButton.addEventListener('click', () => this._editSelected());
-
     this._exportButton = el('button', 'layer-manager-action', detailActions);
     this._exportButton.type = 'button';
     appendIconLabel(this._exportButton, DownloadIcon, 'Export');
@@ -673,6 +632,7 @@ class LayerManagerControl {
     this._deleteButton.type = 'button';
     appendIconLabel(this._deleteButton, TrashIcon, 'Delete');
     this._deleteButton.addEventListener('click', () => this._removeSelected());
+    body.appendChild(importFold);
 
     this._panel.addEventListener('dragover', (event) => {
       if (!this._canEdit) return;
@@ -692,9 +652,7 @@ class LayerManagerControl {
     map.getContainer().addEventListener('layer-sync:remote-add', this._boundFileLayerRemoteAdd);
     map.getContainer().addEventListener('layer-sync:remote-list', this._boundFileLayerRemoteList);
     map.getContainer().addEventListener('layer-sync:remote-delete', this._boundFileLayerRemoteDelete);
-    map.getContainer().addEventListener('routing:panelopen', this._boundRoutingPanelOpen);
     map.getContainer().addEventListener(ANNOTATION_ACTIVE_LAYER_EVENT, this._boundActiveLayerChange);
-    map.getContainer().addEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     map.getContainer().addEventListener(COLLABORATION_ACCESS_EVENT, this._boundAccessChange);
     window.addEventListener('keydown', this._boundKeydown);
     window.addEventListener('resize', this._boundViewportChange, { passive: true });
@@ -703,45 +661,28 @@ class LayerManagerControl {
     this._syncViewportMode();
     this._syncPanelInteractivity();
     this._render();
-    return this._control;
   }
 
-  onRemove() {
+  unmount() {
     this._map.getContainer().removeEventListener('layer:add', this._boundLayerAdded);
     this._map.getContainer().removeEventListener('layer-sync:remote-add', this._boundFileLayerRemoteAdd);
     this._map.getContainer().removeEventListener('layer-sync:remote-list', this._boundFileLayerRemoteList);
     this._map.getContainer().removeEventListener('layer-sync:remote-delete', this._boundFileLayerRemoteDelete);
-    this._map.getContainer().removeEventListener('routing:panelopen', this._boundRoutingPanelOpen);
     this._map.getContainer().removeEventListener(ANNOTATION_ACTIVE_LAYER_EVENT, this._boundActiveLayerChange);
-    this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     this._map.getContainer().removeEventListener(COLLABORATION_ACCESS_EVENT, this._boundAccessChange);
     this._cancelReorderListeners();
     window.removeEventListener('keydown', this._boundKeydown);
     window.removeEventListener('resize', this._boundViewportChange);
     this._unsubscribeLayerStore?.();
     this._unsubscribeLayerStore = null;
-    this._map.getContainer().dataset.layerManagerPanelOpen = 'false';
-    this._panel?.remove();
-    this._control?.remove();
+    this._panel?.replaceChildren();
     this._map = undefined;
   }
 
-  // The floating panel, which layers-panel.ts extends with other panels' content.
-  get panelElement() {
-    return this._panel;
-  }
-
-  setExpanded(expanded: boolean) {
-    this._expanded = Boolean(expanded);
-    if (this._expanded) {
-      emitUiPanelOpen(this._map.getContainer(), 'layers');
-      this._map.getContainer().dispatchEvent(new CustomEvent('layer-manager:panelopen'));
-    }
-    this._button.classList.toggle('maplibregl-ctrl-layers-enabled', this._expanded);
-    this._button.setAttribute('aria-expanded', this._expanded ? 'true' : 'false');
-    this._panel.classList.toggle('layer-manager-panel-visible', this._expanded);
-    this._panel.setAttribute('aria-hidden', this._expanded ? 'false' : 'true');
-    this._map.getContainer().dataset.layerManagerPanelOpen = this._expanded ? 'true' : 'false';
+  // Controls only work while the panel holding the layer list is open.
+  setActive(active: boolean) {
+    this._active = Boolean(active);
+    if (!this._active) this._cancelReorder();
     this._syncPanelInteractivity();
     this._syncDetails();
   }
@@ -757,15 +698,12 @@ class LayerManagerControl {
   _syncPanelInteractivity() {
     if (!this._panel) return;
     for (const element of this._panel.querySelectorAll('button, input, select, textarea')) {
-      // Panels nested in this one (layers-panel.ts) manage their own controls.
-      if (element.closest('[data-embedded-panel]')) continue;
-      (element as Element & { disabled: boolean }).disabled = !this._expanded;
+      (element as Element & { disabled: boolean }).disabled = !this._active;
     }
-    if (!this._expanded) return;
+    if (!this._active) return;
 
     const selected = this._selectedLayerItem();
     const mutationDisabled = !this._canEdit;
-    this._closeButton.disabled = false;
     this._importButton.disabled = mutationDisabled;
     this._dropZone.disabled = mutationDisabled;
     this._fileInput.disabled = mutationDisabled;
@@ -776,7 +714,6 @@ class LayerManagerControl {
     this._widthInput.disabled = mutationDisabled || !selected;
     this._opacityInput.disabled = mutationDisabled || !selected;
     this._zoomButton.disabled = !selected?.bounds;
-    this._editButton.disabled = mutationDisabled || !isAnnotationLayerItem(selected);
     this._exportButton.disabled = !selected?.data;
     this._deleteButton.disabled = mutationDisabled || !selected;
 
@@ -820,7 +757,7 @@ class LayerManagerControl {
     if (remote) this._sortLayerItemsByRemoteManifestOrder();
     else this._placeLayerItemsByLayerSortOrder();
     if (remote) this._syncPanelInteractivity();
-    else this.setExpanded(true);
+    else this._reveal?.();
     this._syncMapStyleLayerOrder();
     this._render();
     if (!remote) this._emitLayerSyncUpsert(normalized);
@@ -1347,18 +1284,6 @@ class LayerManagerControl {
     exportJson(layerItem.data, `${baseName}.geojson`);
   }
 
-  _editSelected() {
-    if (!this._canEdit) return;
-    const layerItem = this._selectedLayerItem();
-    if (!isAnnotationLayerItem(layerItem)) return;
-    this.setExpanded(false);
-    this._map.getContainer().dispatchEvent(
-      new CustomEvent('annotation:open', {
-        detail: { layerId: layerItem.annotationLayerId || ANNOTATION_DEFAULT_LAYER_ID },
-      }),
-    );
-  }
-
   _syncMapStyleLayerOrder() {
     if (!this._map) return;
     for (const layerItem of this._layerItems.slice().reverse()) {
@@ -1572,11 +1497,7 @@ class LayerManagerControl {
 
   _handleKeydown(event: KeyboardEvent) {
     if (event.key !== 'Escape') return;
-    if (this._dragState) {
-      this._finishReorder(null);
-      return;
-    }
-    if (this._expanded) this.setExpanded(false);
+    if (this._dragState) this._finishReorder(null);
   }
 
   _syncViewportMode() {
@@ -1612,7 +1533,7 @@ class LayerManagerControl {
       reorder.title = 'Drag or use arrow keys to reorder';
       reorder.setAttribute('aria-label', `Reorder ${layerItem.name}`);
       reorder.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
-      reorder.disabled = !this._canEdit || !this._expanded;
+      reorder.disabled = !this._canEdit || !this._active;
       appendIcon(reorder, GripVerticalIcon);
       reorder.addEventListener('pointerdown', (event) => this._beginReorder(event, layerItem.id));
       reorder.addEventListener('pointermove', (event) => this._updateReorder(event));
@@ -1626,7 +1547,7 @@ class LayerManagerControl {
       visibility.setAttribute('aria-label', visibility.title);
       visibility.classList.add('layer-manager-visibility-button');
       visibility.classList.toggle('visible', layerItem.visible);
-      visibility.disabled = !this._canEdit || !this._expanded;
+      visibility.disabled = !this._canEdit || !this._active;
       appendIcon(visibility, layerItem.visible ? EyeIcon : EyeOffIcon);
       visibility.addEventListener('click', () => this._toggleLayerItemVisibility(layerItem));
 
@@ -1644,7 +1565,7 @@ class LayerManagerControl {
       zoom.setAttribute('aria-label', 'Zoom to layer');
       zoom.classList.add('layer-manager-zoom-button');
       appendIcon(zoom, LocateFixedIcon);
-      zoom.disabled = !this._expanded || !layerItem.bounds;
+      zoom.disabled = !this._active || !layerItem.bounds;
       zoom.addEventListener('click', () => fitLayerItemBounds(this._map, layerItem));
     }
     this._syncPanelInteractivity();
@@ -1681,7 +1602,6 @@ class LayerManagerControl {
     this._opacityInput.value = String(Math.round(opacity * 100));
     this._opacityValue.textContent = `${Math.round(opacity * 100)}%`;
     this._zoomButton.disabled = !layerItem.bounds;
-    this._editButton.hidden = !isAnnotationLayerItem(layerItem);
     this._deleteButton.querySelector('.layer-manager-action-label').textContent = this._shouldClearAnnotationLayer(
       layerItem,
     )
@@ -1701,10 +1621,16 @@ function mergeBounds(a: LayerBounds | null, b: BoundsLike | null | undefined): L
   ];
 }
 
+export type { LayerManager };
+
 export function createLayerManager(layerStore?: LayerStore) {
-  return new LayerManagerControl(layerStore);
+  return new LayerManager(layerStore);
 }
 
+// Mounts the layer list into a new element in the map container and turns it on.
 export function installLayerManager(map: LayerManagerMap, layerStore?: LayerStore) {
-  map.addControl(createLayerManager(layerStore), 'top-right');
+  const layerManager = createLayerManager(layerStore);
+  layerManager.mount(map, el('section', undefined, map.getContainer()));
+  layerManager.setActive(true);
+  return layerManager;
 }

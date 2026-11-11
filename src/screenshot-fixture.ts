@@ -571,15 +571,14 @@ function openControl(selector: string) {
 }
 
 function preparePanelState(mode: ScreenshotFixtureMode) {
+  // The layer list lives in the annotation panel.
   if (mode === 'layers') {
-    openControl('.maplibregl-ctrl-layers');
+    openControl('.maplibregl-ctrl-annotation');
   } else if (mode === 'annotations') {
     openControl('.maplibregl-ctrl-annotation');
-    const layerSelect = document.querySelector('.annotation-layer-field select') as unknown as HTMLSelectElement | null;
-    if (layerSelect) {
-      layerSelect.value = CITYWALK_LAYER_ID;
-      layerSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    document
+      .querySelector('#map')
+      ?.dispatchEvent(new CustomEvent('annotation:activelayerchange', { detail: { layerId: CITYWALK_LAYER_ID } }));
     const areaButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.annotation-mode-button')).find(
       (button) => button.textContent?.includes('Area'),
     );

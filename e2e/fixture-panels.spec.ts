@@ -7,8 +7,8 @@ test.describe('fixture-backed panel rendering', () => {
 
     await openFixture(page, 'layers');
 
-    const panel = page.locator('.layer-manager-panel');
-    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await expect(page.locator('.annotation-panel')).toHaveAttribute('aria-hidden', 'false');
+    const panel = page.locator('.annotation-panel .layer-manager');
     await expect(
       panel.locator('.layer-manager-item-name', { hasText: 'Routes: Wukang Road, metro, Bund' }),
     ).toBeVisible();
@@ -32,7 +32,9 @@ test.describe('fixture-backed panel rendering', () => {
     const panel = page.locator('.annotation-panel');
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
     await expect(page.getByRole('button', { name: 'Area' })).toHaveClass(/active/);
-    await expect(page.locator('.annotation-layer-field select')).toHaveValue('citywalk');
+    await expect(page.locator('.layer-manager-item.selected .layer-manager-item-name')).toHaveText(
+      'Shanghai weekend city walk',
+    );
     await expect(page.getByText('Routing endpoint')).toBeHidden();
     await expect(page.locator('#map')).toHaveAttribute('data-annotation-picker-active', 'true');
 

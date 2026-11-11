@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { installBrowserErrorWatch, mapState, openApp } from './support/map-fixture';
-import { openLayers, openLayersFold, openRouting } from './support/map-interactions';
+import { openImport, openLayerList, openLayers } from './support/map-interactions';
 
 test.describe('map shell', () => {
   test('boots a real MapLibre map and exposes the primary controls', async ({ page }) => {
@@ -27,52 +27,43 @@ test.describe('map shell', () => {
 
     await openApp(page);
 
-    const layersButton = page.locator('.maplibregl-ctrl-layers');
+    const layersButton = page.locator('.maplibregl-ctrl-map-layers');
     const annotationsButton = page.locator('.maplibregl-ctrl-annotation');
 
     await layersButton.click();
-    await expect(page.locator('.layer-manager-panel')).toHaveAttribute('aria-hidden', 'false');
+    await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'false');
     await expect(page.locator('.annotation-panel')).toHaveAttribute('aria-hidden', 'true');
 
     await annotationsButton.click();
     await expect(page.locator('.annotation-panel')).toHaveAttribute('aria-hidden', 'false');
-    await expect(page.locator('.layer-manager-panel')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'true');
 
-    await openRouting(page);
+    await layersButton.click();
     await expect(page.locator('.annotation-panel')).toHaveAttribute('aria-hidden', 'true');
-    await expect(page.locator('.layer-manager-panel')).toHaveAttribute('aria-hidden', 'false');
-
     await page.getByRole('button', { name: 'Close layers' }).click();
-    await expect(page.locator('.routing-panel')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'true');
 
     errors.assertNoErrors();
   });
 
-  test('shows map toggles, layers and foldable import and navigation in one Layers panel', async ({ page }) => {
+  test('keeps the layer list and a foldable import in the annotation panel', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
 
     await openApp(page);
-    const panel = await openLayers(page);
-    await expect(panel.getByLabel('Hybrid')).toBeVisible();
-    await expect(panel.getByLabel('Contour lines')).toBeVisible();
+    const list = await openLayerList(page);
+    await expect(list.locator('.layer-manager-item-name', { hasText: 'Annotations' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Import GPX / GeoJSON' })).toBeHidden();
-    await expect(page.locator('.routing-panel')).toHaveAttribute('aria-hidden', 'true');
 
-    await openLayersFold(page, 'Import');
+    await openImport(page);
     await expect(page.getByRole('button', { name: 'Import GPX / GeoJSON' })).toBeVisible();
 
-    await openRouting(page);
-    await expect(page.getByRole('button', { name: 'Add route' })).toBeVisible();
-
-    await page.getByRole('button', { name: 'Close layers' }).click();
-    await expect(page.locator('.routing-panel')).toHaveAttribute('aria-hidden', 'true');
-    await page.locator('.maplibregl-ctrl-layers').click();
-    await expect(page.locator('.routing-panel')).toHaveAttribute('aria-hidden', 'false');
+    await page.getByRole('button', { name: 'Close annotations' }).click();
+    await expect(page.locator('.layer-manager-dropzone')).toBeDisabled();
 
     errors.assertNoErrors();
   });
 
-  test('switches base map, terrain and 3D from the map display panel', async ({ page }) => {
+  test('switches base map, terrain and 3D from the Layers panel', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
 
     await openApp(page);

@@ -9,12 +9,12 @@ test.describe('mobile map shell', () => {
 
     await expect(page.locator('#map canvas')).toBeVisible();
     await page.getByRole('button', { name: 'Layers' }).click();
-    await expect(page.locator('.layer-manager-panel')).toHaveAttribute('aria-hidden', 'false');
-    await expect(page.locator('#map')).toHaveAttribute('data-layer-manager-panel-open', 'true');
+    await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'false');
+    await expect(page.locator('#map')).toHaveAttribute('data-map-layers-panel-open', 'true');
 
     await page.getByRole('button', { name: 'Close layers' }).click();
-    await expect(page.locator('.layer-manager-panel')).toHaveAttribute('aria-hidden', 'true');
-    await expect(page.locator('#map')).toHaveAttribute('data-layer-manager-panel-open', 'false');
+    await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#map')).toHaveAttribute('data-map-layers-panel-open', 'false');
 
     errors.assertNoErrors();
   });

@@ -29,7 +29,7 @@ Running a single test:
 
 ```bash
 pnpm vitest run --config vitest.config.js src/gpx.test.ts -t 'name substring'
-pnpm exec playwright test e2e/routing.spec.ts --project chromium
+pnpm exec playwright test e2e/annotations.spec.ts --project chromium
 ```
 
 Test conventions:
@@ -54,13 +54,12 @@ The browser requests `/tiles/openrailwaymap/{z}/{x}/{y}.mvt?v=<TILE_VERSION>`, s
 
 ### Browser app (`src/main.ts`)
 
-`main.ts` merges the OpenFreeMap base style with the OpenRailwayMap style, adds hillshade, contours and satellite imagery, sets the globe projection with a sky/atmosphere (space backdrop is CSS on `#map`), and wires feature modules, each exposed as an `install*`/`create*` function: GPX/GeoJSON import (`gpx.ts`), popups (`popup.ts`, structured sections for lines and stations), Photon search, weather picker, the railway filter, the Layers panel, and annotation renderer and tools. `LayerStore` (`src/layer-store.ts`) is the in-browser state for layers and features. Use `src/style-ready.ts` helpers when touching the map style, because imports can arrive before the style has loaded.
+`main.ts` merges the OpenFreeMap base style with the OpenRailwayMap style, adds hillshade, contours and satellite imagery, sets the globe projection with a sky/atmosphere (space backdrop is CSS on `#map`), and wires feature modules, each exposed as an `install*`/`create*` function: GPX/GeoJSON import (`gpx.ts`), popups (`popup.ts`, structured sections for lines and stations), Photon search, weather picker, the railway filter, the Layers panel (`map-layers-panel.ts`), and the annotation renderer and tools. The Annotations panel (`annotation-tools.ts`) also holds the layer list with GPX/GeoJSON import: `layer-manager.ts` has no panel of its own and is mounted there, active only while that panel is open. Selecting an annotation layer in the list picks where new annotations go. The Route annotation tool calls OSRM through `osrm.ts`. `LayerStore` (`src/layer-store.ts`) is the in-browser state for layers and features. Use `src/style-ready.ts` helpers when touching the map style, because imports can arrive before the style has loaded.
 
 Display settings are applied by rewriting the style once at load and then flipping MapLibre `global-state`, never by editing layers one by one:
 
 - `railway-filter.ts` adds filter clauses to railway line/station layers and an overlay visibility switch; `railway-filter-panel.ts` is its panel.
-- `map-layers.ts` handles base map / satellite / hybrid visibility, hybrid road and label styling, base map saturation, label language and terrain layer switches; `map-layers-panel.ts` is its UI.
-- `layers-panel.ts` builds the single Layers panel: the layer manager's panel with the map display toggles on top and foldable Import and Navigation (routing, `routing.ts` in `embedded` mode) sections.
+- `map-layers.ts` handles base map / satellite / hybrid visibility, hybrid road and label styling, base map saturation, label language and terrain layer switches; `map-layers-panel.ts` is its UI, the Layers panel.
 - `map-panel.ts` holds the shared panel markup; `stored-settings.ts` persists settings in localStorage.
 
 Zoom curves cannot be nested inside other expressions, so the rewrites map over a curve's stop outputs (`mapZoomOutputs`). Unit tests validate rewritten styles with `@maplibre/maplibre-gl-style-spec` and evaluate the expressions directly.

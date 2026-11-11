@@ -30,7 +30,7 @@ import {
   sanitizeAnnotationWeatherDays,
   createAnnotationId,
 } from './annotation-model.js';
-import { buildRouteUrl, formatDistance, formatDuration, normalizeEndpoint } from './routing.js';
+import { buildRouteUrl, formatDistance, formatDuration, normalizeEndpoint } from './osrm.js';
 import { formatDateLocal, reverseGeocode } from './weather-dashboard.js';
 import { runWhenStyleInfrastructureReady } from './style-ready.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
@@ -46,8 +46,9 @@ import type {
   AnnotationRouteProfile,
   LngLatTuple,
 } from './annotation-model.js';
+import { createLayerManager, type LayerManager, type LayerManagerMap } from './layer-manager.js';
 import type { LayerStore } from './layer-store.js';
-import type { OsrmRouteResponse } from './routing.js';
+import type { OsrmRouteResponse } from './osrm.js';
 
 const ANNOTATION_PICKER_DATASET_KEY = 'annotationPickerActive';
 const ANNOTATION_ENDPOINT_KEY = 'orm-annotation-osrm-endpoint';
@@ -85,7 +86,7 @@ type AnnotationControl = {
   onAdd(map: AnnotationMap): HTMLElement;
   onRemove(): void;
 };
-type AnnotationMap = {
+type AnnotationMap = LayerManagerMap & {
   _styleInitialized?: boolean;
   _styleInfrastructureInitialized?: boolean;
   style?: { _loaded?: boolean };
@@ -299,7 +300,7 @@ class AnnotationToolsControl {
   _summary: HTMLElement;
   _closeButton: HTMLButtonElement;
   _modeButtons: Record<AnnotationMode, HTMLButtonElement>;
-  _layerSelect: HTMLSelectElement;
+  _layerManager: LayerManager;
   _labelInput: HTMLInputElement;
   _noteInput: HTMLTextAreaElement;
   _colorSwatches: HTMLElement;
@@ -352,9 +353,6 @@ class AnnotationToolsControl {
   _boundFeatureDblClick: (event: Event) => void;
   _boundKeydown: (event: KeyboardEvent) => void;
   _boundAccessChange: (event: Event) => void;
-  _boundOverlayPanelOpen: () => void;
-  _boundRoutingPanelOpen: () => void;
-  _boundAnnotationOpen: (event: Event) => void;
   _boundActiveLayerChange: (event: Event) => void;
   _boundAnyPanelOpen: (event: Event) => void;
   _unsubscribeStore: (() => void) | null = null;
@@ -362,6 +360,7 @@ class AnnotationToolsControl {
   constructor(store: LayerStore) {
     this._store = store;
     this._modeButtons = {} as Record<AnnotationMode, HTMLButtonElement>;
+    this._layerManager = createLayerManager(store);
     this._boundMapClick = (event) => this._handleMapClick(event);
     this._boundMapDblClick = (event) => this._handleMapDblClick(event);
     this._boundFeatureClick = (event) => this._handleFeatureClick(event);
@@ -370,13 +369,6 @@ class AnnotationToolsControl {
     this._boundAccessChange = (event) => {
       const detail = (event as CustomEvent<CollaborationAccessDetail>).detail;
       this._setCanEdit(detail?.canEdit !== false);
-    };
-    this._boundOverlayPanelOpen = () => this.setExpanded(false);
-    this._boundRoutingPanelOpen = () => this.setExpanded(false);
-    this._boundAnnotationOpen = (event) => {
-      const layerId = (event as CustomEvent<AnnotationLayerEventDetail>).detail?.layerId;
-      if (typeof layerId === 'string') this._setActiveLayer(layerId, { emit: false });
-      this.setExpanded(true);
     };
     this._boundActiveLayerChange = (event) => {
       const layerId = (event as CustomEvent<AnnotationLayerEventDetail>).detail?.layerId;
@@ -426,12 +418,6 @@ class AnnotationToolsControl {
     this._appendModeButton(modes, 'path', PenLineIcon, 'Line');
     this._appendModeButton(modes, 'polygon', PentagonIcon, 'Area');
     this._appendModeButton(modes, 'route', RouteIcon, 'Route');
-
-    const layerField = el('label', 'annotation-field annotation-layer-field', body);
-    const layerLabel = el('span', 'annotation-field-label', layerField);
-    layerLabel.textContent = 'Layer';
-    this._layerSelect = el('select', 'annotation-input', layerField);
-    this._layerSelect.addEventListener('change', () => this._setActiveLayer(this._layerSelect.value));
 
     this._selectHint = el('div', 'annotation-select-hint', body);
     this._selectHint.textContent = 'Tap an annotation on the map to edit it';
@@ -575,6 +561,10 @@ class AnnotationToolsControl {
     this._status.setAttribute('role', 'status');
     this._status.setAttribute('aria-live', 'polite');
 
+    // The layer list: selecting an annotation layer there picks where new
+    // annotations go. Imports open this panel.
+    this._layerManager.mount(map, el('section', 'annotation-layers', body), () => this.setExpanded(true));
+
     this._installDraftLayer();
     this._unsubscribeStore = this._store.subscribe((event) => {
       if (event.type === 'ids:remap') {
@@ -589,9 +579,6 @@ class AnnotationToolsControl {
     map.on('dblclick', this._boundMapDblClick);
     map.getContainer().addEventListener('annotation:featureclick', this._boundFeatureClick);
     map.getContainer().addEventListener('annotation:featuredblclick', this._boundFeatureDblClick);
-    map.getContainer().addEventListener('layer-manager:panelopen', this._boundOverlayPanelOpen);
-    map.getContainer().addEventListener('routing:panelopen', this._boundRoutingPanelOpen);
-    map.getContainer().addEventListener('annotation:open', this._boundAnnotationOpen);
     map.getContainer().addEventListener(ANNOTATION_ACTIVE_LAYER_EVENT, this._boundActiveLayerChange);
     map.getContainer().addEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     map.getContainer().addEventListener(COLLABORATION_ACCESS_EVENT, this._boundAccessChange);
@@ -609,15 +596,13 @@ class AnnotationToolsControl {
     this._map.off('dblclick', this._boundMapDblClick);
     this._map.getContainer().removeEventListener('annotation:featureclick', this._boundFeatureClick);
     this._map.getContainer().removeEventListener('annotation:featuredblclick', this._boundFeatureDblClick);
-    this._map.getContainer().removeEventListener('layer-manager:panelopen', this._boundOverlayPanelOpen);
-    this._map.getContainer().removeEventListener('routing:panelopen', this._boundRoutingPanelOpen);
-    this._map.getContainer().removeEventListener('annotation:open', this._boundAnnotationOpen);
     this._map.getContainer().removeEventListener(ANNOTATION_ACTIVE_LAYER_EVENT, this._boundActiveLayerChange);
     this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     this._map.getContainer().removeEventListener(COLLABORATION_ACCESS_EVENT, this._boundAccessChange);
     window.removeEventListener('keydown', this._boundKeydown);
     this._closeEditor();
     this._removeDraftLayer();
+    this._layerManager.unmount();
     this._panel?.remove();
     this._control?.remove();
     this._map.getContainer().dataset[ANNOTATION_PICKER_DATASET_KEY] = 'false';
@@ -658,6 +643,7 @@ class AnnotationToolsControl {
     this._button.setAttribute('aria-expanded', this._expanded ? 'true' : 'false');
     this._panel.classList.toggle('annotation-panel-visible', this._expanded);
     this._panel.setAttribute('aria-hidden', this._expanded ? 'false' : 'true');
+    this._layerManager.setActive(this._expanded);
     this._sync();
   }
 
@@ -1538,7 +1524,6 @@ class AnnotationToolsControl {
   _sync() {
     if (!this._map) return;
     if (!this._store.getAnnotationLayer(this._activeLayerId)) this._activeLayerId = this._fallbackActiveLayerId();
-    this._syncLayerSelect();
     const layerVisible = this._isActiveLayerVisible();
     if ((!this._canEdit || !layerVisible) && this._mode !== 'select') {
       this._mode = 'select';
@@ -1561,7 +1546,7 @@ class AnnotationToolsControl {
         ? `${draftCount} draft point${draftCount === 1 ? '' : 's'}`
         : selected
           ? `${selected.type} selected`
-          : `${featureCount} feature${featureCount === 1 ? '' : 's'}`;
+          : this._featureSummary(featureCount);
     this._map.getContainer().dataset[ANNOTATION_PICKER_DATASET_KEY] = isAnnotationPickerInteractionActive({
       expanded: this._expanded,
       layerVisible,
@@ -1640,7 +1625,6 @@ class AnnotationToolsControl {
     this._labelInput.disabled = !this._canEdit || !this._expanded || this._isRouting;
     this._noteInput.disabled = !this._canEdit || !this._expanded || this._isRouting;
     this._customColor.disabled = !this._canEdit || !this._expanded || this._isRouting || !layerVisible || mapLoading;
-    this._layerSelect.disabled = !this._expanded || this._isRouting;
     if (this._expanded && mapLoading) this._setStatus('Map style loading...');
     if (!mapLoading && this._status.textContent === 'Map style loading...') this._setStatus('');
     this._syncSwatches();
@@ -1656,25 +1640,13 @@ class AnnotationToolsControl {
     }
   }
 
-  _syncLayerSelect() {
-    const layerOptions = this._store.getAnnotationLayers();
-    const currentOptionIds = Array.from(this._layerSelect.options).map((option) => option.value);
-    const nextOptionIds = layerOptions.map((layer) => layer.id);
-    if (currentOptionIds.join('\n') !== nextOptionIds.join('\n')) {
-      while (this._layerSelect.firstChild) this._layerSelect.firstChild.remove();
-      for (const layer of layerOptions) {
-        const option = document.createElement('option');
-        option.value = layer.id;
-        option.textContent = layer.name || 'Annotations';
-        this._layerSelect.appendChild(option);
-      }
-    } else {
-      for (const option of Array.from(this._layerSelect.options)) {
-        const layer = layerOptions.find((item) => item.id === option.value);
-        if (layer && option.textContent !== layer.name) option.textContent = layer.name || 'Annotations';
-      }
-    }
-    this._layerSelect.value = this._activeLayerId;
+  // With several annotation layers, name the one new annotations go into.
+  _featureSummary(featureCount: number) {
+    const count = `${featureCount} feature${featureCount === 1 ? '' : 's'}`;
+    const layers = this._store.getAnnotationLayers();
+    if (layers.length < 2) return count;
+    const active = layers.find((layer) => layer.id === this._activeLayerId);
+    return `${count} · adding to ${active?.name || 'Annotations'}`;
   }
 }
 

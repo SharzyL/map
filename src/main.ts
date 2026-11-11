@@ -7,8 +7,6 @@ import { installGpxDragDrop, drainGpxQueue, processOrQueueGpx, processOrQueueGeo
 import { installOrmPopups, buildFeatureCatalog } from './popup.js';
 import { installPhotonSearch } from './search.js';
 import { installWeatherPointPicker } from './weather.js';
-import { createLayerManager } from './layer-manager.js';
-import { createOsrmRouting } from './routing.js';
 import { runWhenStyleInfrastructureReady } from './style-ready.js';
 import { LayerStore } from './layer-store.js';
 import { installAnnotationRenderer } from './annotation-renderer.js';
@@ -30,8 +28,7 @@ import {
   withSatelliteVisibility,
   type MapLayerSettings,
 } from './map-layers.js';
-import { createMapLayers } from './map-layers-panel.js';
-import { installLayersPanel } from './layers-panel.js';
+import { installMapLayers } from './map-layers-panel.js';
 import type * as ScreenshotFixtureModule from './screenshot-fixture.js';
 
 const LOCAL_ORM_PREFIX = '/orm';
@@ -649,11 +646,7 @@ async function init() {
     }
     installAnnotationRenderer(map, layerStore);
     installAnnotationTools(map, layerStore);
-    installLayersPanel(map, {
-      layerManager: createLayerManager(layerStore),
-      mapLayers: createMapLayers(mapLayers),
-      routing: createOsrmRouting(maplibregl, { embedded: true }),
-    });
+    installMapLayers(map, mapLayers);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }

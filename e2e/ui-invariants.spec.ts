@@ -19,7 +19,7 @@ test.describe('first-principles UI invariants', () => {
 
     const controls = [
       page.getByRole('button', { name: 'Zoom in' }),
-      page.locator('.maplibregl-ctrl-layers'),
+      page.locator('.maplibregl-ctrl-map-layers'),
       page.locator('.maplibregl-ctrl-annotation'),
       page.getByRole('button', { name: 'Pick a point for weather' }),
       page.getByRole('button', { name: 'Railway filter' }),
@@ -38,20 +38,18 @@ test.describe('first-principles UI invariants', () => {
 
     const panelFlows = [
       {
-        open: page.locator('.maplibregl-ctrl-layers'),
-        panel: page.locator('.layer-manager-panel'),
+        open: page.locator('.maplibregl-ctrl-map-layers'),
+        panel: page.locator('.map-layers-panel'),
         close: page.getByRole('button', { name: 'Close layers' }),
-        afterOpen: async () => {
-          for (const title of ['Import', 'Navigation']) {
-            await page.locator('.layers-panel-fold', { hasText: title }).locator('summary').click();
-          }
-        },
+        afterOpen: async () => {},
       },
       {
         open: page.locator('.maplibregl-ctrl-annotation'),
         panel: page.locator('.annotation-panel'),
         close: page.getByRole('button', { name: 'Close annotations' }),
-        afterOpen: async () => {},
+        afterOpen: async () => {
+          await page.locator('.layer-manager-import-fold summary').click();
+        },
       },
       {
         open: page.getByRole('button', { name: 'Railway filter' }),
@@ -89,7 +87,7 @@ test.describe('first-principles UI invariants', () => {
     const errors = await installBrowserErrorWatch(page);
 
     for (const [mode, panelSelector] of [
-      ['layers', '.layer-manager-panel'],
+      ['layers', '.annotation-panel'],
       ['annotations', '.annotation-panel'],
     ] as const) {
       await openFixture(page, mode);

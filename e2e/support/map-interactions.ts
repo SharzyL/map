@@ -35,27 +35,34 @@ export async function clickMap(page: Page, xRatio = 0.5, yRatio = 0.5) {
   await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
 }
 
+// The Layers panel: base map, terrain and other map display settings.
 export async function openLayers(page: Page) {
-  const panel = page.locator('.layer-manager-panel');
+  const panel = page.locator('.map-layers-panel');
   if ((await panel.getAttribute('aria-hidden')) !== 'false') {
-    await page.locator('.maplibregl-ctrl-layers').click();
+    await page.locator('.maplibregl-ctrl-map-layers').click();
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
   }
   return panel;
 }
 
-// Opens a foldable section (Import, Navigation) of the Layers panel.
-export async function openLayersFold(page: Page, title: 'Import' | 'Navigation') {
-  const panel = await openLayers(page);
-  const fold = panel.locator('.layers-panel-fold', { hasText: title });
+// The layer list (annotation layers and imported files) in the annotation panel.
+export async function openLayerList(page: Page) {
+  await openAnnotations(page);
+  return page.locator('.annotation-panel .layer-manager');
+}
+
+// Opens the Import fold below the layer list.
+export async function openImport(page: Page) {
+  const list = await openLayerList(page);
+  const fold = list.locator('.layer-manager-import-fold');
   if ((await fold.getAttribute('open')) === null) await fold.locator('summary').click();
   return fold;
 }
 
-export async function closeLayers(page: Page) {
-  const panel = page.locator('.layer-manager-panel');
+export async function closeAnnotations(page: Page) {
+  const panel = page.locator('.annotation-panel');
   if ((await panel.getAttribute('aria-hidden')) === 'false') {
-    await page.getByRole('button', { name: 'Close layers' }).click();
+    await page.getByRole('button', { name: 'Close annotations' }).click();
     await expect(panel).toHaveAttribute('aria-hidden', 'true');
   }
 }
@@ -69,16 +76,8 @@ export async function openAnnotations(page: Page) {
   return panel;
 }
 
-// Routing lives in the Navigation fold of the Layers panel.
-export async function openRouting(page: Page) {
-  await openLayersFold(page, 'Navigation');
-  const panel = page.locator('.routing-panel');
-  await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  return panel;
-}
-
 export async function selectLayer(page: Page, name: string) {
-  const panel = await openLayers(page);
+  const panel = await openLayerList(page);
   const row = panel.locator('.layer-manager-item', {
     has: page.locator('.layer-manager-item-name', { hasText: name }),
   });
@@ -88,24 +87,24 @@ export async function selectLayer(page: Page, name: string) {
 }
 
 export async function createAnnotationLayerFromUi(page: Page, name: string) {
-  await openLayers(page);
+  await openLayerList(page);
   await page.getByRole('button', { name: 'New annotation layer' }).click();
   const nameInput = page.locator('.layer-manager-name-input');
   await expect(nameInput).toBeEnabled();
   await nameInput.fill(name);
   await expect(page.locator('.layer-manager-item-name', { hasText: name })).toBeVisible();
-  await closeLayers(page);
+  await closeAnnotations(page);
 }
 
+// Selecting an annotation layer in the list makes new annotations go there.
 export async function openAnnotationsForLayer(page: Page, layerName: string) {
-  await openAnnotations(page);
-  await page.locator('.annotation-layer-field select').selectOption({ label: layerName });
+  await selectLayer(page, layerName);
 }
 
 export async function layerNames(page: Page) {
-  await openLayers(page);
+  await openLayerList(page);
   const names = await page.locator('.layer-manager-item-name').allTextContents();
-  await closeLayers(page);
+  await closeAnnotations(page);
   return names.map((name) => name.trim()).filter(Boolean);
 }
 

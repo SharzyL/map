@@ -1,6 +1,6 @@
 export const UI_PANEL_OPEN_EVENT = 'ui-panel:open';
 
-export type UiPanelId = 'annotations' | 'layers' | 'routing' | 'weather' | 'railways' | 'map-layers';
+export type UiPanelId = 'annotations' | 'weather' | 'railways' | 'map-layers';
 
 export type UiPanelOpenDetail = {
   id: UiPanelId;

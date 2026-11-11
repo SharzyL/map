@@ -7,8 +7,8 @@ import {
   expectFeatureMissing,
   mapLayerVisibility,
   openAnnotationsForLayer,
-  openLayers,
-  openLayersFold,
+  openImport,
+  openLayerList,
   selectLayer,
 } from './support/map-interactions';
 
@@ -18,7 +18,7 @@ test.describe('layer manager workflows in a real browser', () => {
     // that takes most of the default timeout on a CI runner.
     test.slow();
     await openApp(page);
-    const panel = await openLayers(page);
+    const panel = await openLayerList(page);
     for (let i = 1; i < 24; i++) await panel.getByRole('button', { name: 'New annotation layer' }).click();
     for (const viewport of [
       { width: 1280, height: 720 },
@@ -89,8 +89,8 @@ test.describe('layer manager workflows in a real browser', () => {
   test('imports GeoJSON from URL and exposes file layer style controls', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
-    const panel = await openLayers(page);
-    await openLayersFold(page, 'Import');
+    const panel = await openLayerList(page);
+    await openImport(page);
 
     await page
       .getByRole('textbox', { name: 'Layer URL' })
@@ -108,8 +108,8 @@ test.describe('layer manager workflows in a real browser', () => {
   test('imports GPX from URL and exposes track metadata', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
-    const panel = await openLayers(page);
-    await openLayersFold(page, 'Import');
+    const panel = await openLayerList(page);
+    await openImport(page);
 
     await page.getByRole('textbox', { name: 'Layer URL' }).fill(new URL('/fixtures/city-loop.gpx', page.url()).href);
     await page.getByRole('button', { name: 'Import from URL' }).click();
@@ -124,8 +124,8 @@ test.describe('layer manager workflows in a real browser', () => {
   test('toggles imported layer visibility on the underlying MapLibre layers', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
-    const panel = await openLayers(page);
-    await openLayersFold(page, 'Import');
+    const panel = await openLayerList(page);
+    await openImport(page);
 
     await page
       .getByRole('textbox', { name: 'Layer URL' })
@@ -152,7 +152,7 @@ test.describe('layer manager workflows in a real browser', () => {
     await openApp(page);
     await createAnnotationLayerFromUi(page, 'Layer A');
     await createAnnotationLayerFromUi(page, 'Layer B');
-    const panel = await openLayers(page);
+    const panel = await openLayerList(page);
 
     await panel.getByRole('button', { name: 'Reorder Layer B' }).focus();
     await page.keyboard.press('Home');

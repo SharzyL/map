@@ -1,4 +1,4 @@
-import MapIcon from 'lucide/dist/esm/icons/map.mjs';
+import LayersIcon from 'lucide/dist/esm/icons/layers.mjs';
 import {
   LABEL_LANGUAGES,
   MAP_BASES,
@@ -82,16 +82,16 @@ class MapLayersPanel {
 
     ({ control: this._control, button: this._button } = createPanelButton(
       'maplibregl-ctrl-map-layers',
-      'Map display',
-      MapIcon,
+      'Layers',
+      LayersIcon,
       'map-layers-icon',
     ));
     this._button.addEventListener('click', () => this.setExpanded(!this._expanded));
 
     const shell = createPanelShell(map.getContainer(), 'map-layers', {
-      title: 'Map display',
-      label: 'Map display',
-      closeLabel: 'Close map display',
+      title: 'Layers',
+      label: 'Layers',
+      closeLabel: 'Close layers',
       onClose: () => this.setExpanded(false),
     });
     this._panel = shell.panel;
@@ -150,11 +150,6 @@ class MapLayersPanel {
     this._panel?.remove();
     this._control?.remove();
     this._map = undefined;
-  }
-
-  // The panel element; layers-panel.ts moves its body into the Layers panel.
-  get panelElement() {
-    return this._panel;
   }
 
   setExpanded(expanded: boolean) {
