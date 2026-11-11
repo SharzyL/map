@@ -2,7 +2,7 @@
 # Copy R2 credentials from the environment into GitHub Actions secrets
 # used by the export-pmtiles and cleanup-r2-test-files workflows.
 #
-# Usage: ./scripts/set-r2-secrets.sh owner/repo
+# Usage: ./scripts/tiles/set-r2-secrets.sh owner/repo
 #
 # Reads (first non-empty wins):
 #   R2_ACCESS_KEY_ID      or AWS_ACCESS_KEY_ID

@@ -109,8 +109,7 @@ jobs:
           BBOX: ${{ github.event.inputs.bbox || '' }}
           CONCURRENCY: '4'
         run: |
-          chmod +x scripts/export-tippecanoe.sh
-          ./scripts/export-tippecanoe.sh
+          ./scripts/tiles/export-tippecanoe.sh
 
       - name: Show output info
         run: |

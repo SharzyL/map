@@ -2,7 +2,7 @@
 # Export ORM vector tiles using ogr2ogr (FlatGeobuf) + tippecanoe → PMTiles
 # This replaces the slow martin-cp approach with a much faster pipeline.
 #
-# Usage: ./scripts/export-tippecanoe.sh
+# Usage: ./scripts/tiles/export-tippecanoe.sh
 #
 # Environment variables:
 #   DATABASE_URL  - PostgreSQL connection string (default: postgresql://osm:osm@localhost:5432/osm)
