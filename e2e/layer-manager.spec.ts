@@ -14,6 +14,9 @@ import {
 
 test.describe('layer manager workflows in a real browser', () => {
   test('keeps 24 layers inside a scrollable list above the editor on desktop and mobile', async ({ page }) => {
+    // Creates 23 layers through the UI, each adding map sources and layers;
+    // that takes most of the default timeout on a CI runner.
+    test.slow();
     await openApp(page);
     const panel = await openLayers(page);
     for (let i = 1; i < 24; i++) await panel.getByRole('button', { name: 'New annotation layer' }).click();
