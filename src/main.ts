@@ -22,7 +22,7 @@ import {
   withBaseMapSaturation,
   withBaseMapVisibility,
   withHybridStyling,
-  withShadedReliefFade,
+  withShadedRelief,
   withContourVisibility,
   withHillshadeVisibility,
   withRailwayLabelLanguage,
@@ -446,9 +446,7 @@ const STATE_DEFAULTS = {
 function mergeBaseAndOrm(baseStyle: StyleLike, ormStyle: StyleLike): StyleLike {
   const merged = structuredClone(baseStyle);
   const baseLayers = (baseStyle.layers || []).map((layer) =>
-    withBaseMapLabelLanguage(
-      withBaseMapSaturation(withShadedReliefFade(withHybridStyling(withBaseMapVisibility(layer)))),
-    ),
+    withBaseMapLabelLanguage(withBaseMapSaturation(withShadedRelief(withHybridStyling(withBaseMapVisibility(layer))))),
   );
   merged.center = ormStyle.center || merged.center;
   merged.zoom = ormStyle.zoom || merged.zoom;
@@ -525,42 +523,72 @@ function isSpriteIndex(value: unknown): value is SpriteAtlas['index'] {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function loadSpriteAtlases(): Promise<SpriteAtlas[]> {
-  const specs = [
-    { prefix: 'orm:', json: '/orm/sprite/symbols.json', png: '/orm/sprite/symbols.png', sdf: false },
-    { prefix: 'sdf:', json: '/orm/sdf_sprite/symbols.json', png: '/orm/sdf_sprite/symbols.png', sdf: true },
-  ];
-  const atlases: SpriteAtlas[] = [];
-  for (const spec of specs) {
-    const [index, image] = await Promise.all([loadJson<unknown>(spec.json), loadImage(spec.png)]);
-    atlases.push({ ...spec, index: isSpriteIndex(index) ? index : {}, image });
-  }
-  return atlases;
+// MapLibre requests `<sprite>@2x.png` on high-DPI screens. Cloudflare's static
+// assets answer a literal '@' with a 307 to '%40', so production builds ask for
+// the encoded name directly. The Vite dev server is the other way round: it
+// serves '@2x' and answers '%402x' with the app's HTML.
+const SPRITE_2X_SUFFIX = import.meta.env.PROD ? '%402x' : '@2x';
+
+function spriteFileUrl(path: string, extension: 'json' | 'png') {
+  return `${path}${window.devicePixelRatio > 1 ? SPRITE_2X_SUFFIX : ''}.${extension}`;
 }
 
-function installSpriteFallback(map: maplibregl.Map, atlases: SpriteAtlas[]) {
-  map.on('styleimagemissing', (e) => {
-    const id = e.id;
-    for (const atlas of atlases) {
-      const key = id.startsWith(atlas.prefix) ? id.slice(atlas.prefix.length) : null;
-      if (key && atlas.index[key]) {
-        const meta = atlas.index[key];
-        const canvas = document.createElement('canvas');
-        canvas.width = meta.width;
-        canvas.height = meta.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(atlas.image, meta.x, meta.y, meta.width, meta.height, 0, 0, meta.width, meta.height);
-        const data = ctx.getImageData(0, 0, meta.width, meta.height).data;
-        if (!map.hasImage(id)) {
-          map.addImage(
-            id,
-            { width: meta.width, height: meta.height, data },
-            { pixelRatio: meta.pixelRatio || 1, sdf: atlas.sdf },
-          );
-        }
-        return;
+function transformSpriteRequest(url: string, resourceType?: string) {
+  if (resourceType !== 'SpriteJSON' && resourceType !== 'SpriteImage') return undefined;
+  if (!import.meta.env.PROD || !url.startsWith(window.location.origin) || !url.includes('@2x.')) return undefined;
+  return { url: url.replace('@2x.', `${SPRITE_2X_SUFFIX}.`) };
+}
+
+// The same files MapLibre loads for the style's sprites, so these come from
+// the HTTP cache.
+async function loadSpriteAtlases(): Promise<SpriteAtlas[]> {
+  const specs = [
+    { prefix: 'orm:', path: '/orm/sprite/symbols', sdf: false },
+    { prefix: 'sdf:', path: '/orm/sdf_sprite/symbols', sdf: true },
+  ];
+  return Promise.all(
+    specs.map(async ({ prefix, path, sdf }) => {
+      const [index, image] = await Promise.all([
+        loadJson<unknown>(spriteFileUrl(path, 'json')),
+        loadImage(spriteFileUrl(path, 'png')),
+      ]);
+      return { prefix, sdf, index: isSpriteIndex(index) ? index : {}, image };
+    }),
+  );
+}
+
+function addSpriteImage(map: maplibregl.Map, id: string, atlases: SpriteAtlas[]) {
+  for (const atlas of atlases) {
+    const key = id.startsWith(atlas.prefix) ? id.slice(atlas.prefix.length) : null;
+    if (key && atlas.index[key]) {
+      const meta = atlas.index[key];
+      const canvas = document.createElement('canvas');
+      canvas.width = meta.width;
+      canvas.height = meta.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(atlas.image, meta.x, meta.y, meta.width, meta.height, 0, 0, meta.width, meta.height);
+      const data = ctx.getImageData(0, 0, meta.width, meta.height).data;
+      if (!map.hasImage(id)) {
+        map.addImage(
+          id,
+          { width: meta.width, height: meta.height, data },
+          { pixelRatio: meta.pixelRatio || 1, sdf: atlas.sdf },
+        );
       }
+      return;
     }
+  }
+}
+
+// Fills icons MapLibre reports missing from the style's sprites. The atlases
+// load on the first miss rather than up front, so they never delay the map.
+function installSpriteFallback(map: maplibregl.Map) {
+  let atlases: Promise<SpriteAtlas[]> | null = null;
+  map.on('styleimagemissing', (e) => {
+    atlases ??= loadSpriteAtlases();
+    atlases
+      .then((loaded) => addSpriteImage(map, e.id, loaded))
+      .catch((error) => console.warn('Sprite fallback failed:', error));
   });
 }
 
@@ -581,7 +609,7 @@ async function init() {
     demSource.setupMaplibre(maplibregl);
     const railwayFilter = loadRailwayFilterSettings();
     const mapLayers = loadMapLayerSettings();
-    const [style, atlases] = await Promise.all([loadStyle(demSource, railwayFilter, mapLayers), loadSpriteAtlases()]);
+    const style = await loadStyle(demSource, railwayFilter, mapLayers);
 
     window._mlmap = null;
     const map = new maplibregl.Map({
@@ -594,6 +622,7 @@ async function init() {
       renderWorldCopies: false,
       maxZoom: 20,
       maxPitch: 85,
+      transformRequest: transformSpriteRequest,
     });
 
     window._mlmap = map;
@@ -624,7 +653,7 @@ async function init() {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }
 
-    installSpriteFallback(map, atlases);
+    installSpriteFallback(map);
 
     // Register GPX drag-drop immediately (map container exists now)
     // Don't wait for 'load' — user may drag a file before tiles finish loading

@@ -1,0 +1,11 @@
+# Cloudflare static asset headers (served from dist/client).
+
+# Vite build output: content-hashed file names, safe to cache forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Map style, sprites and fonts. The style URL carries a content hash (?v=), the
+# sprites and fonts do not, so cache them for an hour and refresh in the
+# background after that.
+/orm/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400

@@ -205,10 +205,13 @@ export function withBaseMapSaturation<T extends StyleLayerLike>(layer: T): T {
 // --- Built-in shaded relief ------------------------------------------------
 
 // OpenFreeMap draws low zooms with a Natural Earth II raster that bakes land
-// colors and shaded relief into one image. Below zoom 4 the vector tiles hold
-// little besides water, so that raster is the land; it stays there whatever
-// the Hillshade switch says. From zoom 4 the vector base map has its own land
-// cover, so with Hillshade off the raster fades out by zoom 4.5.
+// colors and shaded relief into one image. It is heavy: one zoom-4 view on a
+// high-DPI screen fetched 77 of its tiles, about 12 MB. Our own hillshade
+// covers relief, so with Hillshade on the raster is hidden; hiding it through
+// visibility (not opacity) also stops its tiles from downloading. With
+// Hillshade off it still gives land its colors below zoom 4, where the vector
+// tiles hold little besides water, and fades out by zoom 4.5, where the layer
+// now ends so no fully transparent tiles are fetched above it.
 export function isShadedReliefLayer(layer: StyleLayerLike) {
   return layer.type === 'raster' && layer.id === 'natural_earth';
 }
@@ -233,17 +236,18 @@ function numberAtZoom(value: unknown, zoom: number): number | null {
   return stops[stops.length - 1];
 }
 
-export function withShadedReliefFade<T extends StyleLayerLike>(layer: T): T {
+export function withShadedRelief<T extends StyleLayerLike>(layer: T): T {
   if (!isShadedReliefLayer(layer)) return layer;
+  const hidden = withVisibility(layer, ['!', ['to-boolean', ['global-state', HILLSHADE_STATE]]]) as T;
   const original = layer.paint?.['raster-opacity'] ?? 1;
-  const zooms = [0, 1, 2, 3, RELIEF_FADE_START, RELIEF_FADE_END, 5, 6, 7];
-  if (zooms.some((zoom) => numberAtZoom(original, zoom) === null)) return layer;
-  const hillshade = ['to-boolean', ['global-state', HILLSHADE_STATE]];
-  const stops = zooms.flatMap((zoom) => {
-    const opacity = numberAtZoom(original, zoom);
-    return [zoom, zoom < RELIEF_FADE_END ? opacity : ['case', hillshade, opacity, 0]];
-  });
-  return { ...layer, paint: { ...layer.paint, 'raster-opacity': ['interpolate', ['linear'], ['zoom'], ...stops] } };
+  const zooms = [0, 1, 2, 3, RELIEF_FADE_START];
+  if (zooms.some((zoom) => numberAtZoom(original, zoom) === null)) return hidden;
+  const stops = [...zooms.flatMap((zoom) => [zoom, numberAtZoom(original, zoom)]), RELIEF_FADE_END, 0];
+  return {
+    ...hidden,
+    maxzoom: RELIEF_FADE_END,
+    paint: { ...layer.paint, 'raster-opacity': ['interpolate', ['linear'], ['zoom'], ...stops] },
+  };
 }
 
 // --- Hybrid styling ----------------------------------------------------------

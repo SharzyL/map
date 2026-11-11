@@ -14,7 +14,7 @@ import {
   withBaseMapVisibility,
   withContourVisibility,
   withHybridStyling,
-  withShadedReliefFade,
+  withShadedRelief,
   withHillshadeVisibility,
   withRailwayLabelLanguage,
   withSatelliteVisibility,
@@ -22,7 +22,13 @@ import {
   type MapLayerSettings,
 } from './map-layers.js';
 
-type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
+type Layer = {
+  id: string;
+  type: string;
+  maxzoom?: number;
+  layout?: Record<string, unknown>;
+  paint?: Record<string, unknown>;
+};
 
 const paintLayer = (layer: Layer) => layer;
 
@@ -32,8 +38,13 @@ function isVisible(layer: Layer, settings: Partial<MapLayerSettings> = {}) {
   const visibility = layer.layout?.visibility as unknown[];
   expect(visibility[0]).toBe('case');
   const state = mapLayerGlobalState({ ...defaultMapLayerSettings(), ...settings });
-  const shown = featureFilter(visibility[1] as never, state).filter({ zoom: 10 }, { type: 1, properties: {} } as never);
-  return shown && visibility[2] !== 'none';
+  // Wrappers nest: ['case', condition, <inner visibility>, 'none'].
+  const evaluateVisibility = (value: unknown): boolean => {
+    if (!Array.isArray(value)) return value !== 'none';
+    const shown = featureFilter(value[1] as never, state).filter({ zoom: 10 }, { type: 1, properties: {} } as never);
+    return evaluateVisibility(shown ? value[2] : value[3]);
+  };
+  return evaluateVisibility(visibility);
 }
 
 const ROAD = { id: 'road_motorway', type: 'line' };
@@ -71,29 +82,28 @@ describe('base map visibility', () => {
 });
 
 describe('terrain layer visibility', () => {
-  it('keeps the built-in shaded relief at low zoom and fades it out with hillshade off', () => {
-    // OpenFreeMap's natural_earth raster.
-    const relief = withShadedReliefFade(
-      paintLayer({
-        id: 'natural_earth',
-        type: 'raster',
-        paint: { 'raster-opacity': ['interpolate', ['exponential', 1.5], ['zoom'], 0, 0.6, 6, 0.1] },
-      }),
+  it('hides the built-in shaded relief with hillshade on and keeps it as low-zoom land with hillshade off', () => {
+    // OpenFreeMap's natural_earth raster, after the base map visibility wrapper.
+    const relief = withShadedRelief(
+      withBaseMapVisibility(
+        paintLayer({
+          id: 'natural_earth',
+          type: 'raster',
+          maxzoom: 7,
+          paint: { 'raster-opacity': ['interpolate', ['exponential', 1.5], ['zoom'], 0, 0.6, 6, 0.1] },
+        }),
+      ),
     );
-    const opacity = (zoom: number, hillshade: boolean) =>
-      evaluate(
-        relief.paint['raster-opacity'],
-        latest.paint_raster['raster-opacity'],
-        { hillshade },
-        {},
-        zoom,
-      ) as number;
-    expect(opacity(0, false)).toBeCloseTo(0.6);
-    expect(opacity(2, false)).toBeCloseTo(opacity(2, true));
-    expect(opacity(5, true)).toBeGreaterThan(0.1);
-    expect(opacity(4.5, false)).toBe(0);
-    expect(opacity(6, false)).toBe(0);
-    expect(isVisible(withBaseMapVisibility({ id: 'natural_earth', type: 'raster' }), { hillshade: false })).toBe(true);
+    expect(isVisible(relief, { hillshade: true })).toBe(false);
+    expect(isVisible(relief, { hillshade: false })).toBe(true);
+    expect(isVisible(relief, { hillshade: false, base: 'satellite' })).toBe(false);
+    // Ends where it has faded out, so no transparent tiles load above it.
+    expect(relief.maxzoom).toBe(4.5);
+    const opacity = (zoom: number) =>
+      evaluate(relief.paint['raster-opacity'], latest.paint_raster['raster-opacity'], {}, {}, zoom) as number;
+    expect(opacity(0)).toBeCloseTo(0.6);
+    expect(opacity(3.5)).toBeGreaterThan(0.1);
+    expect(opacity(4.5)).toBe(0);
   });
 
   it('follows the hillshade and contour switches independently', () => {
