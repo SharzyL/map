@@ -541,13 +541,15 @@ function transformSpriteRequest(url: string, resourceType?: string) {
 
 // The same files MapLibre loads for the style's sprites, so these come from
 // the HTTP cache.
+// The full ORM sprites, with every icon of every ORM style.
+const SPRITE_ATLASES = [
+  { prefix: 'orm:', path: '/orm/sprite/symbols', sdf: false },
+  { prefix: 'sdf:', path: '/orm/sdf_sprite/symbols', sdf: true },
+];
+
 async function loadSpriteAtlases(): Promise<SpriteAtlas[]> {
-  const specs = [
-    { prefix: 'orm:', path: '/orm/sprite/symbols', sdf: false },
-    { prefix: 'sdf:', path: '/orm/sdf_sprite/symbols', sdf: true },
-  ];
   return Promise.all(
-    specs.map(async ({ prefix, path, sdf }) => {
+    SPRITE_ATLASES.map(async ({ prefix, path, sdf }) => {
       const [index, image] = await Promise.all([
         loadJson<unknown>(spriteFileUrl(path, 'json')),
         loadImage(spriteFileUrl(path, 'png')),
@@ -580,11 +582,16 @@ function addSpriteImage(map: maplibregl.Map, id: string, atlases: SpriteAtlas[])
   }
 }
 
-// Fills icons MapLibre reports missing from the style's sprites. The atlases
-// load on the first miss rather than up front, so they never delay the map.
+// Fills ORM icons MapLibre reports missing from the style's sprites, which
+// hold only the icons the standard style is known to use
+// (scripts/styles/sprite-subset.mjs). The full atlases load on the first such
+// miss rather than up front, so they never delay the map. Base map icons that
+// OpenFreeMap's sprite lacks are not ours to fill and must not trigger the
+// download.
 function installSpriteFallback(map: maplibregl.Map) {
   let atlases: Promise<SpriteAtlas[]> | null = null;
   map.on('styleimagemissing', (e) => {
+    if (!SPRITE_ATLASES.some(({ prefix }) => e.id.startsWith(prefix))) return;
     atlases ??= loadSpriteAtlases();
     atlases
       .then((loaded) => addSpriteImage(map, e.id, loaded))

@@ -18,7 +18,7 @@ pnpm run deploy          # build + wrangler deploy (`pnpm deploy` is a different
 pnpm typecheck           # tsc --noEmit (covers src/ only)
 pnpm lint / lint:fix     # oxlint
 pnpm fmt / fmt:check     # oxfmt
-pnpm test                # unit tests: src/**/*.test.ts
+pnpm test                # unit tests: src/**/*.test.ts and scripts/**/*.test.mjs
 pnpm test:e2e            # Playwright (starts its own server, see below)
 pnpm generate:style      # regenerate public/orm/style/standard.json from scripts/styles/
 ```
@@ -77,4 +77,4 @@ See `docs/layer-stack-design.md` (its storage and sync sections describe the rem
 
 ### Map style
 
-`public/orm/style/standard.json` is generated output. Edit the fragments under `scripts/styles/` and run `pnpm generate:style` instead of editing the JSON. `public/orm/**` is excluded from lint and format.
+`public/orm/style/standard.json` is generated output. Edit the fragments under `scripts/styles/` and run `pnpm generate:style` instead of editing the JSON. `public/orm/**` is excluded from lint and format. `pnpm generate:style` also cuts the sprites down to the icons the style can draw (`scripts/styles/sprite-subset.mjs` writes `public/orm/{sprite,sdf_sprite}/standard*` and points the style at them); a unit test fails when the subset is out of date. The full `symbols*` sprites stay for the missing-icon fallback in `main.ts`.
