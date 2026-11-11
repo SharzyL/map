@@ -217,7 +217,6 @@ export_railway_line_high "railway_line_high" "true" true
 # everything once; the Phase 2 feature filter applies the zoom rule.
 export_layer "railway_text_km" "
 SELECT
-  id,
   osm_id,
   way,
   railway,
@@ -241,6 +240,10 @@ ORDER BY zero
 # ============================================================
 # Standard style layers
 # ============================================================
+#
+# Point and station layers leave out the view's synthetic id column: nothing
+# in the style or the app reads it (hover state uses tippecanoe's generated
+# ids, info boxes link to OpenStreetMap through osm_id).
 
 # station_routes for railway_text_stations rows. The view's own station_routes
 # column looks routes up with ARRAY[osm_id] <@ route_ids, which cannot use an
@@ -328,7 +331,6 @@ ORDER BY rank NULLS LAST
 # The style handles zoom filtering via minzoom/maxzoom
 export_layer "standard_railway_text_stations" "
 SELECT
-  id,
   center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
@@ -376,7 +378,7 @@ station_discr_threshold() {
 z="${STATIONS_LOW_ZOOMS[-1]}"
 export_layer "standard_railway_text_stations_low" "
 SELECT
-  id, center AS way,
+  center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature, state, station,
@@ -410,7 +412,7 @@ ORDER BY importance DESC NULLS LAST
 z="${STATIONS_MED_ZOOMS[-1]}"
 export_layer "standard_railway_text_stations_med" "
 SELECT
-  id, center AS way,
+  center AS way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature, state, station,
@@ -441,7 +443,7 @@ ORDER BY importance DESC NULLS LAST
 
 # standard_railway_turntables (z10+)
 export_layer "standard_railway_turntables" "
-SELECT id, osm_id, osm_type, way, replace(feature, 'general/', '') AS feature FROM pois
+SELECT osm_id, osm_type, way, replace(feature, 'general/', '') AS feature FROM pois
 WHERE feature IN ('general/turntable', 'general/traverser')
   AND ST_GeometryType(way) IN ('ST_Polygon', 'ST_MultiPolygon')
 "
@@ -449,7 +451,7 @@ WHERE feature IN ('general/turntable', 'general/traverser')
 # standard_station_entrances (z16+)
 export_layer "standard_station_entrances" "
 SELECT
-  id, osm_id, osm_type, way, type, name, ref, label,
+  osm_id, osm_type, way, type, name, ref, label,
   wikidata, wikimedia_commons, wikimedia_commons_file,
   image, mapillary, wikipedia, note, description
 FROM standard_station_entrances_view
@@ -466,7 +468,7 @@ if (( MAX_ZOOM < 17 )); then
 fi
 export_layer "standard_railway_symbols" "
 SELECT
-  id, osm_id, osm_type, center AS way, feature, ref, name, minzoom,
+  osm_id, osm_type, center AS way, feature, ref, name, minzoom,
   nullif(array_to_string(position, U&'\001E'), '') as position,
   wikidata, wikimedia_commons, wikimedia_commons_file,
   image, mapillary, wikipedia, note, description
@@ -479,7 +481,7 @@ ORDER BY rank DESC
 # standard_railway_platforms (z15+)
 export_layer "standard_railway_platforms" "
 SELECT
-  id, osm_id, osm_type, way, feature, name,
+  osm_id, osm_type, way, feature, name,
   nullif(array_to_string(ref, U&'\001E'), '') as ref,
   height, surface, elevator, shelter, lit, bin, bench,
   wheelchair, departures_board, tactile_paving,
@@ -495,14 +497,14 @@ FROM standard_railway_platforms_view p
 # standard_railway_platform_edges (z17+)
 export_layer "standard_railway_platform_edges" "
 SELECT
-  id, osm_id, osm_type, way, feature, ref, height, tactile_paving
+  osm_id, osm_type, way, feature, ref, height, tactile_paving
 FROM standard_railway_platform_edges_view
 "
 
 # standard_railway_stop_positions (z16+)
 export_layer "standard_railway_stop_positions" "
 SELECT
-  id, osm_id, osm_type, way, name, type, ref, local_ref,
+  osm_id, osm_type, way, name, type, ref, local_ref,
   (SELECT nullif(array_to_string(array_agg(
     (route_item -> 'route_id') || U&'\001E' ||
     coalesce(route_item -> 'color', '') || U&'\001E' ||
@@ -515,7 +517,7 @@ FROM standard_railway_stop_positions_view sp
 # standard_railway_switch_ref (z17+)
 export_layer "standard_railway_switch_ref" "
 SELECT
-  id, osm_id, osm_type, way, railway, ref, type,
+  osm_id, osm_type, way, railway, ref, type,
   turnout_side, local_operated, resetting,
   nullif(array_to_string(position, U&'\001E'), '') as position,
   wikidata, wikimedia_commons, wikimedia_commons_file,
@@ -525,9 +527,10 @@ ORDER BY char_length(ref)
 "
 
 # standard_railway_grouped_stations (z13+) — clustered station areas
+# Without station_routes: the station label layer carries the same lists, and
+# that is where info boxes and the route highlight read them.
 export_layer "standard_railway_grouped_stations" "
 SELECT
-  id,
   buffered as way,
   nullif(array_to_string(s.osm_id, U&'\001E'), '') as osm_id,
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
@@ -550,8 +553,7 @@ SELECT
   nullif(array_to_string(note, U&'\001E'), '') as note,
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
-  yard_hump,
-  ${STATION_ROUTES_SQL} as station_routes
+  yard_hump
 FROM railway_text_stations s
 "
 
@@ -561,7 +563,6 @@ FROM railway_text_stations s
 # with urban transit stations (same member path as stop_area_groups_buffered).
 export_layer "standard_railway_grouped_station_areas" "
 SELECT
-  v.id,
   v.osm_id,
   v.osm_type,
   v.feature,
@@ -992,7 +993,31 @@ add_station_layer() {
 }
 
 # Shared
-add_layer "railway_line_high" 7 "${MAX_ZOOM}"
+# railway_line_high: each segment only from the zoom the standard style first
+# draws its kind at (public/orm/style/standard.json; the style's filters only
+# test feature, usage and state). Below that zoom it is invisible, yet at z7-9
+# it made up roughly half of each tile. Segments on a route are kept from z7
+# because the route highlight draws routes from z7 tiles and traces them
+# below z7. Keep these categories in step with the style.
+railway_line_high_filter() {
+  local z9=$(( MAX_ZOOM < 9 ? MAX_ZOOM : 9 ))
+  local z10=$(( MAX_ZOOM < 10 ? MAX_ZOOM : 10 ))
+  local z11=$(( MAX_ZOOM < 11 ? MAX_ZOOM : 11 ))
+  local z12=$(( MAX_ZOOM < 12 ? MAX_ZOOM : 12 ))
+  local active='["in","state","present","construction","proposed"]'
+  # z7-8: main and branch lines, ferries.
+  local from7="[\"all\",${active},[\"any\",[\"all\",[\"==\",\"feature\",\"rail\"],[\"in\",\"usage\",\"main\",\"branch\"]],[\"==\",\"feature\",\"ferry\"]]]"
+  # z9: urban transit, test and military, tourism or preserved, industrial.
+  local from9="[\"any\",[\"all\",${active},[\"in\",\"feature\",\"subway\",\"tram\",\"light_rail\",\"monorail\"]],[\"all\",${active},[\"==\",\"feature\",\"rail\"],[\"in\",\"usage\",\"test\",\"military\"]],[\"all\",[\"in\",\"state\",\"present\",\"construction\",\"proposed\",\"preserved\"],[\"any\",[\"==\",\"usage\",\"tourism\"],[\"==\",\"state\",\"preserved\"]]],[\"all\",${active},[\"==\",\"usage\",\"industrial\"],[\"in\",\"feature\",\"rail\",\"narrow_gauge\"]]]"
+  # z10: narrow gauge, and rail without a usage (service tracks).
+  local from10="[\"any\",[\"all\",${active},[\"==\",\"feature\",\"narrow_gauge\"],[\"any\",[\"!has\",\"usage\"],[\"!=\",\"usage\",\"industrial\"]]],[\"all\",${active},[\"==\",\"feature\",\"rail\"],[\"!has\",\"usage\"]]]"
+  # z11: disused. Everything else (abandoned, razed, miniature, funicular,
+  # kinds the style does not draw) from z12.
+  local from11='["==","state","disused"]'
+  printf '["all",%s,["any",[">=","$zoom",%s],["has","line_routes"],["all",[">=","$zoom",%s],%s],["all",[">=","$zoom",%s],%s],["all",[">=","$zoom",%s],%s],%s]]' \
+    "$(zoom_range_filter 7 "${MAX_ZOOM}")" "${z12}" "${z11}" "${from11}" "${z10}" "${from10}" "${z9}" "${from9}" "${from7}"
+}
+add_layer_filtered "railway_line_high" "railway_line_high" "$(railway_line_high_filter)"
 # railway_text_km: z10-12 zero markers only, z13+ all markers
 add_layer_filtered "railway_text_km" "railway_text_km" \
   "[\"any\",[\">=\",\"\$zoom\",13],[\"all\",[\">=\",\"\$zoom\",10],[\"!=\",\"zero\",false]]]"
