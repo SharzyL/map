@@ -28,6 +28,7 @@ type Layer = {
   id: string;
   type: string;
   maxzoom?: number;
+  filter?: unknown;
   layout?: Record<string, unknown>;
   paint?: Record<string, unknown>;
 };
@@ -246,7 +247,7 @@ describe('hybrid styling', () => {
     expect(withGrayRoads(rail)).toBe(rail);
   });
 
-  it('darkens and slightly widens borders when highlighted', () => {
+  it('darkens borders when highlighted, first-level divisions more than the ones below', () => {
     const border = withBaseMapSaturation(
       withHighlightedBoundaries(
         paintLayer({
@@ -259,18 +260,44 @@ describe('hybrid styling', () => {
         }),
       ),
     );
-    expect(rgb(evaluate(border.paint['line-color'], lineColor, {}))).toEqual([179, 179, 179]);
-    expect(rgb(evaluate(border.paint['line-color'], lineColor, { highlightBoundaries: true }))).toEqual([
-      107, 107, 120,
-    ]);
-    expect(evaluate(border.paint['line-width'], lineWidth, {}, {}, 11)).toBe(2);
-    expect(evaluate(border.paint['line-width'], lineWidth, { highlightBoundaries: true }, {}, 11)).toBeCloseTo(2.7);
+    const prefecture = { admin_level: 4 };
+    const district = { admin_level: 6 };
+    const highlighted = { highlightBoundaries: true };
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, {}, prefecture))).toEqual([179, 179, 179]);
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, {}, district))).toEqual([179, 179, 179]);
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, highlighted, prefecture))).toEqual([69, 69, 79]);
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, highlighted, district))).toEqual([108, 108, 120]);
+    expect(evaluate(border.paint['line-width'], lineWidth, {}, prefecture, 11)).toBe(2);
+    expect(evaluate(border.paint['line-width'], lineWidth, highlighted, prefecture, 11)).toBe(3);
+    expect(evaluate(border.paint['line-width'], lineWidth, highlighted, district, 11)).toBeCloseTo(2.4);
+    const ward = { admin_level: 7 };
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, highlighted, ward))).toEqual([128, 128, 140]);
+    expect(evaluate(border.paint['line-width'], lineWidth, highlighted, ward, 11)).toBeCloseTo(2.2);
+
+    // Liberty's boundary_3 filter, which stops at level 6 unless highlighted.
+    const filtered = withHighlightedBoundaries(
+      paintLayer({
+        id: 'boundary_3',
+        type: 'line',
+        filter: ['all', ['>=', ['get', 'admin_level'], 3], ['<=', ['get', 'admin_level'], 6]],
+        paint: { 'line-color': '#b3b3b3' },
+      }),
+    );
+    const shown = (settings: Partial<MapLayerSettings>, properties: object) =>
+      featureFilter(
+        filtered.filter as never,
+        mapLayerGlobalState({ ...defaultMapLayerSettings(), ...settings }),
+      ).filter({ zoom: 11 } as never, { type: 2, properties } as never);
+    expect(shown({}, district)).toBe(true);
+    expect(shown({}, ward)).toBe(false);
+    expect(shown(highlighted, ward)).toBe(true);
+    expect(shown(highlighted, { admin_level: 8 })).toBe(false);
+
     const country = withHighlightedBoundaries(
       paintLayer({ id: 'boundary_2', type: 'line', paint: { 'line-color': '#666', 'line-opacity': 0.4 } }),
     );
-    expect(
-      evaluate(country.paint['line-opacity'], latest.paint_line['line-opacity'], { highlightBoundaries: true }),
-    ).toBe(1);
+    expect(rgb(evaluate(country.paint['line-color'], lineColor, highlighted))).toEqual([61, 61, 74]);
+    expect(evaluate(country.paint['line-opacity'], latest.paint_line['line-opacity'], highlighted)).toBe(1);
     const road = paintLayer({ id: 'road_minor', type: 'line', paint: { 'line-color': '#fff' } });
     expect(withHighlightedBoundaries(road)).toBe(road);
   });

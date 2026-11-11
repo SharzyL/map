@@ -339,14 +339,20 @@ export function withGrayRoads<T extends StyleLayerLike>(layer: T): T {
 // --- Highlighted borders ---------------------------------------------------
 
 // The base map's borders: boundary_2 (countries), boundary_3 (admin levels 3
-// to 6: provinces, states, prefectures, counties, drawn in a pale dotted line)
-// and boundary_disputed. Highlighting darkens them and widens them a little.
+// to 6, drawn in a pale dotted line from zoom 5) and boundary_disputed.
+// boundary_3 mixes first-level divisions (levels 3 and 4: provinces, states,
+// Japan's prefectures) with the ones below them (levels 5 and 6: China's
+// prefecture-level cities, Japan's districts). Highlighting also adds level 7,
+// which the tiles carry from zoom 11 (Japan's municipalities, Tokyo's special
+// wards), and draws each level a step lighter and thinner than the one above
+// it, with countries darkest.
 const HIGHLIGHT_BOUNDARIES = ['to-boolean', ['global-state', HIGHLIGHT_BOUNDARIES_STATE]];
-const HIGHLIGHTED_BOUNDARY_COLOR: Array<[RegExp, string]> = [
-  [/^boundary_3$/, '#6b6b78'],
-  [/./, '#3d3d4a'],
-];
-const HIGHLIGHTED_BOUNDARY_WIDTH = 1.35;
+const ADMIN_LEVEL = ['to-number', ['get', 'admin_level'], 99];
+const HIGHLIGHTED_DIVISION = { color: ['step', ADMIN_LEVEL, '#45454f', 5, '#6c6c78', 7, '#80808c'] };
+const DEEPEST_DIVISION = ['case', HIGHLIGHT_BOUNDARIES, 7, 6];
+const HIGHLIGHTED_COUNTRY = { color: '#3d3d4a' };
+const HIGHLIGHTED_DIVISION_WIDTH = ['step', ADMIN_LEVEL, 1.5, 5, 1.2, 7, 1.1];
+const HIGHLIGHTED_COUNTRY_WIDTH = 1.35;
 
 export function isBoundaryLayer(layer: StyleLayerLike) {
   return layer.type === 'line' && /^boundary_/.test(layer.id || '');
@@ -355,7 +361,8 @@ export function isBoundaryLayer(layer: StyleLayerLike) {
 export function withHighlightedBoundaries<T extends StyleLayerLike>(layer: T): T {
   if (!isBoundaryLayer(layer)) return layer;
   const paint = { ...(layer.paint || {}) };
-  const [, color] = HIGHLIGHTED_BOUNDARY_COLOR.find(([pattern]) => pattern.test(layer.id || ''));
+  const division = layer.id === 'boundary_3';
+  const { color } = division ? HIGHLIGHTED_DIVISION : HIGHLIGHTED_COUNTRY;
   if (paint['line-color'] !== undefined) {
     paint['line-color'] = mapZoomOutputs(paint['line-color'], (output) => [
       'case',
@@ -367,8 +374,9 @@ export function withHighlightedBoundaries<T extends StyleLayerLike>(layer: T): T
   paint['line-width'] = mapZoomOutputs(paint['line-width'] ?? 1, (output) => [
     '*',
     output,
-    ['case', HIGHLIGHT_BOUNDARIES, HIGHLIGHTED_BOUNDARY_WIDTH, 1],
+    ['case', HIGHLIGHT_BOUNDARIES, division ? HIGHLIGHTED_DIVISION_WIDTH : HIGHLIGHTED_COUNTRY_WIDTH, 1],
   ]);
+  const filter = division ? deepenDivisionFilter(layer.filter) : layer.filter;
   if (paint['line-opacity'] !== undefined) {
     paint['line-opacity'] = mapZoomOutputs(paint['line-opacity'], (output) => [
       'case',
@@ -377,7 +385,17 @@ export function withHighlightedBoundaries<T extends StyleLayerLike>(layer: T): T
       output,
     ]);
   }
-  return { ...layer, paint };
+  return { ...layer, paint, ...(filter === undefined ? {} : { filter }) };
+}
+
+// Turns boundary_3's `admin_level <= 6` clause into one that reaches level 7
+// while highlighted.
+function deepenDivisionFilter(filter: unknown): unknown {
+  if (!Array.isArray(filter)) return filter;
+  if (filter[0] === '<=' && JSON.stringify(filter[1]) === '["get","admin_level"]' && filter[2] === 6) {
+    return ['<=', filter[1], DEEPEST_DIVISION];
+  }
+  return filter.map(deepenDivisionFilter);
 }
 
 // --- Label language --------------------------------------------------------
