@@ -1,6 +1,6 @@
 import Pbf from 'pbf';
 import { describe, expect, it } from 'vitest';
-import { routeListHasRoute, tilesInBounds, traceRoute } from './route-trace.js';
+import { lineListsNear, routeListHasRoute, tilesInBounds, traceRoute } from './route-trace.js';
 
 type TestFeature = { routes: string; line: Array<[number, number]> };
 
@@ -164,5 +164,110 @@ describe('traceRoute', () => {
     controller.abort();
     const geometry = await traceRoute('1', [[0, 0]], async () => encodeTile([]), controller.signal);
     expect(geometry.features).toEqual([]);
+  });
+});
+
+describe('lineListsNear', () => {
+  // Three segments in z7 tile 107/52 (Shanghai): two named 京沪线 near the
+  // point, one parallel line of another name just as close.
+  const HERE = { lng: 121.5, lat: 31.2 };
+  const tile = (features: Array<{ name: string; lines: string; routes?: string; line: Array<[number, number]> }>) => {
+    // Tile pixel coordinates for a lon/lat in z7 tile 107/52.
+    const px = ([lng, lat]: [number, number]) => {
+      const n = 2 ** 7;
+      const x = (((lng + 180) / 360) * n - 107) * 4096;
+      const rad = (lat * Math.PI) / 180;
+      const y = (((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n - 52) * 4096;
+      return [Math.round(x), Math.round(y)] as [number, number];
+    };
+    const pbf = new Pbf();
+    const keys = ['name', 'line_relations', 'line_routes'];
+    const values = [...new Set(features.flatMap((f) => [f.name, f.lines, f.routes ?? '']))];
+    pbf.writeMessage(
+      3,
+      (_: unknown, layer: Pbf) => {
+        layer.writeVarintField(15, 2);
+        layer.writeStringField(1, 'railway_line_high');
+        features.forEach((feature, index) => {
+          layer.writeMessage(
+            2,
+            (__: unknown, out: Pbf) => {
+              out.writeVarintField(1, index + 1);
+              const tags = [0, values.indexOf(feature.name), 1, values.indexOf(feature.lines)];
+              if (feature.routes) tags.push(2, values.indexOf(feature.routes));
+              out.writePackedVarint(2, tags);
+              out.writeVarintField(3, 2);
+              const points = feature.line.map(px);
+              const geometry = [(1 << 3) | 1];
+              let [cx, cy] = [0, 0];
+              points.forEach(([x, y], pointIndex) => {
+                if (pointIndex === 1) geometry.push(((points.length - 1) << 3) | 2);
+                geometry.push(zigzag(x - cx), zigzag(y - cy));
+                [cx, cy] = [x, y];
+              });
+              out.writePackedVarint(4, geometry);
+            },
+            null,
+          );
+        });
+        keys.forEach((key) => layer.writeStringField(3, key));
+        values.forEach((value) =>
+          layer.writeMessage(4, (__: unknown, out: Pbf) => out.writeStringField(1, value), null),
+        );
+        layer.writeVarintField(5, 4096);
+      },
+      null,
+    );
+    const bytes = pbf.finish();
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  };
+  const JINGHU = '163022\u001e\u001e京沪线\u001e0002';
+  const OTHER = '99\u001e\u001e沪宁城际线\u001e3015';
+  const fetchTile = async () =>
+    tile([
+      {
+        name: '京沪线',
+        lines: JINGHU,
+        routes: '7\u001e#f00\u001eG7',
+        line: [
+          [121.48, 31.21],
+          [121.52, 31.21],
+        ],
+      },
+      {
+        name: '京沪线',
+        lines: JINGHU,
+        line: [
+          [121.52, 31.21],
+          [121.56, 31.22],
+        ],
+      },
+      {
+        name: '沪宁城际线',
+        lines: OTHER,
+        line: [
+          [121.48, 31.19],
+          [121.52, 31.19],
+        ],
+      },
+    ]);
+
+  it('takes the lists of nearby segments that share the clicked name', async () => {
+    expect(await lineListsNear({ ...HERE, radius: 3000, name: '京沪线' }, fetchTile)).toEqual({
+      line_relations: JINGHU,
+      line_routes: '7\u001e#f00\u001eG7',
+    });
+  });
+
+  it('takes only the nearest segment of an unnamed line', async () => {
+    const lists = await lineListsNear({ lng: 121.5, lat: 31.1905, radius: 3000 }, fetchTile);
+    expect(lists.line_relations).toBe(OTHER);
+  });
+
+  it('finds nothing beyond the radius', async () => {
+    expect(await lineListsNear({ ...HERE, radius: 500, name: '京沪线' }, fetchTile)).toEqual({
+      line_relations: undefined,
+      line_routes: undefined,
+    });
   });
 });

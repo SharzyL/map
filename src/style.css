@@ -2686,9 +2686,11 @@ body,
   font-size: 0;
 }
 
-/* Structured property sections (railway lines and stations) */
+/* Structured property sections (railway lines and stations): a fixed width
+   so long values wrap inside the box instead of widening or scrolling it. */
 .orm-popup:has(.orm-popup-sections) {
-  max-height: min(60vh, 520px);
+  width: min(360px, calc(100vw - 48px));
+  max-height: min(70vh, 640px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -2925,18 +2927,30 @@ body,
   border-radius: 3px;
 }
 
-/* Route list — mirrors upstream popup-content-list */
+/* Route list — mirrors upstream popup-content-list. No negative margins: the
+   info box scrolls, so anything sticking out of it makes it scroll sideways. */
 .orm-popup-route-list {
-  margin: 4px -10px 0;
+  margin: 4px 0 0;
   padding: 0;
   list-style: none;
-  max-height: 120px;
+  max-height: 160px;
   overflow-y: auto;
 }
 .orm-popup-route-list > li {
-  padding: 0 10px 5px 10px;
+  padding: 1px 4px 3px;
+  border-radius: 4px;
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* As a row of a section (Lines in the Line section) */
+.orm-popup-fields .orm-popup-route-list {
+  margin: 0;
+}
+.orm-popup-fields .orm-popup-route-list > li {
+  margin-left: -4px;
+  padding: 0 4px;
+  line-height: 1.4;
 }
 .orm-popup-route-list > li:hover {
   background-color: #f8f9fa;

@@ -14,6 +14,7 @@ import { installAnnotationTools } from './annotation-tools.js';
 import { applyRailwayFilterToStyle, loadRailwayFilterSettings, type RailwayFilterSettings } from './railway-filter.js';
 import { installRailwayFilter } from './railway-filter-panel.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
+import { lineListsNear } from './route-trace.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -40,6 +41,12 @@ const TILE_ARCHIVE = new URLSearchParams(window.location.search).get('tileset') 
 const TILE_URL = `${window.location.origin}/tiles/${TILE_ARCHIVE}/{z}/{x}/{y}.mvt?v=${TILE_VERSION}`;
 // The single vector source every railway layer draws from.
 const ORM_SOURCE = 'openrailwaymap';
+
+async function fetchRailwayTile(z: number, x: number, y: number, signal?: AbortSignal) {
+  const url = TILE_URL.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+  const response = await fetch(url, { signal });
+  return response.status === 200 ? response.arrayBuffer() : null;
+}
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const MAPTERHORN_TERRAIN_URL = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
 const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
@@ -744,7 +751,9 @@ async function init() {
     const runMapReadySetup = () => {
       if (didRunMapReadySetup) return;
       didRunMapReadySetup = true;
-      installOrmPopups(map, maplibregl, featuresCatalog);
+      installOrmPopups(map, maplibregl, featuresCatalog, {
+        lookupLineLists: (query, signal) => lineListsNear(query, fetchRailwayTile, signal),
+      });
       drainGpxQueue(map);
       let resizeFrame = 0;
       const scheduleResize = () => {

@@ -1,8 +1,8 @@
-// Collects the whole geometry of one route for the zoomed-out map. Tiles below
-// z7 carry no route ids, so the route is followed through z7 tiles instead:
-// starting from the tiles in view, every tile where a route segment runs off
-// an edge pulls in the neighbour across that edge, until the route ends or
-// the tile budget runs out.
+// Reads route and line ids from z7 tiles for the zoomed-out map, where tiles
+// carry none. traceRoute collects the whole geometry of one route: starting
+// from the tiles in view, every tile where a route segment runs off an edge
+// pulls in the neighbour across that edge, until the route ends or the tile
+// budget runs out. lineListsNear finds the routes and lines of a clicked line.
 import { VectorTile } from '@mapbox/vector-tile';
 import Pbf from 'pbf';
 
@@ -60,6 +60,77 @@ function readTile(buffer: ArrayBuffer, x: number, y: number, routeId: string) {
     }
   }
   return { features, neighbours };
+}
+
+export type LineLists = { line_relations?: string; line_routes?: string };
+export type LineListQuery = { lng: number; lat: number; radius: number; name?: string };
+
+const METERS_PER_DEGREE = 111320;
+
+// Meters from a point to a line geometry, on a local flat projection.
+function distanceToGeometry(lng: number, lat: number, geometry: GeoJSON.Geometry) {
+  const lines =
+    geometry.type === 'LineString'
+      ? [geometry.coordinates]
+      : geometry.type === 'MultiLineString'
+        ? geometry.coordinates
+        : [];
+  const xScale = METERS_PER_DEGREE * Math.cos((lat * Math.PI) / 180);
+  let best = Infinity;
+  for (const line of lines) {
+    for (let index = 1; index < line.length; index += 1) {
+      const [ax, ay] = [(line[index - 1][0] - lng) * xScale, (line[index - 1][1] - lat) * METERS_PER_DEGREE];
+      const [bx, by] = [(line[index][0] - lng) * xScale, (line[index][1] - lat) * METERS_PER_DEGREE];
+      const [dx, dy] = [bx - ax, by - ay];
+      const t = dx || dy ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) : 0;
+      best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+    }
+  }
+  return best;
+}
+
+// Joins route or line lists, keeping each relation once.
+function mergeRelationLists(values: unknown[]) {
+  const items = new Map<string, string>();
+  for (const value of values) {
+    for (const item of String(value ?? '').split('\u001d')) {
+      const id = item.split('\u001e')[0];
+      if (id && !items.has(id)) items.set(id, item);
+    }
+  }
+  return items.size > 0 ? [...items.values()].join('\u001d') : undefined;
+}
+
+// The line and route lists of the z7 segments near a point. Lines drawn below
+// z7 come from a layer without them, so a click there looks them up here.
+// Parallel lines can run within the click radius, so segments must share the
+// clicked line's name; an unnamed line takes the nearest segment only.
+export async function lineListsNear(
+  { lng, lat, radius, name }: LineListQuery,
+  fetchTile: TileFetcher,
+  signal?: AbortSignal,
+): Promise<LineLists> {
+  const dLat = radius / METERS_PER_DEGREE;
+  const dLng = dLat / Math.max(0.05, Math.cos((lat * Math.PI) / 180));
+  const near: Array<{ distance: number; properties: Record<string, unknown> }> = [];
+  await Promise.all(
+    tilesInBounds(lng - dLng, lat - dLat, lng + dLng, lat + dLat, 4).map(async ([x, y]) => {
+      const buffer = await fetchTile(ROUTE_TRACE_ZOOM, x, y, signal).catch((): null => null);
+      if (!buffer || signal?.aborted) return;
+      const layer = new VectorTile(new Pbf(new Uint8Array(buffer))).layers[LINE_SOURCE_LAYER];
+      for (let index = 0; index < (layer?.length ?? 0); index += 1) {
+        const feature = layer.feature(index);
+        if (name && feature.properties.name !== name) continue;
+        const distance = distanceToGeometry(lng, lat, feature.toGeoJSON(x, y, ROUTE_TRACE_ZOOM).geometry);
+        if (distance <= radius) near.push({ distance, properties: feature.properties });
+      }
+    }),
+  );
+  const chosen = name ? near : near.sort((a, b) => a.distance - b.distance).slice(0, 1);
+  return {
+    line_relations: mergeRelationLists(chosen.map(({ properties }) => properties.line_relations)),
+    line_routes: mergeRelationLists(chosen.map(({ properties }) => properties.line_routes)),
+  };
 }
 
 export async function traceRoute(

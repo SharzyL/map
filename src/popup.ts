@@ -11,6 +11,7 @@
 
 import { renderMarkdown } from './markdown.js';
 import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
+import type { LineListQuery, LineLists } from './route-trace.js';
 import { buildWeatherDashboardUrl, buildWeatherRouteSummary } from './weather-dashboard.js';
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,8 @@ type ListSpec = {
   properties: string[];
   routeIdProperty?: string;
   selectTitle?: string;
+  // Shown as a row of this section (catalogs with sections) instead of below them.
+  section?: string;
 };
 type FeatureLinks = typeof FEATURE_LINKS;
 type FeaturePropertyDefinition = {
@@ -170,6 +173,7 @@ type PopupMapEvent = {
 type MapLike = {
   getContainer(): HTMLElement;
   getCanvas(): HTMLCanvasElement;
+  getZoom(): number;
   queryRenderedFeatures(point: unknown): RenderedFeatureLike[];
   setFeatureState(feature: FeatureStateTarget, state: JsonRecord): void;
   on(type: 'mousemove' | 'click', listener: (event: PopupMapEvent) => void): void;
@@ -557,6 +561,7 @@ export function buildFeatureCatalog() {
           detailProperty: 'ref',
           properties: ['route_id', 'color', 'label', 'ref'],
           selectTitle: 'Highlight this line on the map',
+          section: 'Line',
         },
       },
       line_routes: {
@@ -1079,10 +1084,13 @@ function fetchCommonsImage(linkEl: HTMLAnchorElement, commonsFile: string, abort
     });
 }
 
+// `anchor` is the clicked [lng, lat]; routes and lines picked from the box
+// carry it so their highlight knows where to start.
 export function popupContent(
   feature: RenderedFeatureLike,
   featuresCatalog: FeaturesCatalog,
   abortController: AbortController,
+  anchor?: Coordinates,
 ) {
   const properties = feature.properties || {};
   const layerSource = feature.sourceLayer || '';
@@ -1138,6 +1146,7 @@ export function popupContent(
 
   // === Build DOM ===
   const popupContainer = el('div', 'orm-popup');
+  if (anchor) popupContainer.dataset.anchor = anchor.join(',');
 
   // Title
   const popupTitle = el('h5', 'orm-popup-title', popupContainer);
@@ -1293,52 +1302,55 @@ export function popupContent(
     });
   }
 
-  // List properties (routes)
-  const listProps = propertyValues.filter((it) => it.list);
+  // List properties (routes); with sections, lists that name one are shown there.
+  const listProps = propertyValues.filter((it) => it.list && !(featureCatalog.sections && it.list.section));
   if (listProps.length > 0) {
     const listContainer = el('div', 'orm-popup-lists', popupContainer);
     listProps.forEach(({ title, value, list }) => {
-      if (!list) return;
-      const groups = stringValue(value)
-        .split('\u001d')
-        .map((group) => {
-          const split = group.split('\u001e');
-          return Object.fromEntries(list.properties.map((property, index) => [property, split[index] || null]));
-        });
-
       const header = el('span', 'orm-badge-title', listContainer);
-      header.innerText = `${title} (${groups.length}):`;
-
-      const ul = el('ul', 'orm-popup-route-list', listContainer);
-      groups.forEach((group) => {
-        const groupColor = group[list.colorProperty];
-        const label = group[list.labelProperty];
-        const detail = list.detailProperty && group[list.detailProperty];
-        const showDetail = detail && detail !== label;
-
-        const li = el('li', undefined, ul);
-        const routeId = list.routeIdProperty && group[list.routeIdProperty];
-        if (routeId) {
-          const selectionLabel = showDetail ? `${label} · ${detail}` : label;
-          makeRouteSelectable(li, { id: routeId, color: groupColor, label: selectionLabel }, list.selectTitle);
-        }
-        if (groupColor) {
-          const marker = el('span', 'orm-color-marker', li);
-          marker.style.backgroundColor = groupColor;
-        }
-        if (label) {
-          const labelSpan = el('span', undefined, li);
-          labelSpan.innerText = label;
-        }
-        if (showDetail) {
-          const detailSpan = el('span', 'orm-popup-list-detail', li);
-          detailSpan.innerText = detail;
-        }
-      });
+      header.innerText = `${title} (${listGroups(value, list).length}):`;
+      renderListItems(el('ul', 'orm-popup-route-list', listContainer), value, list);
     });
   }
 
   return popupContainer;
+}
+
+function listGroups(value: unknown, list: ListSpec) {
+  return stringValue(value)
+    .split('\u001d')
+    .map((group) => {
+      const split = group.split('\u001e');
+      return Object.fromEntries(list.properties.map((property, index) => [property, split[index] || null]));
+    });
+}
+
+function renderListItems(ul: HTMLElement, value: unknown, list: ListSpec) {
+  for (const group of listGroups(value, list)) {
+    const groupColor = group[list.colorProperty];
+    const label = group[list.labelProperty];
+    const detail = list.detailProperty && group[list.detailProperty];
+    const showDetail = detail && detail !== label;
+
+    const li = el('li', undefined, ul);
+    const routeId = list.routeIdProperty && group[list.routeIdProperty];
+    if (routeId) {
+      const selectionLabel = showDetail ? `${label} · ${detail}` : label;
+      makeRouteSelectable(li, { id: routeId, color: groupColor, label: selectionLabel }, list.selectTitle);
+    }
+    if (groupColor) {
+      const marker = el('span', 'orm-color-marker', li);
+      marker.style.backgroundColor = groupColor;
+    }
+    if (label) {
+      const labelSpan = el('span', undefined, li);
+      labelSpan.innerText = label;
+    }
+    if (showDetail) {
+      const detailSpan = el('span', 'orm-popup-list-detail', li);
+      detailSpan.innerText = detail;
+    }
+  }
 }
 
 // Clicking a route or line asks route-highlight.ts (listening on the map
@@ -1349,7 +1361,11 @@ function makeRouteSelectable(item: HTMLElement, route: RouteSelection, title = '
   item.setAttribute('role', 'button');
   item.setAttribute('aria-pressed', 'false');
   item.title = title;
-  const select = () => item.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: route }));
+  const select = () => {
+    const anchor = item.closest<HTMLElement>('.orm-popup')?.dataset.anchor?.split(',').map(Number);
+    const at = anchor?.length === 2 && anchor.every(Number.isFinite) ? (anchor as [number, number]) : undefined;
+    item.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: at ? { ...route, at } : route }));
+  };
   item.addEventListener('click', select);
   item.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1413,11 +1429,17 @@ function mergeRows(rows: PropertyRow[]) {
   return merged;
 }
 
-function renderSection(container: Element, title: string, rows: PropertyRow[]) {
-  if (rows.length === 0) return;
+type SectionList = { title: string; value: unknown; list: ListSpec };
+
+function renderSection(container: Element, title: string, rows: PropertyRow[], lists: SectionList[] = []) {
+  if (rows.length === 0 && lists.length === 0) return;
   const section = el('section', 'orm-popup-section', container);
   el('h6', 'orm-popup-section-title', section).innerText = title;
   const list = el('dl', 'orm-popup-fields', section);
+  for (const { title: listTitle, value, list: spec } of lists) {
+    el('dt', undefined, list).innerText = listTitle;
+    renderListItems(el('ul', 'orm-popup-route-list', el('dd', undefined, list)), value, spec);
+  }
   for (const row of mergeRows(rows)) {
     el('dt', undefined, list).innerText = row.label;
     const dd = el('dd', undefined, list);
@@ -1455,7 +1477,16 @@ function renderPropertySections(
       shown.add(property);
       return catalogPropertyRows(property, properties, featuresCatalog, catalog);
     });
-    renderSection(sectionContainer, section.title, rows);
+    const lists = Object.entries(catalog.properties || {})
+      .filter(
+        ([property, definition]) => definition.list?.section === section.title && hasDisplayValue(properties[property]),
+      )
+      .map(([property, definition]) => ({
+        title: definition.name || property,
+        value: properties[property],
+        list: definition.list,
+      }));
+    renderSection(sectionContainer, section.title, rows, lists);
   }
   const otherRows = Object.keys(properties)
     .filter((property) => !shown.has(property) && hasDisplayValue(properties[property]))
@@ -1665,7 +1696,26 @@ function annotationPopupContent(feature: RenderedFeatureLike) {
 // ---------------------------------------------------------------------------
 // Install ORM-style popups on a MapLibre GL map
 // ---------------------------------------------------------------------------
-export function installOrmPopups(map: MapLike, maplibregl: MaplibreLike, featuresCatalog: FeaturesCatalog) {
+export type OrmPopupOptions = {
+  // Finds the line and route lists of the segments near a point (route-trace.ts lineListsNear).
+  lookupLineLists?: (query: LineListQuery, signal: AbortSignal) => Promise<LineLists>;
+};
+
+// Lines drawn below z7 come from this layer, which carries no line or route
+// lists; the info box looks them up and is drawn again once they arrive.
+const ZOOMED_OUT_LINE_LAYER = 'standard_railway_line_low';
+const LINE_LOOKUP_RADIUS_PX = 10;
+
+function metersPerPixel(lat: number, zoom: number) {
+  return (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
+}
+
+export function installOrmPopups(
+  map: MapLike,
+  maplibregl: MaplibreLike,
+  featuresCatalog: FeaturesCatalog,
+  options: OrmPopupOptions = {},
+) {
   let popup: PopupBuilderLike | null = null;
   let hoveredFeature: FeatureStateTarget | null = null;
   map.getContainer().addEventListener('annotation:editopen', () => {
@@ -1791,20 +1841,42 @@ export function installOrmPopups(map: MapLike, maplibregl: MaplibreLike, feature
     if (popup) popup.remove();
 
     const abortController = new AbortController();
+    const clicked = maplibregl.LngLat.convert(event.lngLat).toArray();
     const content = isOsrmPopup
       ? osrmPopupContent(feature)
       : isAnnotationPopup
         ? annotationPopupContent(feature)
-        : popupContent(feature, featuresCatalog, abortController);
+        : popupContent(feature, featuresCatalog, abortController, clicked);
     if (!content) return;
 
-    popup = new maplibregl.Popup({ offset: popupOffsets, maxWidth: '340px' })
+    const shown = new maplibregl.Popup({ offset: popupOffsets, maxWidth: 'min(400px, calc(100vw - 24px))' })
       .setLngLat(coordinates)
       .setDOMContent(content)
       .addTo(map);
+    popup = shown;
 
-    popup.on('close', () => {
+    shown.on('close', () => {
       abortController.abort('Popup closed');
     });
+
+    if (
+      !isOsrmPopup &&
+      !isAnnotationPopup &&
+      feature.sourceLayer === ZOOMED_OUT_LINE_LAYER &&
+      options.lookupLineLists
+    ) {
+      const [lng, lat] = clicked;
+      const name = stringValue(feature.properties?.name) || undefined;
+      const radius = LINE_LOOKUP_RADIUS_PX * metersPerPixel(lat, map.getZoom());
+      options
+        .lookupLineLists({ lng, lat, radius, name }, abortController.signal)
+        .then((lists) => {
+          if (abortController.signal.aborted || popup !== shown) return;
+          if (!lists.line_relations && !lists.line_routes) return;
+          const properties = { ...feature.properties, ...lists };
+          shown.setDOMContent(popupContent({ ...feature, properties }, featuresCatalog, abortController, clicked));
+        })
+        .catch(() => {});
+    }
   });
 }

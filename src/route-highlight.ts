@@ -25,7 +25,8 @@ const EMPTY_GEOMETRY: RouteGeometry = { type: 'FeatureCollection', features: [] 
 const LINE_SOURCE_LAYER = 'railway_line_high';
 const STATION_SOURCE_LAYER_PREFIX = 'standard_railway_text_stations';
 
-export type RouteSelection = { id: string; color: string | null; label: string | null };
+// `at` is where it was picked ([lng, lat]), so the zoomed-out trace can start there.
+export type RouteSelection = { id: string; color: string | null; label: string | null; at?: [number, number] };
 
 type StyleLayerLike = {
   id?: string;
@@ -258,13 +259,19 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     return source?.tiles?.[0] || null;
   }
 
-  async function traceOverview(routeId: string, signal: AbortSignal) {
+  async function traceOverview(route: RouteSelection, signal: AbortSignal) {
     const template = z7TileUrl();
     if (!template) return;
     const bounds = map.getBounds();
-    const seeds = tilesInBounds(bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth());
+    // Zoomed out, the view spans more z7 tiles than the seed budget and the
+    // route may miss the ones taken, so start from where it was picked.
+    const picked = route.at ? tilesInBounds(route.at[0], route.at[1], route.at[0], route.at[1], 1) : [];
+    const seeds = [
+      ...picked,
+      ...tilesInBounds(bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()),
+    ];
     const geometry = await traceRoute(
-      routeId,
+      route.id,
       seeds,
       async (z, x, y, abort) => {
         const url = template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
@@ -287,7 +294,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     markListItems();
     if (route) {
       trace = new AbortController();
-      traceOverview(route.id, trace.signal).catch(() => {});
+      traceOverview(route, trace.signal).catch(() => {});
     }
   }
 

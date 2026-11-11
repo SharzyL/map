@@ -95,6 +95,7 @@ describe('structured railway line popup', () => {
       'Other',
     ]);
     expect(sections.Line).toEqual([
+      ['Lines', 'A-StreckeA3'],
       ['State', 'Present'],
       ['Usage', 'Main'],
       ['Preferred direction', 'Forward'],
@@ -150,14 +151,18 @@ describe('structured railway line popup', () => {
     });
   });
 
-  it('lists the railway lines a segment belongs to and highlights one when clicked', () => {
+  it('lists the railway lines a segment belongs to in the Line section and highlights one when clicked', () => {
     const { content, sections } = render('high', 'railway_line_high', LINE_PROPERTIES);
-    const [linesHeader, routesHeader] = [...content.querySelectorAll('.orm-popup-lists > .orm-badge-title')];
-    expect(linesHeader.textContent).toBe('Lines (2):');
-    expect(routesHeader.textContent).toBe('Routes (1):');
+    // Lines sit with the line's own details; routes stay below the sections.
+    const lineSection = content.querySelector('.orm-popup-section');
+    expect(lineSection.querySelector('.orm-popup-section-title').textContent).toBe('Line');
+    expect(lineSection.querySelector('dt').textContent).toBe('Lines');
+    expect([...content.querySelectorAll('.orm-popup-lists > .orm-badge-title')].map((it) => it.textContent)).toEqual([
+      'Routes (1):',
+    ]);
     expect(sections.Other).toEqual([['Unexpected tag', 'kept']]);
 
-    const [line, refOnly] = content.querySelectorAll<HTMLElement>('.orm-popup-route-list')[0].querySelectorAll('li');
+    const [line, refOnly] = lineSection.querySelectorAll<HTMLElement>('.orm-popup-route-list li');
     expect(line.textContent).toBe('A-StreckeA');
     expect(line.querySelector('.orm-popup-list-detail').textContent).toBe('A');
     expect(line.title).toBe('Highlight this line on the map');
@@ -168,6 +173,24 @@ describe('structured railway line popup', () => {
     content.addEventListener(ROUTE_SELECT_EVENT, (event) => selected((event as CustomEvent).detail));
     line.click();
     expect(selected).toHaveBeenCalledWith({ id: '1924436', color: null, label: 'A-Strecke · A' });
+  });
+
+  it('tells the highlight where a line was picked', () => {
+    const content = popupContent(
+      {
+        source: 'openrailwaymap',
+        sourceLayer: 'railway_line_high',
+        properties: LINE_PROPERTIES,
+        geometry: { type: 'Point' },
+      },
+      buildFeatureCatalog(),
+      new AbortController(),
+      [8.68, 50.11],
+    );
+    const selected = vi.fn();
+    content.addEventListener(ROUTE_SELECT_EVENT, (event) => selected((event as CustomEvent).detail));
+    content.querySelector<HTMLElement>('.orm-popup-section .orm-popup-route-list li').click();
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ id: '1924436', at: [8.68, 50.11] }));
   });
 
   it('shows DC lines without a frequency in hertz', () => {
@@ -219,7 +242,10 @@ describe('unstructured popups', () => {
 
 describe('installOrmPopups', () => {
   // A map whose click lands on the given features; returns the popups opened.
-  function clickMap(features: Array<{ source: string; sourceLayer?: string; properties?: Record<string, unknown> }>) {
+  function clickMap(
+    features: Array<{ source: string; sourceLayer?: string; properties?: Record<string, unknown> }>,
+    options = {},
+  ) {
     const handlers: Record<string, (event: unknown) => void> = {};
     const container = document.createElement('div');
     const map = {
@@ -228,6 +254,7 @@ describe('installOrmPopups', () => {
       queryRenderedFeatures: () =>
         features.map((feature) => ({ ...feature, geometry: { type: 'Point', coordinates: [8.6, 50.1] } })),
       setFeatureState: () => {},
+      getZoom: () => 5,
       on: (type: string, handler: (event: unknown) => void) => (handlers[type] = handler),
     };
     const opened: Node[] = [];
@@ -245,8 +272,13 @@ describe('installOrmPopups', () => {
       on() {}
       remove() {}
     }
-    const maplibre = { LngLat: { convert: (value: unknown) => value }, Popup };
-    installOrmPopups(map as never, maplibre as never, buildFeatureCatalog());
+    const maplibre = {
+      LngLat: {
+        convert: ({ lng, lat }: { lng: number; lat: number }) => ({ toArray: () => [lng, lat], distanceTo: () => 0 }),
+      },
+      Popup,
+    };
+    installOrmPopups(map as never, maplibre as never, buildFeatureCatalog(), options);
     handlers.click({ point: [0, 0], lngLat: { lng: 8.6, lat: 50.1 } });
     return opened;
   }
@@ -257,6 +289,33 @@ describe('installOrmPopups', () => {
     ]);
     expect(opened).toHaveLength(1);
     expect((opened[0] as HTMLElement).querySelector('.orm-popup-section-title').textContent).toBe('Station');
+  });
+
+  it('looks up the lines of a line clicked while zoomed out and shows them', async () => {
+    const lookupLineLists = vi.fn(async () => ({ line_relations: '12265072\u001e\u001e京广高速线\u001e3001' }));
+    const opened = clickMap(
+      [
+        {
+          source: 'openrailwaymap',
+          sourceLayer: 'standard_railway_line_low',
+          properties: { feature: 'rail', name: '京广高速线' },
+        },
+      ],
+      { lookupLineLists },
+    );
+    expect(opened).toHaveLength(1);
+    expect((opened[0] as HTMLElement).querySelector('.orm-popup-route-list')).toBeNull();
+    await vi.waitFor(() => expect(opened).toHaveLength(2));
+    const [query] = lookupLineLists.mock.calls[0] as unknown as [
+      { lng: number; lat: number; radius: number; name: string },
+    ];
+    expect(query).toMatchObject({ lng: 8.6, lat: 50.1, name: '京广高速线' });
+    // Ten pixels at zoom 5 and latitude 50: about 16 km.
+    expect(query.radius).toBeGreaterThan(15000);
+    expect(query.radius).toBeLessThan(16500);
+    expect((opened[1] as HTMLElement).querySelector('.orm-popup-section .orm-popup-route-list li').textContent).toBe(
+      '京广高速线3001',
+    );
   });
 
   it('ignores base map features', () => {

@@ -8,6 +8,7 @@ import {
   ROUTE_SELECT_EVENT,
   type RouteSelection,
 } from './route-highlight.js';
+import { tilesInBounds } from './route-trace.js';
 
 const ROUTE: RouteSelection = { id: '900821540', color: '#c3a17f', label: '15号线：顾村公园 -> 紫竹高新区' };
 
@@ -83,5 +84,33 @@ describe('installRouteHighlight', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('');
+  });
+});
+
+describe('zoomed-out trace', () => {
+  it('starts from the tile where the route was picked', async () => {
+    const { map, container } = createMap();
+    map.getStyle = () =>
+      ({
+        layers: [{ id: 'route_highlight_line_0', source: 'openrailwaymap', minzoom: 7 }],
+        sources: { openrailwaymap: { tiles: ['https://tiles.test/{z}/{x}/{y}.mvt'] } },
+      }) as never;
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        fetched.push(url);
+        return new Response(null, { status: 404 });
+      }),
+    );
+    try {
+      installRouteHighlight(map as never);
+      // Picked near Zhengzhou while the view (createMap) is over Shanghai.
+      selectRoute(container, { ...ROUTE, at: [113.6, 33.5] });
+      const [[x, y]] = tilesInBounds(113.6, 33.5, 113.6, 33.5, 1);
+      await vi.waitFor(() => expect(fetched[0]).toBe(`https://tiles.test/7/${x}/${y}.mvt`));
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
