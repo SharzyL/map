@@ -95,6 +95,21 @@ const CONTENT_TYPES: Partial<Record<TileType, string>> = {
   [TileType.Webp]: 'image/webp',
 };
 
+// The runtime gzips bodies of responses that carry Content-Encoding unless
+// they are built with encodeBody: 'manual', and neither clone() nor
+// cache.match() keeps that flag. Cached gzip tiles therefore go into the cache
+// as freshly built manual responses and come out rewrapped the same way;
+// otherwise they are stored and sent gzipped twice, and browsers, which undo
+// one layer, cannot parse them.
+function gzipTileResponse(body: BodyInit | null, init: { status?: number; headers: HeadersInit }) {
+  return new Response(body, { ...init, encodeBody: 'manual' });
+}
+
+function passThroughEncoded(cached: Response) {
+  if (!cached.headers.has('Content-Encoding')) return cached;
+  return gzipTileResponse(cached.body, { status: cached.status, headers: cached.headers });
+}
+
 export async function handleTileRequest(
   request: Request,
   env: Cloudflare.Env,
@@ -106,7 +121,7 @@ export async function handleTileRequest(
 
   const cache = (caches as CacheStorage & { default: Cache }).default;
   const cached = await cache.match(request.url);
-  if (cached) return cached;
+  if (cached) return passThroughEncoded(cached);
 
   const source = new R2Source(env, parsed.name);
   // TileJSON reads the archive metadata, which must be decompressed.
@@ -144,8 +159,6 @@ export async function handleTileRequest(
     'Access-Control-Allow-Origin': '*',
   };
   if (header.tileCompression === Compression.Gzip) headers['Content-Encoding'] = 'gzip';
-  // 'manual' sends the body as is instead of letting the runtime encode it.
-  const resp = new Response(tiledata.data, { headers, encodeBody: 'manual' });
-  ctx.waitUntil(cache.put(request.url, resp.clone()));
-  return resp;
+  ctx.waitUntil(cache.put(request.url, gzipTileResponse(tiledata.data, { headers })));
+  return gzipTileResponse(tiledata.data, { headers });
 }
