@@ -143,12 +143,3 @@ jobs:
           echo "Upload complete. Verifying..."
           aws s3 ls "${TARGET}" \
             --endpoint-url "$R2_ENDPOINT"
-
-      # Upload to R2 first so the tiles go live without waiting on this.
-      - name: Upload artifact
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: openrailwaymap-pmtiles
-          path: output/openrailwaymap.pmtiles
-          retention-days: 30
