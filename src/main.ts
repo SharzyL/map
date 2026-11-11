@@ -15,6 +15,7 @@ import { installAnnotationRenderer } from './annotation-renderer.js';
 import { installAnnotationTools } from './annotation-tools.js';
 import { applyRailwayFilterToStyle, loadRailwayFilterSettings, type RailwayFilterSettings } from './railway-filter.js';
 import { installRailwayFilter } from './railway-filter-panel.js';
+import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -493,7 +494,10 @@ async function loadStyle(
   ]);
   const ormStyle = rewriteOrmStyle(ormStyleRaw);
   const railwaySources = (ormStyle.metadata?.ormRewrittenSources as string[] | undefined) ?? [];
-  const merged = applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter);
+  const merged = addRouteHighlightToStyle(
+    applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter),
+    railwaySources,
+  );
   const withTerrain = addMapterhornTerrain(merged, demSource);
   return withGlobe(applyMapLayerState(addSatelliteSourceAndLayer(withTerrain), mapLayers));
 }
@@ -639,6 +643,7 @@ async function init() {
     installPhotonSearch(map, maplibregl);
     installWeatherPointPicker(map, maplibregl);
     installRailwayFilter(map, railwayFilter);
+    installRouteHighlight(map);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }

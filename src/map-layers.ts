@@ -162,7 +162,7 @@ function isZoomCurve(value: unknown): value is unknown[] {
 // Rewrites a paint/layout value through `wrap`. MapLibre only allows a zoom
 // curve at the top of an expression, so curves are rewritten stop by stop and
 // legacy {stops} functions become curves.
-function mapZoomOutputs(value: unknown, wrap: (output: unknown) => unknown): unknown {
+export function mapZoomOutputs(value: unknown, wrap: (output: unknown) => unknown): unknown {
   if (value === undefined || value === null) return value;
   if (isZoomCurve(value)) {
     const firstOutput = value[0] === 'step' ? 2 : 4;

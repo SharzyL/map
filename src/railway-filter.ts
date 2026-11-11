@@ -334,7 +334,8 @@ export const RAILWAY_STATION_AREA_FILTER = [
   ['any', ...RAILWAY_CATEGORIES.map(categoryShown)],
 ];
 
-function withOverlayVisibility(layer: StyleLayerLike): StyleLayerLike {
+// Hides a layer while the railway overlay is switched off.
+export function withRailwayOverlayVisibility<T extends StyleLayerLike>(layer: T): T {
   const layout = { ...(layer.layout || {}) };
   const originalVisibility = structuredClone(layout.visibility ?? 'visible');
   layout.visibility = ['case', ['to-boolean', ['global-state', OVERLAY_STATE]], originalVisibility, 'none'];
@@ -360,7 +361,7 @@ export function applyRailwayFilterToStyle<T extends StyleLike>(
   const stationSourceLayers = new Set(RAILWAY_STATION_SOURCE_LAYERS);
   const layers = (style.layers || []).map((layer) => {
     if (!layer.source || !sources.has(layer.source)) return layer;
-    const withVisibility = withOverlayVisibility(layer);
+    const withVisibility = withRailwayOverlayVisibility(layer);
     const sourceLayer = layer['source-layer'] || '';
     if (lineSourceLayers.has(sourceLayer)) return withFilter(withVisibility, RAILWAY_LINE_FILTER);
     if (stationSourceLayers.has(sourceLayer)) return withFilter(withVisibility, RAILWAY_STATION_FILTER);

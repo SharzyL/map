@@ -3439,6 +3439,55 @@ section.layers-panel-routing {
   background-color: #f8f9fa;
   cursor: pointer;
 }
+.orm-popup-route-list > li:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+.orm-popup-route-list > li[aria-pressed='true'] {
+  background-color: #eef2ff;
+  font-weight: 600;
+}
+
+/* Route highlight: names the highlighted route, with a clear button */
+.route-highlight-chip {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 4px 4px 4px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+.route-highlight-chip[hidden] {
+  display: none;
+}
+.route-highlight-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-highlight-clear {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  cursor: pointer;
+}
+.route-highlight-clear:hover {
+  background: #f1f5f9;
+}
 
 /* Popup images — full-bleed like upstream */
 .orm-popup-image-link {

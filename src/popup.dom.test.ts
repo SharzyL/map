@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildFeatureCatalog, popupContent } from './popup.js';
+import { ROUTE_SELECT_EVENT } from './route-highlight.js';
 
 // Attributes of a real light rail segment and station in Frankfurt (OpenRailwayMap tiles).
 const LINE_PROPERTIES = {
@@ -129,6 +130,22 @@ describe('structured railway line popup', () => {
       expect(links).toContain('https://www.openstreetmap.org/way/137315646');
       expect(links).toContain('https://www.openstreetmap.org/edit?way=137315646');
     }
+  });
+
+  it('asks the map to highlight a route when it is clicked', () => {
+    const { content } = render('high', 'railway_line_high', LINE_PROPERTIES);
+    const item = content.querySelector<HTMLElement>('.orm-popup-route-list li');
+    const selected = vi.fn();
+    content.addEventListener(ROUTE_SELECT_EVENT, (event) => selected((event as CustomEvent).detail));
+    expect(item.getAttribute('role')).toBe('button');
+    item.click();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(selected).toHaveBeenCalledTimes(2);
+    expect(selected).toHaveBeenCalledWith({
+      id: '66615',
+      color: '#4a5eaa',
+      label: 'U3: Oberursel Hohemark => Südbahnhof',
+    });
   });
 
   it('shows DC lines without a frequency in hertz', () => {

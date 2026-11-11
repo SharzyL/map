@@ -10,6 +10,7 @@
  */
 
 import { renderMarkdown } from './markdown.js';
+import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
 import { buildWeatherDashboardUrl, buildWeatherRouteSummary } from './weather-dashboard.js';
 
 // ---------------------------------------------------------------------------
@@ -1301,6 +1302,8 @@ export function popupContent(
         const label = group[list.labelProperty];
 
         const li = el('li', undefined, ul);
+        const routeId = list.routeIdProperty && group[list.routeIdProperty];
+        if (routeId) makeRouteSelectable(li, { id: routeId, color: groupColor, label });
         if (groupColor) {
           const marker = el('span', 'orm-color-marker', li);
           marker.style.backgroundColor = groupColor;
@@ -1314,6 +1317,23 @@ export function popupContent(
   }
 
   return popupContainer;
+}
+
+// Clicking a route asks route-highlight.ts (listening on the map container) to
+// highlight the whole route.
+function makeRouteSelectable(item: HTMLElement, route: RouteSelection) {
+  item.dataset.routeId = route.id;
+  item.tabIndex = 0;
+  item.setAttribute('role', 'button');
+  item.setAttribute('aria-pressed', 'false');
+  item.title = 'Highlight this route on the map';
+  const select = () => item.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: route }));
+  item.addEventListener('click', select);
+  item.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    select();
+  });
 }
 
 // ---------------------------------------------------------------------------
