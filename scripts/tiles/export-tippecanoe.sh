@@ -124,7 +124,7 @@ if [ -n "${LINE_RELATIONS_OPL}" ]; then
   psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
 SET client_min_messages = warning;
 DROP TABLE IF EXISTS line_relation_members, line_relations;
-CREATE TABLE line_relations (osm_id int8 PRIMARY KEY, name text, ref text, color text);
+CREATE TABLE line_relations (osm_id int8 PRIMARY KEY, name text, ref text, color text, operator text);
 CREATE TABLE line_relation_members (relation_id int8 NOT NULL, way_id int8 NOT NULL);
 \copy line_relations FROM '${OUTPUT_DIR}/line-relations/line_relations.csv' WITH (FORMAT csv)
 \copy line_relation_members FROM '${OUTPUT_DIR}/line-relations/line_relation_members.csv' WITH (FORMAT csv)
@@ -145,6 +145,55 @@ SQL
   WHERE m.way_id = lv.osm_id) as line_relations"
   echo ""
 fi
+
+# Many ways carry no operator tag because mappers put it on the line instead:
+# most of China's railway bureaus tag only their line relations, and Shanghai
+# Metro tags only its route relations. Segments without an operator take the
+# operators of their line relations, or else of their urban rail routes, so
+# the railway filter and the info box see them. Train routes are left out:
+# their operator runs the trains (SNCF Voyageurs, Amtrak), not the track.
+# line_operators holds that fallback per way.
+if [ -n "${LINE_RELATIONS_OPL}" ]; then
+  RELATION_OPERATORS_SQL="
+  SELECT m.way_id, r.operator
+  FROM line_relation_members m
+  JOIN line_relations r ON r.osm_id = m.relation_id
+  WHERE r.operator <> ''"
+else
+  RELATION_OPERATORS_SQL="SELECT NULL::int8 AS way_id, NULL::text AS operator WHERE false"
+fi
+echo "--- Building line operator fallback ---"
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS line_operators;
+CREATE TABLE line_operators AS
+WITH relation_operators AS (
+  SELECT way_id, array_agg(DISTINCT trim(o) ORDER BY trim(o)) AS operator
+  FROM (${RELATION_OPERATORS_SQL}) lr
+  CROSS JOIN unnest(string_to_array(lr.operator, ';')) AS o
+  WHERE trim(o) <> ''
+  GROUP BY way_id
+), route_operators AS (
+  SELECT rl.line_id AS way_id, array_agg(DISTINCT trim(o) ORDER BY trim(o)) AS operator
+  FROM route_line rl
+  JOIN routes r ON r.osm_id = rl.route_id
+  CROSS JOIN unnest(string_to_array(r.operator, ';')) AS o
+  WHERE r.type IN ('subway', 'light_rail', 'tram', 'monorail', 'funicular') AND trim(o) <> ''
+  GROUP BY rl.line_id
+)
+SELECT
+  coalesce(lo.way_id, ro.way_id) AS way_id,
+  coalesce(lo.operator, ro.operator) AS fallback_operator
+FROM relation_operators lo
+FULL JOIN route_operators ro ON ro.way_id = lo.way_id;
+CREATE UNIQUE INDEX ON line_operators (way_id);
+ANALYZE line_operators;
+SQL
+echo ""
+# Joined to railway_line_view as LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id.
+OPERATOR_SQL="nullif(array_to_string(
+    CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
+    U&'\001E'), '')"
 
 echo "--- Phase 1: Export layers from PostGIS to FlatGeobuf ---"
 echo ""
@@ -201,7 +250,7 @@ export_railway_line_high() {
   gaugeint2,
   array_to_string(gauges, ', ') as gauges,
   loading_gauge,
-  nullif(array_to_string(operator, U&'\001E'), '') as operator,
+  ${OPERATOR_SQL} as operator,
   primary_operator,
   owner,
   traffic_mode,
@@ -238,6 +287,7 @@ SELECT
   track_ref,
   preferred_direction${popup_columns}
 FROM railway_line_view lv
+LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
 WHERE ${where_clause}
 ORDER BY
   layer,
@@ -347,17 +397,18 @@ FROM (
     gaugeint0,
     gaugeint1,
     traffic_mode,
-    nullif(array_to_string(operator, U&'\001E'), '') as operator,
+    ${OPERATOR_SQL} as operator,
     max(rank) as rank,
     (ST_Dump(ST_LineMerge(ST_Collect(way)))).geom AS way
-  FROM railway_line_view
+  FROM railway_line_view lv
+  LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
   WHERE state = 'present'
     AND feature IN ('rail', 'ferry')
     AND usage = 'main'
     AND service IS NULL
   GROUP BY
     feature, state, usage, highspeed, name, maxspeed, electrification_state,
-    gaugeint0, gaugeint1, traffic_mode, nullif(array_to_string(operator, U&'\001E'), '')
+    gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}
 ) merged
 ORDER BY rank NULLS LAST
 "

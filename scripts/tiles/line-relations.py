@@ -7,7 +7,7 @@ The input comes from
   osmium tags-filter <planet.osm.pbf> r/route=railway -R
   osmium cat -f opl,add_metadata=false
 and holds one relation per line. Writes:
-  line_relations.csv         osm_id,name,ref,color
+  line_relations.csv         osm_id,name,ref,color,operator
   line_relation_members.csv  relation_id,way_id
 """
 
@@ -59,7 +59,9 @@ def main(opl_path, out_dir):
                             way_ids.append(int(ref[1:]))
             if tags.get('route') != 'railway':
                 continue
-            rel_csv.writerow([relation_id, tags.get('name', ''), tags.get('ref', ''), tags.get('colour', '')])
+            rel_csv.writerow(
+                [relation_id, tags.get('name', ''), tags.get('ref', ''), tags.get('colour', ''), tags.get('operator', '')]
+            )
             relations += 1
             for way_id in dict.fromkeys(way_ids):
                 member_csv.writerow([relation_id, way_id])
