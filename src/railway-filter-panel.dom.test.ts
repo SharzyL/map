@@ -179,6 +179,31 @@ describe('railway filter panel', () => {
     expect(options).toEqual(['SNCF Réseau', 'SBB']);
   });
 
+  it('suggests one entry per operator however its name is spelled', () => {
+    const map = createMap();
+    map.queryRenderedFeatures = () => [
+      { sourceLayer: 'railway_line_high', properties: { operator: '東海旅客鉄道 (JR Central)' } },
+      { sourceLayer: 'railway_line_high', properties: { operator: '東海旅客鉄道株式会社' } },
+      { sourceLayer: 'railway_line_high', properties: { operator: '東海旅客鉄道' } },
+      { sourceLayer: 'standard_railway_line_low', properties: { operator: '中国铁路广州局集团有限公司' } },
+      {
+        sourceLayer: 'standard_railway_line_low',
+        properties: { operator: 'Shanghai Maglev Transportation Co., Ltd.' },
+      },
+    ];
+    installRailwayFilter(map, defaultRailwayFilterSettings());
+    map.controls[0].querySelector<HTMLButtonElement>('.maplibregl-ctrl-railways').click();
+    const options = Array.from(map.container.querySelectorAll('datalist option')).map((option) => [
+      option.getAttribute('value'),
+      option.getAttribute('label'),
+    ]);
+    expect(options).toEqual([
+      ['東海旅客鉄道', 'JR Central'],
+      ['Shanghai Maglev Transportation', null],
+      ['中国铁路广州局集团', null],
+    ]);
+  });
+
   it('hides the overlay and disables the other filters', () => {
     const { map, panel, button, checkbox, speedSelect } = setup();
 

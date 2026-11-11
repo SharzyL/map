@@ -44,6 +44,32 @@ export type RailwayFilterMap = Parameters<typeof setGlobalStatePropertyWhenReady
 const OPERATOR_INPUT_DELAY_MS = 350;
 const OPERATOR_SUGGESTION_LIMIT = 40;
 
+// The same company is often tagged with and without a legal form or a
+// translation: 東海旅客鉄道, 東海旅客鉄道株式会社, 東海旅客鉄道 (JR Central).
+const OPERATOR_TRANSLATION = /\s*[(（]([^()（）]+)[)）]$/;
+const OPERATOR_LEGAL_PREFIX = /^株式会社\s*/;
+const OPERATOR_LEGAL_SUFFIX =
+  /(?:\s*(?:株式会社|股份有限公司|有限责任公司|有限公司)|,?\s+(?:Co\.,?\s*)?Ltd\.?|,?\s+(?:Inc\.?|GmbH|AG|plc|LLC|Limited|Corporation))$/i;
+
+// Shortens an operator name to the part its variants share, plus any
+// translations it carried. The operator filter matches part of a name, so the
+// short form matches every variant.
+export function operatorBaseName(operator: string): { name: string; translations: string[] } {
+  let name = operator.trim();
+  const translations: string[] = [];
+  for (let previous = ''; name !== previous; ) {
+    previous = name;
+    const translation = OPERATOR_TRANSLATION.exec(name);
+    if (translation) translations.unshift(translation[1].trim());
+    const shorter = name
+      .replace(OPERATOR_TRANSLATION, '')
+      .replace(OPERATOR_LEGAL_PREFIX, '')
+      .replace(OPERATOR_LEGAL_SUFFIX, '');
+    if (shorter.trim().length >= 2) name = shorter.trim();
+  }
+  return { name, translations };
+}
+
 const CATEGORY_LABELS: Record<RailwayCategory, { label: string; hint: string }> = {
   main: { label: 'Main lines', hint: 'Mainline passenger and freight routes' },
   branch: { label: 'Branch lines', hint: 'Secondary and regional lines' },
@@ -287,29 +313,35 @@ class RailwayFilterPanel {
     if (operator !== this._settings.operator) this._update((s) => (s.operator = operator));
   }
 
-  // Suggest the most common operators among the railway lines in view.
+  // Suggest the most common operators among the railway lines in view, one
+  // entry per company however its name is spelled, with its translations as
+  // the label.
   _refreshOperatorSuggestions() {
     const features = this._map.queryRenderedFeatures?.() ?? [];
     const lineSourceLayers = new Set(RAILWAY_LINE_SOURCE_LAYERS);
-    const counts = new Map<string, number>();
+    const suggestions = new Map<string, { count: number; translations: Set<string> }>();
     for (const feature of features) {
       if (!lineSourceLayers.has(feature.sourceLayer || '')) continue;
       const operators = String(feature.properties?.operator ?? '').split('\u001e');
       for (const operator of operators.map((value) => value.trim()).filter(Boolean)) {
-        counts.set(operator, (counts.get(operator) || 0) + 1);
+        const { name, translations } = operatorBaseName(operator);
+        const suggestion = suggestions.get(name) ?? { count: 0, translations: new Set() };
+        suggestion.count += 1;
+        for (const translation of translations) suggestion.translations.add(translation);
+        suggestions.set(name, suggestion);
       }
     }
-    if (counts.size === 0) return;
-    const operators = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, OPERATOR_SUGGESTION_LIMIT)
-      .map(([operator]) => operator);
+    if (suggestions.size === 0) return;
     this._operatorSuggestions.replaceChildren(
-      ...operators.map((operator) => {
-        const option = document.createElement('option');
-        option.value = operator;
-        return option;
-      }),
+      ...[...suggestions.entries()]
+        .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+        .slice(0, OPERATOR_SUGGESTION_LIMIT)
+        .map(([name, { translations }]) => {
+          const option = document.createElement('option');
+          option.value = name;
+          if (translations.size) option.setAttribute('label', [...translations].join(' · '));
+          return option;
+        }),
     );
   }
 
