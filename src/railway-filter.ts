@@ -62,6 +62,8 @@ export type RailwayFilterSettings = {
   overlay: boolean;
   // How line colors are chosen; not a filter, so resetting filters keeps it.
   colorBy: RailwayColorMode;
+  // Fade tunnels and outline bridges; also kept by a reset.
+  tunnelsAndBridges: boolean;
   categories: Record<RailwayCategory, boolean>;
   statuses: Record<RailwayStatus, boolean>;
   minSpeed: number;
@@ -89,6 +91,7 @@ type StyleLike = {
 };
 
 const OVERLAY_STATE = 'railwayOverlay';
+const TUNNELS_AND_BRIDGES_STATE = 'railwayTunnelsAndBridges';
 const MIN_SPEED_STATE = 'railwayMinSpeed';
 const INCLUDE_UNKNOWN_STATE = 'railwayIncludeUnknown';
 const ELECTRIFICATION_STATE = 'railwayElectrification';
@@ -105,6 +108,7 @@ export function defaultRailwayFilterSettings(): RailwayFilterSettings {
   return {
     overlay: true,
     colorBy: 'default',
+    tunnelsAndBridges: false,
     categories: Object.fromEntries(RAILWAY_CATEGORIES.map((category) => [category, true])) as Record<
       RailwayCategory,
       boolean
@@ -136,6 +140,7 @@ export function normalizeRailwayFilterSettings(value: unknown): RailwayFilterSet
   if ((RAILWAY_COLOR_MODES as readonly unknown[]).includes(value.colorBy)) {
     settings.colorBy = value.colorBy as RailwayColorMode;
   }
+  if (typeof value.tunnelsAndBridges === 'boolean') settings.tunnelsAndBridges = value.tunnelsAndBridges;
   if (isRecord(value.categories)) {
     for (const category of RAILWAY_CATEGORIES) {
       if (typeof value.categories[category] === 'boolean') settings.categories[category] = value.categories[category];
@@ -173,6 +178,7 @@ export function railwayFilterGlobalState(settings: RailwayFilterSettings): Recor
   const state: Record<string, unknown> = {
     [OVERLAY_STATE]: settings.overlay,
     [RAILWAY_COLOR_STATE]: settings.colorBy,
+    [TUNNELS_AND_BRIDGES_STATE]: settings.tunnelsAndBridges,
     [MIN_SPEED_STATE]: settings.minSpeed,
     [INCLUDE_UNKNOWN_STATE]: settings.includeUnknown,
     [ELECTRIFICATION_STATE]: settings.electrification,
@@ -356,6 +362,19 @@ export function withRailwayOverlayVisibility<T extends StyleLayerLike>(layer: T)
   return { ...layer, layout };
 }
 
+// The style's tunnel and bridge marks: a pale cover over tunnels and dark
+// railings along bridges, for current lines and OpenHistoricalMap ones alike.
+const TUNNEL_AND_BRIDGE_MARK = /^railway_.*_(tunnel_cover|bridge_railing)$/;
+
+// Hides a tunnel or bridge mark while those marks are switched off.
+export function withTunnelAndBridgeMarks<T extends StyleLayerLike>(layer: T): T {
+  if (!TUNNEL_AND_BRIDGE_MARK.test(layer.id || '')) return layer;
+  const layout = { ...(layer.layout || {}) };
+  const originalVisibility = structuredClone(layout.visibility ?? 'visible');
+  layout.visibility = ['case', ['to-boolean', ['global-state', TUNNELS_AND_BRIDGES_STATE]], originalVisibility, 'none'];
+  return { ...layer, layout };
+}
+
 function withFilter(layer: StyleLayerLike, clause: unknown[]): StyleLayerLike {
   const filter = layer.filter ? ['all', layer.filter, clause] : clause;
   return { ...layer, filter };
@@ -363,8 +382,9 @@ function withFilter(layer: StyleLayerLike, clause: unknown[]): StyleLayerLike {
 
 // Wires the filter into a style: layers on `railwaySources` follow the
 // overlay switch, line and station layers get their filter clause (line
-// layers also the alternative colors), and the global state defaults come
-// from `settings` so the first render already matches them.
+// layers also the alternative colors), tunnel and bridge marks follow their
+// switch, and the global state defaults come from `settings` so the first
+// render already matches them.
 export function applyRailwayFilterToStyle<T extends StyleLike>(
   style: T,
   railwaySources: readonly string[],
@@ -373,7 +393,8 @@ export function applyRailwayFilterToStyle<T extends StyleLike>(
   const sources = new Set(railwaySources);
   const lineSourceLayers = new Set(RAILWAY_LINE_SOURCE_LAYERS);
   const stationSourceLayers = new Set(RAILWAY_STATION_SOURCE_LAYERS);
-  const layers = (style.layers || []).map((layer) => {
+  const layers = (style.layers || []).map((original) => {
+    const layer = withTunnelAndBridgeMarks(original);
     if (!layer.source || !sources.has(layer.source)) return layer;
     const withVisibility = withRailwayOverlayVisibility(layer);
     const sourceLayer = layer['source-layer'] || '';

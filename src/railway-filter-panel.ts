@@ -102,6 +102,7 @@ class RailwayFilterPanel {
   _colorSelect: HTMLSelectElement;
   _legend: HTMLUListElement;
   _legendMode: RailwayColorMode | null = null;
+  _tunnelsAndBridgesInput: HTMLInputElement;
   _categoryInputs = new Map<RailwayCategory, HTMLInputElement>();
   _statusInputs = new Map<RailwayStatus, HTMLInputElement>();
   _speedSelect: HTMLSelectElement;
@@ -165,13 +166,17 @@ class RailwayFilterPanel {
     this._overlayInput.addEventListener('change', () => this._update((s) => (s.overlay = this._overlayInput.checked)));
 
     this._filters = el('div', 'railway-filter-options', body);
-    const colors = group(this._filters, 'Line colors');
+    const colors = group(this._filters, 'Line style');
     this._colorSelect = selectField(colors, 'Color by', Object.entries(COLOR_MODE_LABELS));
     this._colorSelect.addEventListener('change', () =>
       this._update((s) => (s.colorBy = this._colorSelect.value as RailwayColorMode)),
     );
     this._legend = el('ul', 'railway-filter-legend', colors);
     this._legend.setAttribute('aria-label', 'Line color legend');
+    this._tunnelsAndBridgesInput = checkboxRow(colors, 'Mark tunnels and bridges', 'Faded tunnels, outlined bridges');
+    this._tunnelsAndBridgesInput.addEventListener('change', () =>
+      this._update((s) => (s.tunnelsAndBridges = this._tunnelsAndBridgesInput.checked)),
+    );
 
     const types = group(this._filters, 'Line and station types');
     for (const category of RAILWAY_CATEGORIES) {
@@ -234,7 +239,13 @@ class RailwayFilterPanel {
     this._resetButton.type = 'button';
     this._resetButton.textContent = 'Reset filters';
     this._resetButton.addEventListener('click', () =>
-      this._update((s) => Object.assign(s, defaultRailwayFilterSettings(), { overlay: s.overlay, colorBy: s.colorBy })),
+      this._update((s) =>
+        Object.assign(s, defaultRailwayFilterSettings(), {
+          overlay: s.overlay,
+          colorBy: s.colorBy,
+          tunnelsAndBridges: s.tunnelsAndBridges,
+        }),
+      ),
     );
 
     this._sync();
@@ -362,6 +373,8 @@ class RailwayFilterPanel {
       !settings.overlay || !settings.statuses.showAbandonedInfrastructure;
     this._colorSelect.value = settings.colorBy;
     this._renderLegend(settings.colorBy);
+    this._tunnelsAndBridgesInput.checked = settings.tunnelsAndBridges;
+    this._tunnelsAndBridgesInput.disabled = !settings.overlay;
     this._speedSelect.value = String(settings.minSpeed);
     this._gaugeSelect.value = settings.gauge;
     this._trafficSelect.value = settings.traffic;

@@ -1,4 +1,10 @@
-import { featureFilter, validateStyleMin, type StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
+import {
+  createExpression,
+  featureFilter,
+  latest,
+  validateStyleMin,
+  type StyleSpecification,
+} from '@maplibre/maplibre-gl-style-spec';
 import { describe, expect, it } from 'vitest';
 import ormStyleText from '../public/orm/style/standard.json?raw';
 import {
@@ -15,6 +21,7 @@ import {
   RAILWAY_STATION_SOURCE_LAYERS,
   railwayFilterGlobalState,
   saveRailwayFilterSettings,
+  withTunnelAndBridgeMarks,
   type RailwayFilterSettings,
 } from './railway-filter.js';
 
@@ -241,7 +248,7 @@ describe('applyRailwayFilterToStyle', () => {
     for (const layer of styled.layers) {
       const before = original.get(layer.id);
       if (!('source' in layer) || !railwaySources.includes(layer.source)) {
-        expect(layer).toEqual(before);
+        expect(layer).toEqual(withTunnelAndBridgeMarks(before));
         continue;
       }
       expect(JSON.stringify(layer.layout?.visibility)).toContain('railwayOverlay');
@@ -269,16 +276,42 @@ describe('applyRailwayFilterToStyle', () => {
     expect(stationLayers).toBeGreaterThan(5);
   });
 
+  it('switches the tunnel and bridge marks of current and historical lines only', () => {
+    const styled = applyRailwayFilterToStyle(ormStyle, railwaySources, defaultRailwayFilterSettings());
+    const switched = styled.layers.filter((layer) =>
+      JSON.stringify('layout' in layer ? layer.layout?.visibility : null).includes('railwayTunnelsAndBridges'),
+    );
+    const ids = switched.map(({ id }) => id);
+    expect(ids.every((id) => /_(tunnel_cover|bridge_railing)$/.test(id))).toBe(true);
+    expect(ids).toContain('railway_line_light_rail_tunnel_cover');
+    expect(ids).toContain('railway_line_main_high_bridge_railing');
+    expect(ids).toContain('railway_line_historical_light_rail_tunnel_cover');
+    expect(ids).not.toContain('railway_line_main_high_bridge_casing');
+    expect(ids.length).toBeGreaterThan(60);
+
+    const cover = switched.find(({ id }) => id === 'railway_line_light_rail_tunnel_cover');
+    const visibility = (shown: boolean) => {
+      const state = { date: 2026, railwayOverlay: true, railwayTunnelsAndBridges: shown };
+      const parsed = createExpression(cover.layout.visibility, latest.layout_line.visibility as never, state);
+      expect(parsed.result).toBe('success');
+      return (parsed.value as { evaluate(globals: object): unknown }).evaluate({ zoom: 12 });
+    };
+    expect(visibility(false)).toBe('none');
+    expect(visibility(true)).toBe('visible');
+  });
+
   it('seeds the global state defaults from the settings', () => {
     const settings = settingsWith((next) => {
       next.overlay = false;
       next.minSpeed = 160;
       next.statuses.showAbandonedInfrastructure = true;
       next.colorBy = 'electrification';
+      next.tunnelsAndBridges = true;
     });
     const styled = applyRailwayFilterToStyle(ormStyle, railwaySources, settings);
     expect(styled.state.railwayOverlay.default).toBe(false);
     expect(styled.state.railwayColorBy.default).toBe('electrification');
+    expect(styled.state.railwayTunnelsAndBridges.default).toBe(true);
     expect(styled.state.railwayMinSpeed.default).toBe(160);
     expect(styled.state.showAbandonedInfrastructure.default).toBe(true);
   });
@@ -290,6 +323,7 @@ describe('railway filter settings', () => {
     const normalized = normalizeRailwayFilterSettings({
       overlay: 'no',
       colorBy: 'rainbow',
+      tunnelsAndBridges: 'yes',
       categories: { main: false, bogus: false },
       minSpeed: 123,
       electrification: 'electrified',
@@ -300,6 +334,8 @@ describe('railway filter settings', () => {
     expect(normalized.overlay).toBe(true);
     expect(normalized.colorBy).toBe('default');
     expect(normalizeRailwayFilterSettings({ colorBy: 'gauge' }).colorBy).toBe('gauge');
+    expect(normalized.tunnelsAndBridges).toBe(false);
+    expect(normalizeRailwayFilterSettings({ tunnelsAndBridges: true }).tunnelsAndBridges).toBe(true);
     expect(normalized.categories.main).toBe(false);
     expect(normalized.minSpeed).toBe(0);
     expect(normalized.electrification).toBe('electrified');

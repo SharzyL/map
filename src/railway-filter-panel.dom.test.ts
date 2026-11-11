@@ -197,6 +197,22 @@ describe('railway filter panel', () => {
     expect(checkbox('Razed').disabled).toBe(false);
   });
 
+  it('switches tunnel and bridge marks, off by default, and keeps them through a reset', () => {
+    const { map, panel, checkbox } = setup();
+    const marks = checkbox('Mark tunnels and bridges');
+    expect(marks.checked).toBe(false);
+
+    toggle(marks);
+    expect(map.globalState).toEqual({ railwayTunnelsAndBridges: true });
+    expect(loadRailwayFilterSettings().tunnelsAndBridges).toBe(true);
+    expect(panel.querySelector('.railway-filter-summary').textContent).toBe('All railways shown');
+
+    toggle(checkbox('Main lines'));
+    panel.querySelector<HTMLButtonElement>('.railway-filter-reset').click();
+    expect(marks.checked).toBe(true);
+    expect(loadRailwayFilterSettings().tunnelsAndBridges).toBe(true);
+  });
+
   it('starts from the given settings and resets them to the defaults', () => {
     const settings = defaultRailwayFilterSettings();
     settings.categories.main = false;

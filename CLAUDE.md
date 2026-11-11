@@ -58,7 +58,7 @@ The browser requests `/tiles/openrailwaymap/{z}/{x}/{y}.mvt?v=<TILE_VERSION>`, s
 
 Display settings are applied by rewriting the style once at load and then flipping MapLibre `global-state`, never by editing layers one by one:
 
-- `railway-filter.ts` adds filter clauses to railway line/station layers and an overlay visibility switch; `railway-filter-panel.ts` is its panel.
+- `railway-filter.ts` adds filter clauses to railway line/station layers, an overlay visibility switch and a switch for the style's tunnel covers and bridge railings (off by default, matched by layer id so OpenHistoricalMap lines follow it too); `railway-filter-panel.ts` is its panel.
 - `railway-colors.ts` recolors railway line fills by route color, maximum speed, electrification or gauge instead of usage (the color mode and its legend live in the railway panel). The default mode reads a line's color from its first colored route in `line_routes` and keeps the usage color for lines without one. It picks layers by the ids `railwayLine()` in `scripts/styles/shared.mjs` generates, and each mode's legend table drives both the map colors and the panel legend.
 - `map-layers.ts` handles base map / satellite / hybrid visibility, hybrid road and label styling, base map saturation, label language and terrain layer switches; `map-layers-panel.ts` is its UI, the Layers panel.
 - `map-panel.ts` holds the shared panel markup; `stored-settings.ts` persists settings in localStorage.
