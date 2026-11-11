@@ -87,9 +87,15 @@ type FeaturePropertyDefinition = {
   // Skip the row when it would repeat this other property's value.
   hideIfSameAs?: string;
 };
+// A row joining several properties with ' · '. A part that lists several
+// properties joins their values with `separator` (a space by default) and puts
+// `prefix` before them, e.g. "planned 25 kV 50 Hz". A property that is just
+// true shows its name ("High speed").
+type CombinedRowPart = string | { properties: string[]; prefix?: string; separator?: string };
+type CombinedRow = { name: string; parts: CombinedRowPart[] };
 type PopupSection = {
   title: string;
-  properties: string[];
+  properties: Array<string | CombinedRow>;
 };
 type FeatureCatalog = {
   featureProperty?: string;
@@ -456,43 +462,40 @@ export function buildFeatureCatalog() {
       {
         title: 'Line',
         properties: [
-          'state',
-          'usage',
-          'service',
-          'traffic_mode',
-          'highspeed',
+          { name: 'Type', parts: ['state', 'usage', 'service', 'traffic_mode', 'highspeed', 'tunnel', 'bridge'] },
+          { name: 'Speed', parts: ['maxspeed', 'speed_label'] },
+          {
+            name: 'Electrification',
+            parts: [
+              'electrification_state',
+              { properties: ['voltage', 'frequency', 'maximum_current'] },
+              { prefix: 'planned', properties: ['future_voltage', 'future_frequency', 'future_maximum_current'] },
+            ],
+          },
+          {
+            name: 'Gauge',
+            parts: [
+              'gauges',
+              { prefix: 'loading gauge', properties: ['loading_gauge'] },
+              { prefix: 'class', properties: ['track_class'] },
+            ],
+          },
+          {
+            name: 'Signalling',
+            parts: [
+              { separator: ', ', properties: ['train_protection0', 'train_protection1', 'train_protection2'] },
+              { prefix: 'planned', properties: ['train_protection_construction'] },
+              'radio',
+            ],
+          },
+          'operator',
+          'primary_operator',
+          'owner',
           'preferred_direction',
           'track_ref',
           'reporting_marks',
-          'tunnel',
-          'bridge',
         ],
       },
-      { title: 'Speed', properties: ['maxspeed', 'speed_label'] },
-      {
-        title: 'Electrification',
-        properties: [
-          'electrification_state',
-          'voltage',
-          'frequency',
-          'maximum_current',
-          'future_voltage',
-          'future_frequency',
-          'future_maximum_current',
-        ],
-      },
-      { title: 'Track', properties: ['gauges', 'loading_gauge', 'track_class'] },
-      {
-        title: 'Signalling & radio',
-        properties: [
-          'train_protection0',
-          'train_protection1',
-          'train_protection2',
-          'train_protection_construction',
-          'radio',
-        ],
-      },
-      { title: 'Operation', properties: ['operator', 'primary_operator', 'owner'] },
       { title: 'Links', properties: ['wikidata', 'wikipedia', 'wikimedia_commons', 'mapillary'] },
     ],
     // way_length only gates tunnel and bridge decorations; gaugeint* feed
@@ -506,7 +509,8 @@ export function buildFeatureCatalog() {
       'train_protection_construction_rank',
     ],
     properties: {
-      state: { name: 'State', format: { humanize: 'words' } },
+      // In service is the norm, so the Type row only names other states.
+      state: { name: 'State', format: { labels: { present: '' }, humanize: 'words' } },
       usage: { name: 'Usage', format: { humanize: 'words' } },
       service: { name: 'Service', format: { humanize: 'words' } },
       highspeed: { name: 'High speed' },
@@ -1411,6 +1415,42 @@ function catalogPropertyRows(
   return [{ label, value: formatted, href }];
 }
 
+// One property's value as text for a combined row; '' when there is nothing to show.
+function combinedPartValue(
+  property: string,
+  properties: JsonRecord,
+  featuresCatalog: FeaturesCatalog,
+  catalog: FeatureCatalog,
+) {
+  const value = properties[property];
+  if (!hasDisplayValue(value)) return '';
+  const definition = catalog.properties?.[property] || {};
+  if (definition.hideIfSameAs && stringValue(properties[definition.hideIfSameAs]) === stringValue(value)) return '';
+  if (value === true) return definition.name || humanizeWords(property);
+  const formatted = formatPropertyValue(value, definition.format, featuresCatalog);
+  return Array.isArray(formatted) ? formatted.map(([, item]) => item).join(', ') : formatted;
+}
+
+function combinedRow(
+  row: CombinedRow,
+  properties: JsonRecord,
+  featuresCatalog: FeaturesCatalog,
+  catalog: FeatureCatalog,
+): PropertyRow[] {
+  const valueOf = (property: string) => combinedPartValue(property, properties, featuresCatalog, catalog);
+  const parts = row.parts.map((part) => {
+    if (typeof part === 'string') return valueOf(part);
+    const values = part.properties.map(valueOf).filter(Boolean);
+    return values.length ? [part.prefix, values.join(part.separator ?? ' ')].filter(Boolean).join(' ') : '';
+  });
+  const value = parts.filter(Boolean).join(' · ');
+  return value ? [{ label: row.name, value }] : [];
+}
+
+function combinedRowProperties(row: CombinedRow) {
+  return row.parts.flatMap((part) => (typeof part === 'string' ? [part] : part.properties));
+}
+
 function otherPropertyRow(property: string, value: unknown): PropertyRow {
   return {
     label: humanizeWords(property),
@@ -1473,9 +1513,13 @@ function renderPropertySections(
     if (definition.paragraph || definition.list) shown.add(property);
   }
   for (const section of catalog.sections || []) {
-    const rows = section.properties.flatMap((property) => {
-      shown.add(property);
-      return catalogPropertyRows(property, properties, featuresCatalog, catalog);
+    const rows = section.properties.flatMap((entry) => {
+      if (typeof entry !== 'string') {
+        combinedRowProperties(entry).forEach((property) => shown.add(property));
+        return combinedRow(entry, properties, featuresCatalog, catalog);
+      }
+      shown.add(entry);
+      return catalogPropertyRows(entry, properties, featuresCatalog, catalog);
     });
     const lists = Object.entries(catalog.properties || {})
       .filter(

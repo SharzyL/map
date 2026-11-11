@@ -82,39 +82,39 @@ afterEach(() => {
 });
 
 describe('structured railway line popup', () => {
-  it('groups line metadata into titled sections with readable values', () => {
+  it('groups line metadata into a few combined rows', () => {
     const { sections } = render('high', 'railway_line_high', LINE_PROPERTIES);
-    expect(Object.keys(sections)).toEqual([
-      'Line',
-      'Speed',
-      'Electrification',
-      'Track',
-      'Signalling & radio',
-      'Operation',
-      'Links',
-      'Other',
-    ]);
+    expect(Object.keys(sections)).toEqual(['Line', 'Links', 'Other']);
     expect(sections.Line).toEqual([
       ['Lines', 'A-StreckeA3'],
-      ['State', 'Present'],
-      ['Usage', 'Main'],
+      ['Type', 'Main · Bridge'],
+      ['Speed', '60 km/h'],
+      ['Electrification', 'Electrified · 15 kV 16.7 Hz'],
+      ['Gauge', '1435 mm, 1000 mm'],
+      ['Signalling', 'PZB, ETCS 2 · GSM-R'],
+      ['Operator', 'VGF'],
       ['Preferred direction', 'Forward'],
-      ['Bridge', 'Yes'],
     ]);
-    expect(sections.Speed).toEqual([['Maximum speed', '60 km/h']]);
-    expect(sections.Electrification).toEqual([
-      ['Electrification', 'Electrified'],
-      ['Voltage', '15 kV'],
-      ['Frequency', '16.7 Hz'],
-    ]);
-    expect(sections.Track).toEqual([['Gauge', '1435 mm, 1000 mm']]);
-    expect(sections['Signalling & radio']).toEqual([
-      ['Train protection', 'PZB, ETCS 2'],
-      ['Radio', 'GSM-R'],
-    ]);
-    expect(sections.Operation).toEqual([['Operator', 'VGF']]);
     expect(sections.Links).toEqual([['Wikipedia', 'A-Strecke']]);
     expect(sections.Other).toEqual([['Unexpected tag', 'kept']]);
+  });
+
+  it('names states other than in service and adds planned systems', () => {
+    const { sections } = render('high', 'railway_line_high', {
+      ...LINE_PROPERTIES,
+      state: 'construction',
+      highspeed: true,
+      future_voltage: 25000,
+      future_frequency: 50,
+      loading_gauge: 'GC',
+      track_class: 'D4',
+      train_protection_construction: 'etcs_3',
+    });
+    const rows = Object.fromEntries(sections.Line);
+    expect(rows.Type).toBe('Construction · Main · High speed · Bridge');
+    expect(rows.Electrification).toBe('Electrified · 15 kV 16.7 Hz · planned 25 kV 50 Hz');
+    expect(rows.Gauge).toBe('1435 mm, 1000 mm · loading gauge GC · class D4');
+    expect(rows.Signalling).toBe('PZB, ETCS 2 · planned ETCS 3 · GSM-R');
   });
 
   it('links external references and keeps routes below the sections', () => {
@@ -195,11 +195,7 @@ describe('structured railway line popup', () => {
 
   it('shows DC lines without a frequency in hertz', () => {
     const { sections } = render('high', 'railway_line_high', { ...LINE_PROPERTIES, voltage: 750, frequency: 0 });
-    expect(sections.Electrification).toEqual([
-      ['Electrification', 'Electrified'],
-      ['Voltage', '750 V'],
-      ['Frequency', 'DC'],
-    ]);
+    expect(Object.fromEntries(sections.Line).Electrification).toBe('Electrified · 750 V DC');
   });
 });
 
