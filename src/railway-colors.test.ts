@@ -221,13 +221,19 @@ describe('withRailwayStationColors', () => {
     expect(haloColor(properties, true)).toBe('#ffff00');
   });
 
-  it('keeps the original icon without a colored route, for stations not in use and in other modes', () => {
-    const original = { image: iconImage('usage', stop), color: iconColor('usage', stop) };
-    expect(original.image).toBe('sdf:general/station-normal');
-    expect(iconColor('default', stop)).toBe(original.color);
-    expect(iconColor('default', { ...stop, station_routes: routes('', '') })).toBe(original.color);
+  it('draws other stations as gray dots', () => {
     const colored = { ...stop, station_routes: routes('#178ABB') };
-    expect(iconColor('usage', colored)).toBe(original.color);
-    expect(iconImage('default', { ...colored, state: 'construction' })).toBe('sdf:general/station-future');
+    expect(iconColor('usage', colored)).toBe('#3f3f46');
+    expect(iconColor('default', stop)).toBe('#3f3f46');
+    expect(iconColor('default', { ...stop, station_routes: routes('', '') })).toBe('#3f3f46');
+    expect(iconColor('default', { ...colored, state: 'construction' })).toBe('#a1a1aa');
+    expect(iconImage('usage', { ...stop, station_size: 'small' })).toBe('sdf:general/station-normal');
+    expect(iconImage('default', { ...colored, state: 'construction' })).toBe('sdf:general/station-normal');
+  });
+
+  it('rings interchanges in every mode', () => {
+    const properties = { ...stop, station_routes: routes('#178ABB', 'red') };
+    expect(iconColor('speed', properties)).toBe('#ffffff');
+    expect(haloColor(properties)).toBe('#334155');
   });
 });
