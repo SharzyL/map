@@ -38,6 +38,8 @@ const TILE_VERSION = '20261111b';
 // (e.g. openrailwaymap-test-<run_id>), defaulting to the production archive.
 const TILE_ARCHIVE = new URLSearchParams(window.location.search).get('tileset') ?? 'openrailwaymap';
 const TILE_URL = `${window.location.origin}/tiles/${TILE_ARCHIVE}/{z}/{x}/{y}.mvt?v=${TILE_VERSION}`;
+// The single vector source every railway layer draws from.
+const ORM_SOURCE = 'openrailwaymap';
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const MAPTERHORN_TERRAIN_URL = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
 const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
@@ -179,33 +181,30 @@ function rewriteOrmStyle(style: StyleLike): StyleLike {
     url: rewriteOrmSpriteUrl(sprite.url),
   }));
 
-  const rewrittenSources: string[] = [];
-  style.sources = Object.fromEntries(
-    Object.entries(style.sources || {}).map(([name, source]) => {
-      if (source?.type === 'vector' && typeof source.url === 'string' && source.url.startsWith('/')) {
-        rewrittenSources.push(name);
-        return [
-          name,
-          {
-            type: 'vector',
-            tiles: [TILE_URL],
-            attribution: source.attribution,
-            promoteId: source.promoteId,
-            bounds: source.bounds,
-            scheme: source.scheme,
-            metadata: source.metadata,
-            maxzoom: 15,
-          },
-        ];
-      }
-      return [name, source];
-    }),
+  // The ORM style splits its layers over several vector sources (one per
+  // upstream Martin endpoint). Our archive holds every source layer in one
+  // tile, and MapLibre fetches tiles per source, so separate sources would
+  // download each tile once per source in view. They all become one source.
+  const isRailwaySource = (source: JsonRecord | undefined) =>
+    source?.type === 'vector' && typeof source.url === 'string' && source.url.startsWith('/');
+  const railwaySourceNames = new Set(
+    Object.entries(style.sources || {})
+      .filter(([, source]) => isRailwaySource(source))
+      .map(([name]) => name),
+  );
+  const attribution = Object.values(style.sources || {}).find(isRailwaySource)?.attribution;
+  style.sources = {
+    ...Object.fromEntries(Object.entries(style.sources || {}).filter(([name]) => !railwaySourceNames.has(name))),
+    [ORM_SOURCE]: { type: 'vector', tiles: [TILE_URL], attribution, maxzoom: 15 },
+  };
+  style.layers = style.layers?.map((layer) =>
+    railwaySourceNames.has(layer.source as string) ? { ...layer, source: ORM_SOURCE } : layer,
   );
 
   style.metadata = {
     ...(style.metadata || {}),
     ormClone: true,
-    ormRewrittenSources: rewrittenSources,
+    ormRewrittenSources: [ORM_SOURCE],
   };
 
   return style;

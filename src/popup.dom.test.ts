@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildFeatureCatalog, popupContent } from './popup.js';
+import { buildFeatureCatalog, installOrmPopups, popupContent } from './popup.js';
 import { ROUTE_SELECT_EVENT } from './route-highlight.js';
 
 // Attributes of a real light rail segment and station in Frankfurt (OpenRailwayMap tiles).
@@ -214,5 +214,54 @@ describe('unstructured popups', () => {
     });
     expect(content.querySelector('.orm-popup-sections')).toBeNull();
     expect(content.querySelector('.orm-popup-badges').textContent).toContain('Reference: 3');
+  });
+});
+
+describe('installOrmPopups', () => {
+  // A map whose click lands on the given features; returns the popups opened.
+  function clickMap(features: Array<{ source: string; sourceLayer?: string; properties?: Record<string, unknown> }>) {
+    const handlers: Record<string, (event: unknown) => void> = {};
+    const container = document.createElement('div');
+    const map = {
+      getContainer: () => container,
+      getCanvas: () => document.createElement('canvas'),
+      queryRenderedFeatures: () =>
+        features.map((feature) => ({ ...feature, geometry: { type: 'Point', coordinates: [8.6, 50.1] } })),
+      setFeatureState: () => {},
+      on: (type: string, handler: (event: unknown) => void) => (handlers[type] = handler),
+    };
+    const opened: Node[] = [];
+    class Popup {
+      setLngLat() {
+        return this;
+      }
+      setDOMContent(node: Node) {
+        opened.push(node);
+        return this;
+      }
+      addTo() {
+        return this;
+      }
+      on() {}
+      remove() {}
+    }
+    const maplibre = { LngLat: { convert: (value: unknown) => value }, Popup };
+    installOrmPopups(map as never, maplibre as never, buildFeatureCatalog());
+    handlers.click({ point: [0, 0], lngLat: { lng: 8.6, lat: 50.1 } });
+    return opened;
+  }
+
+  it('opens a popup for railway features whatever their source is called', () => {
+    const opened = clickMap([
+      { source: 'openrailwaymap', sourceLayer: 'standard_railway_text_stations', properties: STATION_PROPERTIES },
+    ]);
+    expect(opened).toHaveLength(1);
+    expect((opened[0] as HTMLElement).querySelector('.orm-popup-section-title').textContent).toBe('Station');
+  });
+
+  it('ignores base map features', () => {
+    expect(
+      clickMap([{ source: 'openmaptiles', sourceLayer: 'transportation', properties: { class: 'rail' } }]),
+    ).toEqual([]);
   });
 });
