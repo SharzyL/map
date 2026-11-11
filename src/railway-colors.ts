@@ -264,6 +264,10 @@ const ROUTE_HOVER_COLOR = [
   ],
 ];
 
+// Service tracks (yards, sidings, spurs, crossovers) without a route color are
+// gray rather than their usage color, such as the metro blue for metro depots.
+const SERVICE_TRACK_COLOR = ['case', ['==', ['global-state', 'theme'], 'light'], '#9a9a9a', '#6b6b6b'];
+
 // A route color MapLibre cannot parse also keeps the original color.
 function withRouteColor(original: unknown) {
   return [
@@ -273,7 +277,7 @@ function withRouteColor(original: unknown) {
     [
       'case',
       ['==', ['var', 'routeColor'], ''],
-      original,
+      ['case', ['!', ['has', 'service']], original, IS_HOVERED, HOVER, SERVICE_TRACK_COLOR],
       IS_HOVERED,
       ROUTE_HOVER_COLOR,
       ['to-color', ['var', 'routeColor'], original],

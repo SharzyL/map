@@ -119,7 +119,7 @@ describe('withRailwayLineColors', () => {
         withRailwayLineColors(layer(id)).paint['line-color'],
         lineColor,
         properties,
-        { [RAILWAY_COLOR_STATE]: mode },
+        { [RAILWAY_COLOR_STATE]: mode, theme: 'light' },
         { hover },
       ),
     );
@@ -158,6 +158,15 @@ describe('withRailwayLineColors', () => {
     expect(colorOf(id, 'default', { ...line, line_routes: routes('', '') })).toBe(usage);
     expect(colorOf(id, 'default', { ...line, line_routes: routes('', '', '', '', '#178ABB') })).toBe(usage);
     expect(colorOf(id, 'default', { ...line, line_routes: routes('Line 1 color') })).toBe(usage);
+  });
+
+  it('draws service tracks without a route color in gray by default', () => {
+    const id = 'railway_line_light_rail_fill_present';
+    const depot = { feature: 'subway', state: 'present', service: 'yard' };
+    expect(colorOf(id, 'default', depot)).toBe('#9a9a9a');
+    expect(colorOf(id, 'default', depot, true)).toBe('#ff0000');
+    expect(colorOf(id, 'default', { ...depot, line_routes: '1\u001e#178ABB\u001eLine 1' })).toBe('#178abb');
+    expect(colorOf(id, 'usage', depot)).toBe(colorOf(id, 'usage', { feature: 'subway', state: 'present' }));
   });
 
   it('hovers red routes in amber', () => {
