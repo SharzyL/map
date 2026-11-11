@@ -304,3 +304,144 @@ export function withRailwayLineColors<T extends StyleLayerLike>(layer: T): T {
   ]);
   return { ...layer, paint: { ...layer.paint, [property]: color } };
 }
+
+// Station icons in 'default' mode, after metro maps: a dot in the color of
+// the one line through a station, or a white dot ringed in dark gray where
+// lines of different colors meet (larger at major stations). The colors come
+// from `station_routes` (the same `id\x1Ecolor\x1Elabel` groups as
+// `line_routes`, sorted by route id); each line usually has a route per
+// direction and service pattern, so a station counts as an interchange when
+// the colors set among its first routes differ by more than a shade (OSM
+// gives the Hibiya Line's through services a different gray, for example).
+// Stations without a colored route, and stations not in use, keep their icons.
+const STATION_ROUTES_CHECKED = 16;
+const SAME_LINE_CHANNEL_DIFFERENCE = 48;
+const STATION_ICON_LAYERS = new Set([
+  'railway_text_stations_low1',
+  'railway_text_stations_low2',
+  'railway_text_stations_med',
+  'railway_text_stations',
+]);
+const STATION_COLOR = ['var', 'stationColor'];
+const STATION_KIND = ['var', 'stationKind'];
+const stationRouteColorAt = (index: number) => ['var', `stationRouteColor${index}`];
+const STATION_ROUTE_INDEXES = Array.from({ length: STATION_ROUTES_CHECKED }, (_, index) => index);
+const rgba = (color: unknown) => ['to-rgba', ['to-color', color, '#000000']];
+
+function isOtherLineColor(index: number) {
+  const color = ['var', `stationRouteRgba${index}`];
+  const first = ['var', 'stationRgba'];
+  const channelDifference = (channel: number) => ['abs', ['-', ['at', channel, color], ['at', channel, first]]];
+  return [
+    'all',
+    ['!=', stationRouteColorAt(index), ''],
+    [
+      'let',
+      `stationRouteRgba${index}`,
+      rgba(stationRouteColorAt(index)),
+      ['>', ['max', channelDifference(0), channelDifference(1), channelDifference(2)], SAME_LINE_CHANNEL_DIFFERENCE],
+    ],
+  ];
+}
+
+// Binds stationKind ('line', 'interchange' or 'none') and stationColor for `body`.
+function withStationKind(body: unknown) {
+  const routes = ['var', 'stationRoutes'];
+  return [
+    'let',
+    'stationRoutes',
+    ['split', ['to-string', ['coalesce', ['get', 'station_routes'], '']], '\u001d'],
+    [
+      'let',
+      ...STATION_ROUTE_INDEXES.flatMap((index) => [
+        `stationRouteColor${index}`,
+        [
+          'case',
+          ['all', ['has', 'station_routes'], ['>', ['length', routes], index]],
+          ['downcase', ['at', 1, ['split', ['at', index, routes], '\u001e']]],
+          '',
+        ],
+      ]),
+      [
+        'let',
+        'stationColor',
+        [
+          'case',
+          ...STATION_ROUTE_INDEXES.flatMap((index) => [
+            ['!=', stationRouteColorAt(index), ''],
+            stationRouteColorAt(index),
+          ]),
+          '',
+        ],
+        [
+          'let',
+          'stationKind',
+          [
+            'case',
+            ['any', ['==', STATION_COLOR, ''], ['!=', ['coalesce', ['get', 'state'], 'present'], 'present']],
+            'none',
+            ['let', 'stationRgba', rgba(STATION_COLOR), ['any', ...STATION_ROUTE_INDEXES.map(isOtherLineColor)]],
+            'interchange',
+            'line',
+          ],
+          body,
+        ],
+      ],
+    ],
+  ];
+}
+
+const IS_LIGHT_THEME = ['==', ['global-state', 'theme'], 'light'];
+const INTERCHANGE_RING = ['case', IS_LIGHT_THEME, '#334155', '#cbd5e1'];
+const INTERCHANGE_FILL = ['case', IS_LIGHT_THEME, '#ffffff', '#1e293b'];
+
+function inDefaultMode(original: unknown, body: unknown) {
+  return ['match', MODE, 'default', withStationKind(body), original];
+}
+
+export function withRailwayStationColors<T extends StyleLayerLike>(layer: T): T {
+  if (!STATION_ICON_LAYERS.has(layer.id || '')) return layer;
+  const paint = { ...layer.paint };
+  const layout = { ...(layer.layout as Record<string, unknown>) };
+  if (paint['icon-color'] !== undefined) {
+    paint['icon-color'] = mapZoomOutputs(paint['icon-color'], (original) =>
+      inDefaultMode(original, [
+        'match',
+        STATION_KIND,
+        'line',
+        ['to-color', STATION_COLOR, original],
+        'interchange',
+        INTERCHANGE_FILL,
+        original,
+      ]),
+    );
+  }
+  if (paint['icon-halo-color'] !== undefined) {
+    paint['icon-halo-color'] = mapZoomOutputs(paint['icon-halo-color'], (original) =>
+      inDefaultMode(original, [
+        'case',
+        ['all', ['==', STATION_KIND, 'interchange'], ['!', IS_HOVERED]],
+        INTERCHANGE_RING,
+        original,
+      ]),
+    );
+  }
+  if (layout['icon-image'] !== undefined) {
+    layout['icon-image'] = inDefaultMode(layout['icon-image'], [
+      'case',
+      ['==', STATION_KIND, 'none'],
+      layout['icon-image'],
+      ['image', 'sdf:general/station-normal'],
+    ]);
+  }
+  const size = layout['icon-size'] ?? 1;
+  layout['icon-size'] = mapZoomOutputs(size, (original) =>
+    inDefaultMode(original, [
+      'case',
+      ['all', ['==', STATION_KIND, 'interchange'], ['==', ['get', 'station_size'], 'large']],
+      ['*', original, 1.3],
+      original,
+    ]),
+  );
+  return { ...layer, paint, layout };
+}

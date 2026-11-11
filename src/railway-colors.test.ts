@@ -6,6 +6,7 @@ import {
   RAILWAY_COLOR_LEGENDS,
   RAILWAY_COLOR_STATE,
   withRailwayLineColors,
+  withRailwayStationColors,
   type RailwayColorMode,
   type RailwayLegendMode,
 } from './railway-colors.js';
@@ -173,5 +174,60 @@ describe('withRailwayLineColors', () => {
     const line = { feature: 'rail', usage: 'main', state: 'present', gaugeint0: 1435 };
     expect(colorOf(id, 'gauge', line, true)).toBe('#ff0000');
     expect(colorOf(id, 'gauge', { ...line, gaugeint0: 1520 }, true)).toBe('#ffc107');
+  });
+});
+
+describe('withRailwayStationColors', () => {
+  const ormStyle = JSON.parse(ormStyleText) as StyleSpecification;
+  const station = withRailwayStationColors(
+    ormStyle.layers.find(({ id }) => id === 'railway_text_stations') as unknown as {
+      id: string;
+      paint: Record<string, unknown>;
+      layout: Record<string, unknown>;
+    },
+  );
+  const state = (mode: RailwayColorMode) => ({ [RAILWAY_COLOR_STATE]: mode, theme: 'light' });
+  const iconColor = (mode: RailwayColorMode, properties: Properties) =>
+    hex(evaluate(station.paint['icon-color'], latest.paint_symbol['icon-color'], properties, state(mode), {}));
+  const haloColor = (properties: Properties, hover = false) =>
+    hex(
+      evaluate(station.paint['icon-halo-color'], latest.paint_symbol['icon-halo-color'], properties, state('default'), {
+        hover,
+      }),
+    );
+  const iconImage = (mode: RailwayColorMode, properties: Properties) =>
+    (
+      evaluate(station.layout['icon-image'], latest.layout_symbol['icon-image'], properties, state(mode)) as {
+        name: string;
+      }
+    ).name;
+  const routes = (...colors: string[]) =>
+    colors.map((color, index) => `${index + 1}\u001e${color}\u001eRoute ${index + 1}`).join('\u001d');
+  const stop = { feature: 'station', state: 'present', station_size: 'normal' };
+
+  it('draws a station on one line as a dot in the line color', () => {
+    // Two shades of the same line count as one.
+    const properties = { ...stop, station_routes: routes('#178ABB', '', '#178abb', '#2a90c0') };
+    expect(iconImage('default', properties)).toBe('sdf:general/station-normal');
+    expect(iconColor('default', properties)).toBe('#178abb');
+    expect(haloColor(properties)).toBe('#ffffff');
+  });
+
+  it('draws an interchange between lines of different colors as a ringed white dot', () => {
+    const properties = { ...stop, station_routes: routes('#178ABB', '#178ABB', 'red') };
+    expect(iconImage('default', properties)).toBe('sdf:general/station-normal');
+    expect(iconColor('default', properties)).toBe('#ffffff');
+    expect(haloColor(properties)).toBe('#334155');
+    expect(haloColor(properties, true)).toBe('#ffff00');
+  });
+
+  it('keeps the original icon without a colored route, for stations not in use and in other modes', () => {
+    const original = { image: iconImage('usage', stop), color: iconColor('usage', stop) };
+    expect(original.image).toBe('sdf:general/station-normal');
+    expect(iconColor('default', stop)).toBe(original.color);
+    expect(iconColor('default', { ...stop, station_routes: routes('', '') })).toBe(original.color);
+    const colored = { ...stop, station_routes: routes('#178ABB') };
+    expect(iconColor('usage', colored)).toBe(original.color);
+    expect(iconImage('default', { ...colored, state: 'construction' })).toBe('sdf:general/station-future');
   });
 });

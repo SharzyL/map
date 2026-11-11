@@ -12,6 +12,7 @@ import {
   RAILWAY_COLOR_MODES,
   RAILWAY_COLOR_STATE,
   withRailwayLineColors,
+  withRailwayStationColors,
   type RailwayColorMode,
 } from './railway-colors.js';
 import { readStoredSettings, writeStoredSettings } from './stored-settings.js';
@@ -401,7 +402,9 @@ export function applyRailwayFilterToStyle<T extends StyleLike>(
     if (lineSourceLayers.has(sourceLayer)) {
       return withFilter(withRailwayLineColors(withVisibility), RAILWAY_LINE_FILTER);
     }
-    if (stationSourceLayers.has(sourceLayer)) return withFilter(withVisibility, RAILWAY_STATION_FILTER);
+    if (stationSourceLayers.has(sourceLayer)) {
+      return withFilter(withRailwayStationColors(withVisibility), RAILWAY_STATION_FILTER);
+    }
     if (sourceLayer === RAILWAY_STATION_AREA_SOURCE_LAYER)
       return withFilter(withVisibility, RAILWAY_STATION_AREA_FILTER);
     return withVisibility;
