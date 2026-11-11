@@ -18,21 +18,28 @@ import {
 import { RAILWAY_COLOR_LEGENDS, type RailwayColorMode } from './railway-colors.js';
 import { createPanelButton, createPanelFields, createPanelShell, el } from './map-panel.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
-import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
+import {
+  emitUiPanelOpen,
+  isOtherUiPanelOpen,
+  onOutsideClick,
+  UI_PANEL_OPEN_EVENT,
+  type OutsideClickMap,
+} from './ui-panels.js';
 
 type RailwayFilterControl = {
   onAdd(map: RailwayFilterMap): HTMLElement;
   onRemove(): void;
 };
 type RenderedLineFeature = { sourceLayer?: string; properties?: Record<string, unknown> };
-export type RailwayFilterMap = Parameters<typeof setGlobalStatePropertyWhenReady>[0] & {
-  addControl(control: RailwayFilterControl, position?: string): void;
-  getContainer(): HTMLElement;
-  // Used to suggest operators of the lines in view; optional for tests.
-  queryRenderedFeatures?(): RenderedLineFeature[];
-  on?(event: 'moveend', listener: () => void): void;
-  off?(event: 'moveend', listener: () => void): void;
-};
+export type RailwayFilterMap = Parameters<typeof setGlobalStatePropertyWhenReady>[0] &
+  OutsideClickMap & {
+    addControl(control: RailwayFilterControl, position?: string): void;
+    getContainer(): HTMLElement;
+    // Used to suggest operators of the lines in view; optional for tests.
+    queryRenderedFeatures?(): RenderedLineFeature[];
+    on?(event: 'moveend', listener: () => void): void;
+    off?(event: 'moveend', listener: () => void): void;
+  };
 
 const OPERATOR_INPUT_DELAY_MS = 350;
 const OPERATOR_SUGGESTION_LIMIT = 40;
@@ -109,6 +116,7 @@ class RailwayFilterPanel {
   _expanded = false;
   _boundEscape: (event: KeyboardEvent) => void;
   _boundAnyPanelOpen: (event: Event) => void;
+  _removeOutsideClick: () => void;
 
   constructor(settings: RailwayFilterSettings) {
     this._settings = structuredClone(settings);
@@ -145,6 +153,11 @@ class RailwayFilterPanel {
     });
     this._panel = shell.panel;
     this._summary = shell.summary;
+    this._removeOutsideClick = onOutsideClick(
+      map,
+      () => [this._panel, this._control],
+      () => this.setExpanded(false),
+    );
     const body = shell.body;
     this._overlayInput = checkboxRow(body, 'Show railway overlay');
     this._overlayInput.closest('label')?.classList.add('railway-filter-master');
@@ -229,6 +242,7 @@ class RailwayFilterPanel {
 
   onRemove() {
     if (this._operatorTimer) clearTimeout(this._operatorTimer);
+    this._removeOutsideClick?.();
     this._map.off?.('moveend', this._boundMoveEnd);
     this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.removeEventListener('keydown', this._boundEscape);

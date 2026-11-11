@@ -10,14 +10,21 @@ import {
 } from './map-layers.js';
 import { createPanelButton, createPanelFields, createPanelShell } from './map-panel.js';
 import { runWhenStyleInfrastructureReady, setGlobalStatePropertyWhenReady } from './style-ready.js';
-import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
+import {
+  emitUiPanelOpen,
+  isOtherUiPanelOpen,
+  onOutsideClick,
+  UI_PANEL_OPEN_EVENT,
+  type OutsideClickMap,
+} from './ui-panels.js';
 
 type MapLayersControl = {
   onAdd(map: MapLayersMap): HTMLElement;
   onRemove(): void;
 };
 export type MapLayersMap = Parameters<typeof setGlobalStatePropertyWhenReady>[0] &
-  Parameters<typeof runWhenStyleInfrastructureReady>[0] & {
+  Parameters<typeof runWhenStyleInfrastructureReady>[0] &
+  OutsideClickMap & {
     addControl(control: MapLayersControl, position?: string): void;
     getContainer(): HTMLElement;
     setTerrain(terrain: { source: string; exaggeration: number } | null): unknown;
@@ -64,6 +71,7 @@ class MapLayersPanel {
   _expanded = false;
   _boundEscape: (event: KeyboardEvent) => void;
   _boundAnyPanelOpen: (event: Event) => void;
+  _removeOutsideClick: () => void;
 
   constructor(settings: MapLayerSettings) {
     this._settings = structuredClone(settings);
@@ -96,6 +104,11 @@ class MapLayersPanel {
     });
     this._panel = shell.panel;
     this._summary = shell.summary;
+    this._removeOutsideClick = onOutsideClick(
+      map,
+      () => [this._panel, this._control],
+      () => this.setExpanded(false),
+    );
 
     const baseGroup = group(shell.body, 'Base map');
     const baseName = `map-layers-base-${Math.random().toString(36).slice(2)}`;
@@ -145,6 +158,7 @@ class MapLayersPanel {
   }
 
   onRemove() {
+    this._removeOutsideClick?.();
     this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.removeEventListener('keydown', this._boundEscape);
     this._panel?.remove();

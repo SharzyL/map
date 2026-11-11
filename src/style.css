@@ -107,6 +107,22 @@ body,
   content: '';
 }
 
+/* Layers and Railways read as one button group: the Railways control drops
+   its gap, the corners where the two meet and its top shadow, and takes the
+   divider MapLibre draws between buttons of one group. */
+.maplibregl-ctrl-group:has(> .maplibregl-ctrl-map-layers):has(+ .maplibregl-ctrl-group > .maplibregl-ctrl-railways) {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.maplibregl-ctrl-group:has(> .maplibregl-ctrl-map-layers) + .maplibregl-ctrl-group:has(> .maplibregl-ctrl-railways) {
+  margin-top: 0;
+  border-top: 1px solid #ddd;
+  border-top-right-radius: 0;
+  border-top-left-radius: 0;
+  clip-path: inset(0 -2px -2px -2px);
+}
+
 .map-layers-icon,
 .railway-filter-icon {
   flex: 0 0 auto;
@@ -116,19 +132,14 @@ body,
   stroke-width: 2.2;
 }
 
-.maplibregl-ctrl-github {
+.attribution-github {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 29px;
-  height: 29px;
-  border: 0;
-  background: none;
-  color: #333;
-  cursor: pointer;
+  gap: 3px;
 }
-.maplibregl-ctrl-github:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+
+.attribution-github svg {
+  fill: currentColor;
 }
 
 .weather-icon {

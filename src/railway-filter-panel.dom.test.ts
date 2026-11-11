@@ -14,6 +14,7 @@ type TestMap = RailwayFilterMap & {
   container: HTMLElement;
   globalState: Record<string, unknown>;
   controls: HTMLElement[];
+  clickListeners: Set<() => void>;
 };
 
 function createMap(): TestMap {
@@ -23,6 +24,7 @@ function createMap(): TestMap {
     container,
     globalState: {},
     controls: [],
+    clickListeners: new Set(),
     _styleInitialized: true,
     isStyleLoaded: () => true,
     once: () => {},
@@ -33,6 +35,12 @@ function createMap(): TestMap {
       map.controls.push(control.onAdd(map));
     },
     getContainer: () => container,
+    on(event: string, listener: () => void) {
+      if (event === 'click') map.clickListeners.add(listener);
+    },
+    off(event: string, listener: () => void) {
+      if (event === 'click') map.clickListeners.delete(listener);
+    },
   };
   return map;
 }
@@ -90,6 +98,28 @@ describe('railway filter panel', () => {
 
     emitUiPanelOpen(map.container, 'map-layers');
     expect(panel.classList.contains('railway-filter-panel-visible')).toBe(false);
+  });
+
+  it('closes on a press outside it or a map click, but not when the map is dragged', () => {
+    const { map, panel, button, colorSelect } = setup();
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'maplibregl-canvas-container';
+    map.container.appendChild(canvasContainer);
+    const press = (target: EventTarget) => target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    const isOpen = () => panel.classList.contains('railway-filter-panel-visible');
+
+    button.click();
+    press(colorSelect);
+    expect(isOpen()).toBe(true);
+    // A press on the map may start a drag; only MapLibre's click closes the panel.
+    press(canvasContainer);
+    expect(isOpen()).toBe(true);
+    for (const listener of map.clickListeners) listener();
+    expect(isOpen()).toBe(false);
+
+    button.click();
+    press(document.body);
+    expect(isOpen()).toBe(false);
   });
 
   it('pushes changed settings to global state and remembers them', () => {

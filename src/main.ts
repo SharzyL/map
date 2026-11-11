@@ -41,12 +41,18 @@ const TILE_ARCHIVE = new URLSearchParams(window.location.search).get('tileset') 
 const TILE_URL = `${window.location.origin}/tiles/${TILE_ARCHIVE}/{z}/{x}/{y}.mvt?v=${TILE_VERSION}`;
 // The single vector source every railway layer draws from.
 const ORM_SOURCE = 'openrailwaymap';
+// Source code link at the start of the attribution line, bottom right.
+const GITHUB_ATTRIBUTION =
+  '<a class="attribution-github" href="https://github.com/SharzyL/map" target="_blank" rel="noopener">' +
+  '<svg viewBox="0 0 16 16" aria-hidden="true" width="11" height="11"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>' +
+  'GitHub</a>';
 
 async function fetchRailwayTile(z: number, x: number, y: number, signal?: AbortSignal) {
   const url = TILE_URL.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
   const response = await fetch(url, { signal });
   return response.status === 200 ? response.arrayBuffer() : null;
 }
+
 const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const MAPTERHORN_TERRAIN_URL = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
 const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
@@ -632,7 +638,7 @@ async function init() {
       center: screenshotFixtureView ? screenshotFixtureView.center : [105, 35],
       zoom: screenshotFixtureView ? screenshotFixtureView.zoom : 4,
       hash: true,
-      attributionControl: {} as maplibregl.AttributionControlOptions,
+      attributionControl: { customAttribution: GITHUB_ATTRIBUTION } as maplibregl.AttributionControlOptions,
       renderWorldCopies: false,
       maxZoom: 20,
       maxPitch: 85,
@@ -652,17 +658,19 @@ async function init() {
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-right');
     installPhotonSearch(map, maplibregl);
     installWeatherPointPicker(map, maplibregl);
+    // Layers sits right above Railways; style.css joins the two buttons.
+    installMapLayers(map, mapLayers);
+    if (screenshotFixtureModule && screenshotFixtureMode) {
+      screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
+    }
     installRailwayFilter(map, railwayFilter);
     installRouteHighlight(map);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }
     installAnnotationRenderer(map, layerStore);
+    // Last, so its button ends the control column.
     installAnnotationTools(map, layerStore);
-    installMapLayers(map, mapLayers);
-    if (screenshotFixtureModule && screenshotFixtureMode) {
-      screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
-    }
 
     installSpriteFallback(map);
 
@@ -715,33 +723,6 @@ async function init() {
         if (bounds) map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
       })();
     }
-
-    // GitHub link control
-    class GitHubControl {
-      _container?: HTMLElement;
-
-      onAdd() {
-        this._container = document.createElement('div');
-        this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.title = 'GitHub';
-        btn.setAttribute('aria-label', 'GitHub');
-        btn.className = 'maplibregl-ctrl-github';
-        btn.innerHTML =
-          '<svg viewBox="0 0 16 16" aria-hidden="true" width="14" height="14"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
-        btn.addEventListener('click', () => {
-          window.open('https://github.com/Enter-tainer/orm-pmtiles-demo', '_blank', 'noopener');
-        });
-        this._container.appendChild(btn);
-        return this._container;
-      }
-      onRemove() {
-        this._container?.parentNode?.removeChild(this._container);
-        this._container = undefined;
-      }
-    }
-    map.addControl(new GitHubControl(), 'top-right');
 
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.applyScreenshotFixtureScene(screenshotFixtureMode, map);

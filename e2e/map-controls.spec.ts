@@ -13,6 +13,11 @@ test.describe('map shell', () => {
     await expect(page.getByRole('button', { name: 'Annotations' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pick a point for weather' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Railway filter' })).toBeVisible();
+    // Annotations ends the control column.
+    await expect(
+      page.locator('.maplibregl-ctrl-top-right > .maplibregl-ctrl').last().locator('.maplibregl-ctrl-annotation'),
+    ).toHaveCount(1);
+    await expect(page.getByRole('link', { name: 'GitHub' })).toHaveAttribute('href', 'https://github.com/SharzyL/map');
 
     const state = await mapState(page);
     expect(state.hasMap).toBe(true);
@@ -42,6 +47,12 @@ test.describe('map shell', () => {
     await expect(page.locator('.annotation-panel')).toHaveAttribute('aria-hidden', 'true');
     await page.getByRole('button', { name: 'Close layers' }).click();
     await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'true');
+
+    // Settings panels close when the map is clicked.
+    await page.locator('.maplibregl-ctrl-railways').click();
+    await expect(page.locator('.railway-filter-panel')).toHaveAttribute('aria-hidden', 'false');
+    await page.locator('.maplibregl-canvas').click({ position: { x: 200, y: 300 } });
+    await expect(page.locator('.railway-filter-panel')).toHaveAttribute('aria-hidden', 'true');
 
     errors.assertNoErrors();
   });
