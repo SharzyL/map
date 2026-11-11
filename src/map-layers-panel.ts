@@ -65,6 +65,7 @@ class MapLayersPanel {
   _saturationInput: HTMLInputElement;
   _saturationValue: HTMLElement;
   _highlightRoadsInput: HTMLInputElement;
+  _highlightBoundariesInput: HTMLInputElement;
   _labelSelect: HTMLSelectElement;
   _hillshadeInput: HTMLInputElement;
   _contoursInput: HTMLInputElement;
@@ -132,6 +133,14 @@ class MapLayersPanel {
     this._highlightRoadsInput = checkboxRow(baseGroup, 'Highlight roads', 'Roads in color; off, they are gray');
     this._highlightRoadsInput.addEventListener('change', () =>
       this._update((s) => (s.highlightRoads = this._highlightRoadsInput.checked)),
+    );
+    this._highlightBoundariesInput = checkboxRow(
+      baseGroup,
+      'Highlight administrative divisions',
+      'Darker, slightly wider country and province borders',
+    );
+    this._highlightBoundariesInput.addEventListener('change', () =>
+      this._update((s) => (s.highlightBoundaries = this._highlightBoundariesInput.checked)),
     );
 
     this._labelSelect = selectField(
@@ -212,6 +221,7 @@ class MapLayersPanel {
     this._saturationInput.value = String(saturationPercent);
     this._saturationValue.textContent = `${saturationPercent}%`;
     this._highlightRoadsInput.checked = settings.highlightRoads;
+    this._highlightBoundariesInput.checked = settings.highlightBoundaries;
     this._labelSelect.value = settings.labels;
     this._hillshadeInput.checked = settings.hillshade;
     this._contoursInput.checked = settings.contours;

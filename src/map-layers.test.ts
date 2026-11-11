@@ -14,6 +14,7 @@ import {
   withBaseMapVisibility,
   withContourVisibility,
   withGrayRoads,
+  withHighlightedBoundaries,
   withHybridStyling,
   withShadedRelief,
   withHillshadeVisibility,
@@ -245,6 +246,35 @@ describe('hybrid styling', () => {
     expect(withGrayRoads(rail)).toBe(rail);
   });
 
+  it('darkens and slightly widens borders when highlighted', () => {
+    const border = withBaseMapSaturation(
+      withHighlightedBoundaries(
+        paintLayer({
+          id: 'boundary_3',
+          type: 'line',
+          paint: {
+            'line-color': 'hsl(0,0%,70%)',
+            'line-width': ['interpolate', ['linear', 1], ['zoom'], 7, 1, 11, 2],
+          },
+        }),
+      ),
+    );
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, {}))).toEqual([179, 179, 179]);
+    expect(rgb(evaluate(border.paint['line-color'], lineColor, { highlightBoundaries: true }))).toEqual([
+      107, 107, 120,
+    ]);
+    expect(evaluate(border.paint['line-width'], lineWidth, {}, {}, 11)).toBe(2);
+    expect(evaluate(border.paint['line-width'], lineWidth, { highlightBoundaries: true }, {}, 11)).toBeCloseTo(2.7);
+    const country = withHighlightedBoundaries(
+      paintLayer({ id: 'boundary_2', type: 'line', paint: { 'line-color': '#666', 'line-opacity': 0.4 } }),
+    );
+    expect(
+      evaluate(country.paint['line-opacity'], latest.paint_line['line-opacity'], { highlightBoundaries: true }),
+    ).toBe(1);
+    const road = paintLayer({ id: 'road_minor', type: 'line', paint: { 'line-color': '#fff' } });
+    expect(withHighlightedBoundaries(road)).toBe(road);
+  });
+
   it('gives labels white text with a dark halo in hybrid mode', () => {
     const label = withHybridStyling(
       paintLayer({
@@ -325,6 +355,7 @@ describe('map layer settings', () => {
         base: 'hybrid',
         saturation: 0.4,
         highlightRoads: true,
+        highlightBoundaries: false,
         labels: 'en',
         hillshade: false,
         contours: true,
@@ -335,6 +366,7 @@ describe('map layer settings', () => {
       baseMap: { default: 'hybrid' },
       baseSaturation: { default: 0.4 },
       highlightRoads: { default: true },
+      highlightBoundaries: { default: false },
       labelLanguage: { default: 'en' },
       showHillshade: { default: false },
       showContours: { default: true },
@@ -368,6 +400,7 @@ describe('map layer settings', () => {
       base: 'satellite',
       saturation: 0.3,
       highlightRoads: true,
+      highlightBoundaries: false,
       labels: 'local',
       hillshade: false,
       contours: false,

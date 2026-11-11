@@ -25,6 +25,8 @@ export type MapLayerSettings = {
   // Draw the base map's roads in their own colors; off, they are gray so
   // railways stand out.
   highlightRoads: boolean;
+  // Draw country and administrative borders darker and a little wider.
+  highlightBoundaries: boolean;
   labels: LabelLanguage;
   hillshade: boolean;
   contours: boolean;
@@ -34,6 +36,7 @@ export type MapLayerSettings = {
 const BASE_STATE = 'baseMap';
 const SATURATION_STATE = 'baseSaturation';
 const HIGHLIGHT_ROADS_STATE = 'highlightRoads';
+const HIGHLIGHT_BOUNDARIES_STATE = 'highlightBoundaries';
 const LABEL_STATE = 'labelLanguage';
 const HILLSHADE_STATE = 'showHillshade';
 const CONTOURS_STATE = 'showContours';
@@ -43,6 +46,7 @@ export function defaultMapLayerSettings(): MapLayerSettings {
     base: 'map',
     saturation: 1,
     highlightRoads: false,
+    highlightBoundaries: false,
     labels: 'bilingual',
     hillshade: true,
     contours: true,
@@ -59,7 +63,7 @@ export function normalizeMapLayerSettings(value: unknown): MapLayerSettings {
     settings.saturation = Math.min(1, Math.max(0, record.saturation));
   }
   if ((LABEL_LANGUAGES as readonly unknown[]).includes(record.labels)) settings.labels = record.labels as LabelLanguage;
-  for (const key of ['highlightRoads', 'hillshade', 'contours', 'terrain3d'] as const) {
+  for (const key of ['highlightRoads', 'highlightBoundaries', 'hillshade', 'contours', 'terrain3d'] as const) {
     if (typeof record[key] === 'boolean') settings[key] = record[key];
   }
   return settings;
@@ -78,6 +82,7 @@ export function mapLayerGlobalState(settings: MapLayerSettings): Record<string, 
     [BASE_STATE]: settings.base,
     [SATURATION_STATE]: settings.saturation,
     [HIGHLIGHT_ROADS_STATE]: settings.highlightRoads,
+    [HIGHLIGHT_BOUNDARIES_STATE]: settings.highlightBoundaries,
     [LABEL_STATE]: settings.labels,
     [HILLSHADE_STATE]: settings.hillshade,
     [CONTOURS_STATE]: settings.contours,
@@ -329,6 +334,50 @@ export function withGrayRoads<T extends StyleLayerLike>(layer: T): T {
     ['to-color', output],
   ]);
   return { ...layer, paint: { ...layer.paint, 'line-color': color } };
+}
+
+// --- Highlighted borders ---------------------------------------------------
+
+// The base map's borders: boundary_2 (countries), boundary_3 (admin levels 3
+// to 6: provinces, states, prefectures, counties, drawn in a pale dotted line)
+// and boundary_disputed. Highlighting darkens them and widens them a little.
+const HIGHLIGHT_BOUNDARIES = ['to-boolean', ['global-state', HIGHLIGHT_BOUNDARIES_STATE]];
+const HIGHLIGHTED_BOUNDARY_COLOR: Array<[RegExp, string]> = [
+  [/^boundary_3$/, '#6b6b78'],
+  [/./, '#3d3d4a'],
+];
+const HIGHLIGHTED_BOUNDARY_WIDTH = 1.35;
+
+export function isBoundaryLayer(layer: StyleLayerLike) {
+  return layer.type === 'line' && /^boundary_/.test(layer.id || '');
+}
+
+export function withHighlightedBoundaries<T extends StyleLayerLike>(layer: T): T {
+  if (!isBoundaryLayer(layer)) return layer;
+  const paint = { ...(layer.paint || {}) };
+  const [, color] = HIGHLIGHTED_BOUNDARY_COLOR.find(([pattern]) => pattern.test(layer.id || ''));
+  if (paint['line-color'] !== undefined) {
+    paint['line-color'] = mapZoomOutputs(paint['line-color'], (output) => [
+      'case',
+      HIGHLIGHT_BOUNDARIES,
+      ['to-color', color],
+      ['to-color', output],
+    ]);
+  }
+  paint['line-width'] = mapZoomOutputs(paint['line-width'] ?? 1, (output) => [
+    '*',
+    output,
+    ['case', HIGHLIGHT_BOUNDARIES, HIGHLIGHTED_BOUNDARY_WIDTH, 1],
+  ]);
+  if (paint['line-opacity'] !== undefined) {
+    paint['line-opacity'] = mapZoomOutputs(paint['line-opacity'], (output) => [
+      'case',
+      HIGHLIGHT_BOUNDARIES,
+      1,
+      output,
+    ]);
+  }
+  return { ...layer, paint };
 }
 
 // --- Label language --------------------------------------------------------
