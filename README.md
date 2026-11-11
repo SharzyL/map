@@ -16,22 +16,10 @@ railway vector tiles from a PMTiles archive in R2. It needs no database and no s
   Workers Scripts edit, R2 edit, and for the custom domain Workers Routes and DNS edit on the zone.
   `pnpm dev` with remote bindings also needs Workers Scripts edit to open its remote preview session.
 
-### Deploy the site
+### 1. Build and upload the railway tiles
 
-```bash
-pnpm install
-pnpm run deploy   # vite build, then wrangler deploy (`pnpm deploy` is a different, built-in command)
-```
-
-The worker is served on the custom domain in `wrangler.toml` (`map.shz.al`, created on the first
-deploy; the zone must be on the same Cloudflare account). `workers_dev` is off.
-
-Caching: hashed `/assets/*` files are immutable for a year and `/orm/*` style resources cache for an
-hour (`public/_headers`). Tiles are cached for a day at the edge and in browsers, keyed by URL.
-
-### Build and upload the railway tiles
-
-The archive `openrailwaymap.pmtiles` (several GB, worldwide, zoom 0-15) is built by
+The railway overlay reads `orm/openrailwaymap.pmtiles` from R2, so upload it before the first deploy;
+until it exists, every tile request fails. The archive (several GB, worldwide, zoom 0-15) is built by
 `scripts/tiles/export-tippecanoe.sh` from the OpenRailwayMap import database image
 (`ghcr.io/hiddewie/openrailwaymap-import-db`), normally on GitHub Actions:
 
@@ -41,18 +29,29 @@ The archive `openrailwaymap.pmtiles` (several GB, worldwide, zoom 0-15) is built
 2. Run the "Export PMTiles" workflow (`.github/workflows/export-pmtiles.yml`, manual). It builds the
    archive (about 40 minutes) and uploads it to `orm/openrailwaymap.pmtiles`. A run with a `bbox`
    input uploads a test archive under a different name instead; "cleanup-r2-test-files" removes those.
-3. Bump `TILE_VERSION` in `src/main.ts` and deploy. The version is part of every tile URL, so this is
-   what makes browsers and the edge cache stop serving tiles from the previous archive.
 
 To build locally instead, start the database image (`docker run -p 5432:5432
 -e POSTGRES_HOST_AUTH_METHOD=trust -e PGDATA=/data/postgresql --shm-size=2g
-ghcr.io/hiddewie/openrailwaymap-import-db:latest`; podman rejects the image's empty `ENV` entries) and run the script with `DATABASE_URL`,
-`MAX_ZOOM` and optionally `BBOX` set; it needs GDAL (`ogr2ogr`) and tippecanoe and writes to
-`output/`. Upload large archives with an S3 client against
+ghcr.io/hiddewie/openrailwaymap-import-db:latest`; podman rejects the image's empty `ENV` entries) and
+run the script with `DATABASE_URL`, `MAX_ZOOM` and optionally `BBOX` set; it needs GDAL (`ogr2ogr`) and
+tippecanoe and writes to `output/`. Upload large archives with an S3 client against
 `https://<account-id>.r2.cloudflarestorage.com`; `wrangler r2 object put` stops at 300 MiB.
 
 The export's layer names, attributes and per-layer zoom filters are what the map style, the railway
 filter, the route highlight and the info boxes read, so change them together.
+
+### 2. Deploy the site
+
+```bash
+pnpm run deploy   # vite build, then wrangler deploy (`pnpm deploy` is a different, built-in command)
+```
+
+The worker is served on the custom domain in `wrangler.toml` (`map.shz.al`, created on the first
+deploy; the zone must be on the same Cloudflare account). `workers_dev` is off.
+
+When you replace the archive later, bump `TILE_VERSION` in `src/main.ts` and deploy again. The version
+is part of every tile URL, so this is what makes browsers and the edge cache stop serving tiles from
+the previous archive.
 
 ### Local development
 
