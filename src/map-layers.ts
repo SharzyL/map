@@ -22,8 +22,9 @@ export type MapLayerSettings = {
   base: MapBase;
   // Base map color saturation, 0 (grayscale) to 1 (original colors).
   saturation: number;
-  // Draw the base map's roads in gray so railways stand out.
-  grayRoads: boolean;
+  // Draw the base map's roads in their own colors; off, they are gray so
+  // railways stand out.
+  highlightRoads: boolean;
   labels: LabelLanguage;
   hillshade: boolean;
   contours: boolean;
@@ -32,7 +33,7 @@ export type MapLayerSettings = {
 
 const BASE_STATE = 'baseMap';
 const SATURATION_STATE = 'baseSaturation';
-const GRAY_ROADS_STATE = 'grayRoads';
+const HIGHLIGHT_ROADS_STATE = 'highlightRoads';
 const LABEL_STATE = 'labelLanguage';
 const HILLSHADE_STATE = 'showHillshade';
 const CONTOURS_STATE = 'showContours';
@@ -41,7 +42,7 @@ export function defaultMapLayerSettings(): MapLayerSettings {
   return {
     base: 'map',
     saturation: 1,
-    grayRoads: true,
+    highlightRoads: false,
     labels: 'bilingual',
     hillshade: true,
     contours: true,
@@ -58,7 +59,7 @@ export function normalizeMapLayerSettings(value: unknown): MapLayerSettings {
     settings.saturation = Math.min(1, Math.max(0, record.saturation));
   }
   if ((LABEL_LANGUAGES as readonly unknown[]).includes(record.labels)) settings.labels = record.labels as LabelLanguage;
-  for (const key of ['grayRoads', 'hillshade', 'contours', 'terrain3d'] as const) {
+  for (const key of ['highlightRoads', 'hillshade', 'contours', 'terrain3d'] as const) {
     if (typeof record[key] === 'boolean') settings[key] = record[key];
   }
   return settings;
@@ -76,7 +77,7 @@ export function mapLayerGlobalState(settings: MapLayerSettings): Record<string, 
   return {
     [BASE_STATE]: settings.base,
     [SATURATION_STATE]: settings.saturation,
-    [GRAY_ROADS_STATE]: settings.grayRoads,
+    [HIGHLIGHT_ROADS_STATE]: settings.highlightRoads,
     [LABEL_STATE]: settings.labels,
     [HILLSHADE_STATE]: settings.hillshade,
     [CONTOURS_STATE]: settings.contours,
@@ -309,10 +310,10 @@ export function withHybridStyling<T extends StyleLayerLike>(layer: T): T {
 // --- Gray roads ------------------------------------------------------------
 
 // The base map's yellow and orange roads compete with the railway overlay, so
-// by default roads keep their brightness but lose their color. Applied over
+// unless highlighted, roads keep their brightness but lose their color. Applied over
 // the hybrid styling, which keeps its own road colors over imagery; both
 // branches are colors, since the saturation rewrite wraps the result.
-const GRAY_ROADS = ['all', ['to-boolean', ['global-state', GRAY_ROADS_STATE]], ['!', IS_HYBRID]];
+const GRAY_ROADS = ['all', ['!', ['to-boolean', ['global-state', HIGHLIGHT_ROADS_STATE]]], ['!', IS_HYBRID]];
 
 export function isRoadLayer(layer: StyleLayerLike) {
   const id = layer.id || '';
