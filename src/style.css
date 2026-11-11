@@ -2799,7 +2799,7 @@ body,
    so long values wrap inside the box instead of widening or scrolling it. */
 .orm-popup:has(.orm-popup-sections) {
   width: min(360px, calc(100vw - 48px));
-  max-height: min(70vh, 640px);
+  max-height: min(70vh, 640px, var(--orm-popup-room, 70vh));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

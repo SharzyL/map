@@ -148,6 +148,8 @@ type PopupLike = {
 };
 type PopupBuilderLike = PopupLike & {
   setLngLat(coordinates: unknown): PopupBuilderLike;
+  getLngLat(): unknown;
+  getElement(): HTMLElement;
   setDOMContent(node: Node): PopupBuilderLike;
   addTo(map: MapLike): PopupBuilderLike;
   on(type: 'close', listener: () => void): unknown;
@@ -183,7 +185,47 @@ type MapLike = {
   queryRenderedFeatures(point: unknown): RenderedFeatureLike[];
   setFeatureState(feature: FeatureStateTarget, state: JsonRecord): void;
   on(type: 'mousemove' | 'click', listener: (event: PopupMapEvent) => void): void;
+  on(type: 'move' | 'resize', listener: () => void): void;
+  off(type: 'move' | 'resize', listener: () => void): void;
+  project(lngLat: unknown): { y: number };
 };
+
+// MapLibre puts a box above its point when it fits there and below otherwise,
+// judging by the box's height when it opens or the map moves. A box taller than
+// the room on both sides ran off the map with its end out of reach, and photos
+// or line lists arriving later grew it past where it was placed. So the box is
+// capped at the room on the roomier side of its point (CSS
+// --orm-popup-room, kept current as the map moves), and placed again whenever
+// its size changes.
+const POPUP_CHROME = 20 + 10 + 30 + 8; // offset, tip, content padding, margin
+
+export function popupRoom(pointY: number, mapHeight: number) {
+  return Math.max(120, Math.max(pointY, mapHeight - pointY) - POPUP_CHROME);
+}
+
+function keepPopupInView(map: MapLike, popup: PopupBuilderLike) {
+  const element = popup.getElement();
+  const fit = () => {
+    const room = popupRoom(map.project(popup.getLngLat()).y, map.getContainer().clientHeight);
+    element.style.setProperty('--orm-popup-room', `${Math.round(room)}px`);
+  };
+  const place = () => popup.setLngLat(popup.getLngLat());
+  const refit = () => {
+    fit();
+    place();
+  };
+  refit();
+  map.on('move', fit);
+  map.on('resize', refit);
+  const content = element.querySelector('.maplibregl-popup-content');
+  const observer = typeof ResizeObserver === 'undefined' || !content ? null : new ResizeObserver(place);
+  if (observer && content) observer.observe(content);
+  popup.on('close', () => {
+    map.off('move', fit);
+    map.off('resize', refit);
+    observer?.disconnect();
+  });
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1898,6 +1940,7 @@ export function installOrmPopups(
       .setDOMContent(content)
       .addTo(map);
     popup = shown;
+    keepPopupInView(map, shown);
 
     shown.on('close', () => {
       abortController.abort('Popup closed');

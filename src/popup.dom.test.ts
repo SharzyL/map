@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildFeatureCatalog, installOrmPopups, popupContent } from './popup.js';
+import { buildFeatureCatalog, installOrmPopups, popupContent, popupRoom } from './popup.js';
 import { ROUTE_SELECT_EVENT } from './route-highlight.js';
 
 // Attributes of a real light rail segment and station in Frankfurt (OpenRailwayMap tiles).
@@ -252,11 +252,20 @@ describe('installOrmPopups', () => {
       setFeatureState: () => {},
       getZoom: () => 5,
       on: (type: string, handler: (event: unknown) => void) => (handlers[type] = handler),
+      off: () => {},
+      project: () => ({ y: 100 }),
     };
     const opened: Node[] = [];
     class Popup {
+      element = document.createElement('div');
       setLngLat() {
         return this;
+      }
+      getLngLat() {
+        return { lng: 8.6, lat: 50.1 };
+      }
+      getElement() {
+        return this.element;
       }
       setDOMContent(node: Node) {
         opened.push(node);
@@ -318,5 +327,15 @@ describe('installOrmPopups', () => {
     expect(
       clickMap([{ source: 'openmaptiles', sourceLayer: 'transportation', properties: { class: 'rail' } }]),
     ).toEqual([]);
+  });
+});
+
+describe('popupRoom', () => {
+  it('caps an info box at the room on the roomier side of its point', () => {
+    // Clicked at y 528 on a 1050 px map: 528 px above, 522 px below.
+    expect(popupRoom(528, 1050)).toBe(528 - 68);
+    expect(popupRoom(900, 1050)).toBe(900 - 68);
+    expect(popupRoom(100, 1050)).toBe(950 - 68);
+    expect(popupRoom(100, 200)).toBe(120);
   });
 });
