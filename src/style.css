@@ -2204,6 +2204,11 @@ body,
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
 }
 
+.railway-filter-legend-note {
+  grid-template-columns: minmax(0, 1fr);
+  color: #64748b;
+}
+
 .map-layers-range-field {
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;

@@ -104,7 +104,7 @@ export function railwayCategoryStateName(category: RailwayCategory) {
 export function defaultRailwayFilterSettings(): RailwayFilterSettings {
   return {
     overlay: true,
-    colorBy: 'usage',
+    colorBy: 'default',
     categories: Object.fromEntries(RAILWAY_CATEGORIES.map((category) => [category, true])) as Record<
       RailwayCategory,
       boolean

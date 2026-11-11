@@ -298,7 +298,7 @@ describe('railway filter settings', () => {
       operator: '  DB Netz  ',
     });
     expect(normalized.overlay).toBe(true);
-    expect(normalized.colorBy).toBe('usage');
+    expect(normalized.colorBy).toBe('default');
     expect(normalizeRailwayFilterSettings({ colorBy: 'gauge' }).colorBy).toBe('gauge');
     expect(normalized.categories.main).toBe(false);
     expect(normalized.minSpeed).toBe(0);

@@ -104,7 +104,7 @@ CLOUDFLARE_VITE_REMOTE_BINDINGS=0 pnpm dev
   adds terrain, contours and satellite imagery, and installs the feature modules.
 - `src/worker/` is the Cloudflare Worker: static assets plus `/tiles/*` served from PMTiles in R2.
 - Panels: `map-layers-panel.ts` (Layers: base map, labels, terrain), `railway-filter-panel.ts`
-  (Railways: filter and line colors by usage, speed, electrification or gauge from `railway-colors.ts`), `annotation-tools.ts` (Annotations: drawing tools, with the layer list and
+  (Railways: filter and line colors by route, usage, speed, electrification or gauge from `railway-colors.ts`), `annotation-tools.ts` (Annotations: drawing tools, with the layer list and
   GPX/GeoJSON import from `layer-manager.ts` mounted inside), the weather picker, and Locate
   (`cursor-position.ts`: coordinates and elevation under the pointer).
 - `popup.ts` renders info boxes; `route-highlight.ts` and `route-trace.ts` highlight a whole route or

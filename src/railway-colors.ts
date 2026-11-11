@@ -1,11 +1,12 @@
-// Alternative railway line colors: by maximum speed, electrification or gauge
-// instead of the style's usage colors.
+// Alternative railway line colors: by route color, maximum speed,
+// electrification or gauge instead of the style's usage colors.
 //
 // Like the railway filter, the style is rewritten once at load time: the fill
 // of every active railway line layer and its direction arrows get a `match` on
-// global state that keeps the original color for 'usage'. Each mode first
-// sorts a line into a legend class, so the map and the panel legend read the
-// same table.
+// global state that keeps the original color for 'usage'. 'default' draws a
+// line in its route's color and falls back to the usage colors. The other
+// modes first sort a line into a legend class, so the map and the panel legend
+// read the same table.
 //
 // The palettes were checked for color vision deficiency: speed follows
 // viridis, darkening from yellow to blue with the high-speed purple at 350
@@ -14,9 +15,9 @@
 // hues apart, and grays mark lines without data.
 import { mapZoomOutputs } from './map-layers.js';
 
-export const RAILWAY_COLOR_MODES = ['usage', 'speed', 'electrification', 'gauge'] as const;
+export const RAILWAY_COLOR_MODES = ['default', 'usage', 'speed', 'electrification', 'gauge'] as const;
 export type RailwayColorMode = (typeof RAILWAY_COLOR_MODES)[number];
-export type RailwayLegendMode = Exclude<RailwayColorMode, 'usage'>;
+export type RailwayLegendMode = Exclude<RailwayColorMode, 'default' | 'usage'>;
 
 export const RAILWAY_COLOR_STATE = 'railwayColorBy';
 
@@ -216,7 +217,69 @@ const HOVER_COLOR = byMode((mode) => {
   ];
 }, HOVER);
 
-export const RAILWAY_ATTRIBUTE_COLOR = ['case', ['boolean', ['feature-state', 'hover'], false], HOVER_COLOR, COLOR];
+const IS_HOVERED = ['boolean', ['feature-state', 'hover'], false];
+
+export const RAILWAY_ATTRIBUTE_COLOR = ['case', IS_HOVERED, HOVER_COLOR, COLOR];
+
+// A line's route color (OSM `colour`) is the first one set among its first few
+// `line_routes`: groups of `id\x1Ecolor\x1Elabel` joined by `\x1D` and sorted
+// by route id, so track shared by several routes takes the color of one of
+// them. Lines without a colored route, including every line in the low-zoom
+// tiles (they carry no routes), get an empty string.
+const ROUTES_CHECKED = 4;
+const ROUTES = ['var', 'routes'];
+const routeColorAt = (index: number) => ['at', 1, ['split', ['at', index, ROUTES], '\u001e']];
+
+const ROUTE_COLOR = [
+  'case',
+  ['has', 'line_routes'],
+  [
+    'let',
+    'routes',
+    ['split', ['to-string', ['get', 'line_routes']], '\u001d'],
+    [
+      'case',
+      ...Array.from({ length: ROUTES_CHECKED }, (_, index) => [
+        ['all', ['>', ['length', ROUTES], index], ['!=', routeColorAt(index), '']],
+        routeColorAt(index),
+      ]).flat(),
+      '',
+    ],
+  ],
+  '',
+];
+
+const ROUTE_RGBA = ['var', 'routeRgba'];
+
+// Red routes hover in amber, like the red legend classes.
+const ROUTE_HOVER_COLOR = [
+  'let',
+  'routeRgba',
+  ['to-rgba', ['to-color', ['var', 'routeColor'], NO_DATA]],
+  [
+    'case',
+    ['all', ['>=', ['at', 0, ROUTE_RGBA], 150], ['<', ['at', 1, ROUTE_RGBA], 110], ['<', ['at', 2, ROUTE_RGBA], 110]],
+    ALTERNATIVE_HOVER,
+    HOVER,
+  ],
+];
+
+// A route color MapLibre cannot parse also keeps the original color.
+function withRouteColor(original: unknown) {
+  return [
+    'let',
+    'routeColor',
+    ROUTE_COLOR,
+    [
+      'case',
+      ['==', ['var', 'routeColor'], ''],
+      original,
+      IS_HOVERED,
+      ROUTE_HOVER_COLOR,
+      ['to-color', ['var', 'routeColor'], original],
+    ],
+  ];
+}
 
 // Layers built by the style's railwayLine(): fills of lines in use (abandoned,
 // razed and disused tracks keep their muted colors, ferries their own) and the
@@ -235,6 +298,8 @@ export function withRailwayLineColors<T extends StyleLayerLike>(layer: T): T {
     MODE,
     'usage',
     original,
+    'default',
+    withRouteColor(original),
     RAILWAY_ATTRIBUTE_COLOR,
   ]);
   return { ...layer, paint: { ...layer.paint, [property]: color } };

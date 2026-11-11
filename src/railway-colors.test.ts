@@ -145,6 +145,29 @@ describe('withRailwayLineColors', () => {
     expect(colorOf(id, 'electrification', line)).toBe(legendColor('electrification', 'unknown'));
   });
 
+  it('draws lines in their route color by default', () => {
+    const id = 'railway_line_light_rail_fill_present';
+    const line = { feature: 'subway', usage: 'main', state: 'present' };
+    const usage = colorOf(id, 'usage', line);
+    const routes = (...colors: string[]) =>
+      colors.map((color, index) => `${index + 1}\u001e${color}\u001eLine ${index + 1}`).join('\u001d');
+    expect(colorOf(id, 'default', { ...line, line_routes: routes('#178ABB', '#00997A') })).toBe('#178abb');
+    expect(colorOf(id, 'default', { ...line, line_routes: routes('', '', 'red') })).toBe('#ff0000');
+    expect(colorOf(id, 'default', line)).toBe(usage);
+    expect(colorOf(id, 'default', { ...line, line_routes: routes('', '') })).toBe(usage);
+    expect(colorOf(id, 'default', { ...line, line_routes: routes('', '', '', '', '#178ABB') })).toBe(usage);
+    expect(colorOf(id, 'default', { ...line, line_routes: routes('Line 1 color') })).toBe(usage);
+  });
+
+  it('hovers red routes in amber', () => {
+    const id = 'railway_line_light_rail_fill_present';
+    const line = { feature: 'subway', usage: 'main', state: 'present' };
+    const route = (color: string) => ({ ...line, line_routes: `1\u001e${color}\u001eLine 1` });
+    expect(colorOf(id, 'default', route('#c23a30'), true)).toBe('#ffc107');
+    expect(colorOf(id, 'default', route('#178ABB'), true)).toBe('#ff0000');
+    expect(colorOf(id, 'default', line, true)).toBe('#ff0000');
+  });
+
   it('uses a hover color that stands out from the line color', () => {
     const id = 'railway_line_main_high_fill_present';
     const line = { feature: 'rail', usage: 'main', state: 'present', gaugeint0: 1435 };

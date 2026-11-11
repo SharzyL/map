@@ -219,8 +219,9 @@ describe('railway filter panel', () => {
     const legend = panel.querySelector<HTMLElement>('.railway-filter-legend');
     const legendLabels = () =>
       Array.from(legend.querySelectorAll('.railway-filter-legend-item')).map((item) => item.textContent);
-    expect(colorSelect.value).toBe('usage');
-    expect(legend.hidden).toBe(true);
+    expect(colorSelect.value).toBe('default');
+    expect(legend.hidden).toBe(false);
+    expect(legendLabels()).toEqual(['Lines take the color of their route; others are colored by usage.']);
 
     choose(colorSelect, 'gauge');
     expect(map.globalState).toEqual({ railwayColorBy: 'gauge' });
@@ -235,5 +236,6 @@ describe('railway filter panel', () => {
 
     choose(colorSelect, 'usage');
     expect(legend.hidden).toBe(true);
+    expect(map.globalState).toEqual({ railwayColorBy: 'usage' });
   });
 });
