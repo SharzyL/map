@@ -67,7 +67,7 @@ Zoom curves cannot be nested inside other expressions, so the rewrites map over 
 
 Leftovers from the collaboration era still shape some modules: `layer-sync.ts` and `file-layer-sync.ts` hold layer ordering and file-layer content helpers used by the layer store and manager, and `collaboration-permissions.ts` gates editing on a `data-collaboration-can-edit` attribute that nothing sets any more, so editing is always enabled.
 
-`src/screenshot-fixture*.ts` is a deterministic demo scene (`?screenshot=overview|layers|annotations`) enabled by the `__SCREENSHOT_FIXTURES__` build flag. E2E tests and `pnpm screenshots` (README images in `docs/screenshots/`) depend on it.
+`src/screenshot-fixture*.ts` is a deterministic demo scene (`?screenshot=overview|layers|annotations`) enabled by the `__SCREENSHOT_FIXTURES__` build flag. E2E tests and `pnpm screenshots` (images in `docs/screenshots/`) depend on it.
 
 ### Layer and annotation model
 
