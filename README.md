@@ -78,18 +78,73 @@ When you replace the archive later, bump `TILE_VERSION` in `src/main.ts` and dep
 is part of every tile URL, so this is what makes browsers and the edge cache stop serving tiles from
 the previous archive.
 
-### Local development
+## Development Guide
+
+### Running locally
 
 ```bash
-pnpm dev   # Vite + the worker; tiles come from the real R2 bucket
-CLOUDFLARE_VITE_REMOTE_BINDINGS=0 pnpm dev   # fully local; tiles come from a local R2 bucket
-pnpm exec wrangler r2 object put orm/openrailwaymap.pmtiles --file <small.pmtiles> --local
+pnpm install
+pnpm dev       # Vite + the worker; tiles come from the real R2 bucket (needs wrangler auth)
+pnpm preview   # production build served by `wrangler dev`
 ```
 
-A small regional archive for local work can be cut from a full one with
-`pmtiles extract <in.pmtiles> <out.pmtiles> --bbox=<west>,<south>,<east>,<north>`.
+To work without Cloudflare access, run fully local and put a small archive in the local R2 bucket:
 
-Checks (also run by CI): `pnpm fmt:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`.
+```bash
+pmtiles extract <in.pmtiles> <small.pmtiles> --bbox=<west>,<south>,<east>,<north>
+pnpm exec wrangler r2 object put orm/openrailwaymap.pmtiles --file <small.pmtiles> --local
+CLOUDFLARE_VITE_REMOTE_BINDINGS=0 pnpm dev
+```
+
+`?tileset=<archive name>` loads another archive from the bucket, e.g. a test export.
+
+### Project layout
+
+- `src/main.ts` builds the map: it merges the OpenFreeMap base style with the OpenRailwayMap style,
+  adds terrain, contours and satellite imagery, and installs the feature modules.
+- `src/worker/` is the Cloudflare Worker: static assets plus `/tiles/*` served from PMTiles in R2.
+- Panels: `map-layers-panel.ts` (Layers: base map, labels, terrain), `railway-filter-panel.ts`
+  (Railway filter), `annotation-tools.ts` (Annotations: drawing tools, with the layer list and
+  GPX/GeoJSON import from `layer-manager.ts` mounted inside), and the weather picker.
+- `popup.ts` renders info boxes; `route-highlight.ts` and `route-trace.ts` highlight a whole route or
+  railway line picked from one.
+- `layer-store.ts` keeps imported layers and annotations in browser memory; they are lost on reload
+  unless exported.
+- `scripts/styles/` generates the railway style, `scripts/tiles/` builds the tile archive.
+
+Display settings (base map, railway filter, highlight) are applied by rewriting the style once at load
+and then flipping MapLibre `global-state`, not by editing layers one by one.
+
+### Map style
+
+`public/orm/style/standard.json` and the `standard*` sprites are generated. Edit the fragments in
+`scripts/styles/` and run `pnpm generate:style`, which writes the style and cuts the sprites down to the
+icons it can draw (`scripts/styles/sprite-subset.mjs`). The full sprites stay as a fallback for icons
+the subset misses. Commit the regenerated files; a unit test fails when they are out of date.
+
+### Tiles
+
+The tile export and the frontend share layer names and attributes: the style, the railway filter, the
+info boxes and the highlight read what `scripts/tiles/export-tippecanoe.sh` writes, and its per-layer
+zoom filters mirror the zooms the style draws each layer at. Change them together, test with a `bbox`
+export (see above), and bump `TILE_VERSION` once the new archive is live.
+
+### Tests and checks
+
+```bash
+pnpm fmt:check && pnpm lint && pnpm typecheck   # oxfmt, oxlint, tsc over src/
+pnpm test                                       # Vitest: src/**/*.test.ts, scripts/**/*.test.mjs
+pnpm test:e2e                                   # Playwright, chromium and a Pixel 7 profile
+pnpm vitest run --config vitest.config.js src/gpx.test.ts -t 'name substring'
+pnpm exec playwright test e2e/annotations.spec.ts --project chromium
+```
+
+CI runs all of them in that order. Unit tests named `*.dom.test.ts` run in happy-dom; end-to-end specs
+named `*.mobile.spec.ts` run only on the mobile profile. Playwright starts its own offline dev server
+with screenshot fixtures; set `PLAYWRIGHT_BASE_URL` to test a server that is already running.
+
+The fixtures are deterministic demo scenes at `?screenshot=overview|layers|annotations` (enabled by
+`SCREENSHOT_FIXTURES=1`); `pnpm screenshots` renders `docs/screenshots/` from them.
 
 ## License
 
