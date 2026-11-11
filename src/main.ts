@@ -13,6 +13,8 @@ import { installAnnotationRenderer } from './annotation-renderer.js';
 import { installAnnotationTools } from './annotation-tools.js';
 import { applyRailwayFilterToStyle, loadRailwayFilterSettings, type RailwayFilterSettings } from './railway-filter.js';
 import { installRailwayFilter } from './railway-filter-panel.js';
+import { installLocate, type DemTileLike } from './cursor-position.js';
+import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import { lineListsNear } from './route-trace.js';
 import {
@@ -91,6 +93,9 @@ type MapLibreErrorEvent = ErrorEvent & {
 type DemSourceLike = {
   setupMaplibre(maplibre: typeof maplibregl): void;
   contourProtocolUrl(options: GlobalContourTileOptions): string;
+  manager: {
+    fetchAndParseTile(z: number, x: number, y: number, abortController: AbortController): Promise<DemTileLike>;
+  };
 };
 type SpriteAtlas = {
   prefix: string;
@@ -646,7 +651,9 @@ async function init() {
     });
 
     window._mlmap = map;
+    // style.css joins fullscreen onto zoom and compass, and Locate onto geolocate.
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
     const geolocateOptions: GeolocateControlOptionsWithHeading = {
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
@@ -654,11 +661,12 @@ async function init() {
     };
     const geolocateControl = new maplibregl.GeolocateControl(geolocateOptions);
     map.addControl(geolocateControl, 'top-right');
-    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+    installLocate(map, (z, x, y) => demSource.manager.fetchAndParseTile(z, x, y, new AbortController()));
+    installControlIcons(map);
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-right');
     installPhotonSearch(map, maplibregl);
     installWeatherPointPicker(map, maplibregl);
-    // Layers sits right above Railways; style.css joins the two buttons.
+    // Layers sits right above Railways, which style.css joins onto it.
     installMapLayers(map, mapLayers);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);

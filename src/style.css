@@ -72,6 +72,7 @@ body,
   color: #0284c7;
 }
 
+.maplibregl-ctrl-locate,
 .maplibregl-ctrl-map-layers,
 .maplibregl-ctrl-railways {
   position: relative;
@@ -86,11 +87,13 @@ body,
   cursor: pointer;
 }
 
+.maplibregl-ctrl-locate:hover,
 .maplibregl-ctrl-map-layers:hover,
 .maplibregl-ctrl-railways:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
+.maplibregl-ctrl-locate-enabled,
 .maplibregl-ctrl-map-layers-enabled,
 .maplibregl-ctrl-railways-enabled {
   color: #b45309;
@@ -107,15 +110,24 @@ body,
   content: '';
 }
 
-/* Layers and Railways read as one button group: the Railways control drops
-   its gap, the corners where the two meet and its top shadow, and takes the
-   divider MapLibre draws between buttons of one group. */
-.maplibregl-ctrl-group:has(> .maplibregl-ctrl-map-layers):has(+ .maplibregl-ctrl-group > .maplibregl-ctrl-railways) {
+/* Controls joined onto the one above to read as one button group (main.ts
+   adds them in that order): fullscreen below zoom and compass (its button
+   becomes -shrink while in fullscreen), Locate below geolocate, Railways
+   below Layers. Both drop the corners and the shadow where they meet, the
+   lower one its gap too, and it takes the divider MapLibre draws between
+   buttons of one group. */
+.maplibregl-ctrl-group:has(
+  + .maplibregl-ctrl-group
+    > :is(.maplibregl-ctrl-fullscreen, .maplibregl-ctrl-shrink, .maplibregl-ctrl-locate, .maplibregl-ctrl-railways)
+) {
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
+  clip-path: inset(-2px -2px 0 -2px);
 }
 
-.maplibregl-ctrl-group:has(> .maplibregl-ctrl-map-layers) + .maplibregl-ctrl-group:has(> .maplibregl-ctrl-railways) {
+.maplibregl-ctrl-group:has(
+  > :is(.maplibregl-ctrl-fullscreen, .maplibregl-ctrl-shrink, .maplibregl-ctrl-locate, .maplibregl-ctrl-railways)
+) {
   margin-top: 0;
   border-top: 1px solid #ddd;
   border-top-right-radius: 0;
@@ -123,13 +135,40 @@ body,
   clip-path: inset(0 -2px -2px -2px);
 }
 
-.map-layers-icon,
-.railway-filter-icon {
+/* Toolbar icons: one size and stroke on every control button, MapLibre's own
+   included (control-icons.ts swaps their glyphs for Lucide icons). */
+.maplibregl-ctrl-group button svg {
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: 2;
+}
+
+/* MapLibre draws its glyphs as background images, per state and with more
+   specific selectors, so the swapped spans clear them outright. */
+.maplibregl-ctrl button .maplibregl-ctrl-icon.ctrl-lucide-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: none !important;
+  color: #333;
+}
+
+.maplibregl-ctrl-fullscreen .ctrl-lucide-icon > svg:last-child,
+.maplibregl-ctrl-shrink .ctrl-lucide-icon > svg:first-child {
+  display: none;
+}
+
+/* MapLibre's geolocate state colors, tracking and errors. */
+.maplibregl-ctrl-geolocate-active .ctrl-lucide-icon,
+.maplibregl-ctrl-geolocate-background .ctrl-lucide-icon {
+  color: #33b5e5;
+}
+
+.maplibregl-ctrl-geolocate-active-error .ctrl-lucide-icon,
+.maplibregl-ctrl-geolocate-background-error .ctrl-lucide-icon {
+  color: #e58978;
 }
 
 .attribution-github {
@@ -140,6 +179,33 @@ body,
 
 .attribution-github svg {
   fill: currentColor;
+}
+
+/* Locate readout: coordinates and elevation under the pointer. */
+.cursor-position {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  color: #0f172a;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.cursor-position[hidden] {
+  display: none;
+}
+
+.cursor-position-elevation {
+  color: #475569;
 }
 
 .weather-icon {
@@ -176,8 +242,6 @@ body,
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 17px;
-  height: 17px;
   transform: translate(-50%, -50%);
 }
 

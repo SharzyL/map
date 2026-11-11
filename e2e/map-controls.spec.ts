@@ -13,6 +13,7 @@ test.describe('map shell', () => {
     await expect(page.getByRole('button', { name: 'Annotations' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pick a point for weather' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Railway filter' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Locate' })).toBeVisible();
     // Annotations ends the control column.
     await expect(
       page.locator('.maplibregl-ctrl-top-right > .maplibregl-ctrl').last().locator('.maplibregl-ctrl-annotation'),
