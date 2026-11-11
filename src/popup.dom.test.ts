@@ -5,8 +5,7 @@ import { buildFeatureCatalog, popupContent } from './popup.js';
 
 // Attributes of a real light rail segment and station in Frankfurt (OpenRailwayMap tiles).
 const LINE_PROPERTIES = {
-  id: '137315646-0',
-  way_length: 654.85,
+  way_length: 655,
   feature: 'light_rail',
   state: 'present',
   usage: 'main',
@@ -16,9 +15,7 @@ const LINE_PROPERTIES = {
   name: 'A-Strecke',
   ref: 'A',
   preferred_direction: 'forward',
-  rank: 110,
   osm_id: '137315646',
-  osm_type: 'W',
   maxspeed: 60,
   speed_label: '60',
   train_protection_rank: 1,
@@ -28,14 +25,13 @@ const LINE_PROPERTIES = {
   voltage: 15000,
   frequency: 16.7,
   gaugeint0: 1435,
-  gauge0: '1435',
+  gaugeint1: 1000,
   gauges: '1435, 1000',
   operator: 'VGF',
   primary_operator: 'VGF',
   radio: 'gsm-r',
   wikipedia: 'de:A-Strecke',
   line_routes: '66615\u001e#4a5eaa\u001eU3: Oberursel Hohemark => Südbahnhof',
-  route_count: 1,
   unexpected_tag: 'kept',
 };
 
@@ -124,6 +120,15 @@ describe('structured railway line popup', () => {
     expect(link.href).toBe('https://wikipedia.org/wiki/de%3AA-Strecke');
     expect(content.querySelector('.orm-popup-route-list').textContent).toContain('U3: Oberursel Hohemark');
     expect(content.querySelector('.orm-popup-badges')).toBeNull();
+  });
+
+  it('links lines to their OSM way without an osm_type attribute', () => {
+    for (const feature of ['light_rail', 'unlisted_kind']) {
+      const { content } = render('high', 'railway_line_high', { ...LINE_PROPERTIES, feature });
+      const links = [...content.querySelectorAll<HTMLAnchorElement>('a')].map((link) => link.href);
+      expect(links).toContain('https://www.openstreetmap.org/way/137315646');
+      expect(links).toContain('https://www.openstreetmap.org/edit?way=137315646');
+    }
   });
 
   it('shows DC lines without a frequency in hertz', () => {

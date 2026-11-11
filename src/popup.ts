@@ -96,6 +96,9 @@ type FeatureCatalog = {
   sections?: PopupSection[];
   // Internal properties never shown in the "Other" section.
   hiddenProperties?: string[];
+  // OSM element type of features without an osm_type property (railway lines
+  // are always ways, so their tiles leave it out).
+  osmType?: OsmElementType;
 };
 type FeaturesCatalog = Record<string, FeatureCatalog>;
 type FormattedValue = string | Array<[string, string]>;
@@ -241,10 +244,15 @@ function constructCatalogKey(propertyValue: unknown) {
 // ---------------------------------------------------------------------------
 // Determine default OSM element type from properties / feature content
 // ---------------------------------------------------------------------------
-function determineDefaultOsmType(properties: JsonRecord, featureContent?: FeatureContent): OsmElementType {
+function determineDefaultOsmType(
+  properties: JsonRecord,
+  featureContent?: FeatureContent,
+  catalogOsmType?: OsmElementType,
+): OsmElementType {
   if (properties.osm_type) {
     return properties.osm_type === 'N' ? 'node' : properties.osm_type === 'R' ? 'relation' : 'way';
   }
+  if (catalogOsmType) return catalogOsmType;
   const featureType = (featureContent && featureContent.type) || 'point';
   return featureType === 'point' ? 'node' : featureType === 'relation' ? 'relation' : 'way';
 }
@@ -256,9 +264,10 @@ function determineDefaultOsmType(properties: JsonRecord, featureContent?: Featur
 function determineOsmFeatures(
   properties: JsonRecord,
   featureContent?: FeatureContent,
+  catalogOsmType?: OsmElementType,
 ): Array<{ id: string; type: OsmElementType }> {
   const osmIds = properties.osm_id ? String(properties.osm_id).split('\u001e') : [];
-  const defaultOsmType = determineDefaultOsmType(properties, featureContent);
+  const defaultOsmType = determineDefaultOsmType(properties, featureContent, catalogOsmType);
   const osmTypes = properties.osm_type ? String(properties.osm_type).split('\u001e') : [];
 
   return osmIds.map((osm_id, index) => {
@@ -416,6 +425,7 @@ function closestPointOnLine(maplibregl: MaplibreLike, point: unknown, line: unkn
 export function buildFeatureCatalog() {
   const railwayLineFeatures: FeatureCatalog = {
     labelProperties: ['ref', 'name'],
+    osmType: 'way',
     featureLinks: FEATURE_LINKS,
     features: {
       rail: { name: 'Railway', type: 'line' },
@@ -477,19 +487,15 @@ export function buildFeatureCatalog() {
       { title: 'Operation', properties: ['operator', 'primary_operator', 'owner'] },
       { title: 'Links', properties: ['wikidata', 'wikipedia', 'wikimedia_commons', 'mapillary'] },
     ],
+    // way_length only gates tunnel and bridge decorations; gaugeint* feed
+    // the railway filter (gauges holds the readable values).
     hiddenProperties: [
-      'id',
-      'rank',
       'way_length',
-      'gauge0',
-      'gauge1',
-      'gauge2',
       'gaugeint0',
       'gaugeint1',
       'gaugeint2',
       'train_protection_rank',
       'train_protection_construction_rank',
-      'route_count',
     ],
     properties: {
       state: { name: 'State', format: { humanize: 'words' } },
@@ -1114,7 +1120,7 @@ export function popupContent(
       };
     });
 
-  const osmFeatures = determineOsmFeatures(properties, featureContent);
+  const osmFeatures = determineOsmFeatures(properties, featureContent, featureCatalog.osmType);
 
   // === Build DOM ===
   const popupContainer = el('div', 'orm-popup');
