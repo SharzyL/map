@@ -26,6 +26,8 @@ type IntrospectionMap = {
   querySourceFeatures?: (sourceId: string) => GeoJsonFeature[];
   project?: (coordinate: [number, number]) => { x: number; y: number };
   getLayoutProperty?: (layerId: string, name: string) => unknown;
+  getCanvas?: () => HTMLCanvasElement;
+  queryRenderedFeatures?: (point: [number, number]) => Array<{ source?: string; properties?: Record<string, unknown> }>;
 };
 
 export async function clickMap(page: Page, xRatio = 0.5, yRatio = 0.5) {
@@ -33,6 +35,38 @@ export async function clickMap(page: Page, xRatio = 0.5, yRatio = 0.5) {
   expect(box, 'map canvas should have a rendered box').not.toBeNull();
   if (!box) return;
   await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
+}
+
+// An annotation edit reaches its GeoJSON source at once, but a click only sees
+// it after MapLibre's worker has indexed the update, a moment later, and each
+// edit (label, then note) is its own update. Wait until the annotation under
+// the point carries `properties` before clicking one that was just edited.
+export async function expectAnnotationAt(
+  page: Page,
+  xRatio = 0.5,
+  yRatio = 0.5,
+  properties: Record<string, string> = {},
+) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ x, y, expected }) => {
+          const map = window._mlmap as IntrospectionMap | null | undefined;
+          const canvas = map?.getCanvas?.();
+          if (!canvas || !map?.queryRenderedFeatures) return false;
+          const point: [number, number] = [canvas.clientWidth * x, canvas.clientHeight * y];
+          return map
+            .queryRenderedFeatures(point)
+            .some(
+              (feature) =>
+                feature.source?.startsWith('annotation-source') &&
+                Object.entries(expected).every(([key, value]) => feature.properties?.[key] === value),
+            );
+        },
+        { x: xRatio, y: yRatio, expected: properties },
+      ),
+    )
+    .toBe(true);
 }
 
 // The Layers panel: base map, terrain and other map display settings.
@@ -73,6 +107,8 @@ export async function openAnnotations(page: Page) {
     await page.locator('.maplibregl-ctrl-annotation').click();
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
   }
+  // Until the annotation layers are on the map, the tools ignore map clicks.
+  await expect(panel.locator('.annotation-summary')).not.toHaveText('Map style loading');
   return panel;
 }
 
