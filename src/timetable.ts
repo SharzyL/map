@@ -54,6 +54,7 @@ class TimetablePanel {
   private readonly _container: HTMLElement;
   private readonly _title: HTMLElement;
   private readonly _summary: HTMLElement;
+  private readonly _nav: HTMLElement;
   private readonly _body: HTMLElement;
   private readonly _source: HTMLAnchorElement;
   private _abort: AbortController | null = null;
@@ -72,6 +73,10 @@ class TimetablePanel {
     this._title = this.panel.querySelector('.timetable-title');
     this._summary = shell.summary;
     this._body = shell.body;
+    // The back button sits between the header and the scrolling list, so it
+    // stays in view however far the list is scrolled.
+    this._nav = el('div', 'timetable-nav');
+    this.panel.insertBefore(this._nav, this._body);
     this._source = el('a', 'timetable-source', this.panel);
     this._source.target = '_blank';
     this._source.rel = 'noopener noreferrer';
@@ -117,11 +122,13 @@ class TimetablePanel {
     this._abort?.abort();
     this._abort = new AbortController();
     const signal = this._abort.signal;
+    this._setBack();
     this._body.replaceChildren(el('div', 'timetable-status'));
     this._body.firstElementChild.textContent = 'Loading…';
     view().catch((error: unknown) => {
       if (signal.aborted) return;
-      this._body.replaceChildren(this._backButton());
+      this._setBack();
+      this._body.replaceChildren();
       const status = el('div', 'timetable-status timetable-error', this._body);
       status.textContent = `Could not load the timetable: ${error instanceof Error ? error.message : String(error)}`;
     });
@@ -131,14 +138,14 @@ class TimetablePanel {
     return this._abort.signal;
   }
 
-  private _backButton(label = 'Back') {
-    const fragment = document.createDocumentFragment();
-    if (this._history.length < 2) return fragment;
-    const button = el('button', 'timetable-back', fragment);
+  private _setBack(label = 'Back') {
+    this._nav.replaceChildren();
+    this._nav.hidden = this._history.length < 2;
+    if (this._nav.hidden) return;
+    const button = el('button', 'timetable-back', this._nav);
     button.type = 'button';
     button.textContent = `← ${label}`;
     button.addEventListener('click', () => this._back());
-    return fragment;
   }
 
   private _setHeader(title: string, summary: string, source: string | null) {
@@ -156,13 +163,15 @@ class TimetablePanel {
       : (await findStationsByName(request.name, signal)).map(({ code, name }) => ({ code, name }));
     if (signal.aborted) return;
     if (stations.length === 0) {
-      this._body.replaceChildren(this._backButton());
+      this._setBack();
+      this._body.replaceChildren();
       el('div', 'timetable-status', this._body).textContent = `No timetable found for ${request.name}.`;
       return;
     }
     const tables = await Promise.all(stations.map(({ code }) => stationLines(code, signal)));
     if (signal.aborted) return;
-    this._body.replaceChildren(this._backButton());
+    this._setBack();
+    this._body.replaceChildren();
     this._setHeader(request.name, 'Lines', tables.length === 1 ? tables[0].source_url : null);
     for (const table of tables) {
       const section = el('section', 'timetable-station', this._body);
@@ -188,7 +197,8 @@ class TimetablePanel {
     const table = await departures(code, gid, day, signal);
     if (signal.aborted) return;
     this._setHeader(stationName, `${table.line} → ${table.direction}`, table.source_url);
-    this._body.replaceChildren(this._backButton('Lines'));
+    this._setBack('Lines');
+    this._body.replaceChildren();
 
     const days = el('div', 'timetable-days', this._body);
     days.setAttribute('role', 'group');
@@ -240,7 +250,8 @@ class TimetablePanel {
     const train = await trainStops(code, gid, trainId, signal);
     if (signal.aborted) return;
     this._setHeader(stationName, [train.name, train.line].filter(Boolean).join(' · '), train.source_url);
-    this._body.replaceChildren(this._backButton('Departures'));
+    this._setBack('Departures');
+    this._body.replaceChildren();
     for (const comment of train.comments) el('p', 'timetable-comment', this._body).textContent = comment;
     const list = el('ol', 'timetable-stops', this._body);
     for (const stop of train.stops) {

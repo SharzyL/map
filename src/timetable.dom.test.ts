@@ -86,6 +86,10 @@ describe('timetable panel', () => {
     expect(root.querySelector('.timetable-day[aria-pressed="true"]').textContent).toBe('Weekday');
     expect(root.querySelector<HTMLAnchorElement>('.timetable-source').href).toContain('/timetable/22715/1051');
 
+    // The back button stays outside the scrolling list.
+    expect(root.querySelector('.timetable-nav .timetable-back').textContent).toBe('← Lines');
+    expect(root.querySelector('.timetable-body .timetable-back')).toBeNull();
+
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['大船', '渋谷', '宇都宮']));
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('渋谷');

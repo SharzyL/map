@@ -2076,13 +2076,25 @@ body,
   top: 64px;
   right: auto;
   left: 12px;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: min(340px, calc(100vw - 72px));
   max-height: calc(100vh - 88px);
   transform: translateX(-18px);
 }
 
+/* Rows are placed explicitly, so a hidden back button leaves an empty row. */
+.timetable-nav {
+  grid-row: 2;
+  padding: 4px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.timetable-nav[hidden] {
+  display: none;
+}
+
 .timetable-body {
+  grid-row: 3;
   align-content: start;
   gap: 8px;
   font-size: 12.5px;
@@ -2235,6 +2247,7 @@ body,
 }
 
 .timetable-source {
+  grid-row: 4;
   padding: 6px 12px 8px;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
   color: #64748b;
