@@ -32,3 +32,13 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
 
       - run: pnpm test:e2e
+
+      # Traces, videos and screenshots of failed attempts, flaky ones included
+      # (passing tests leave nothing behind).
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

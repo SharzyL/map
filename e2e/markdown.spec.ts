@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { installBrowserErrorWatch, openApp } from './support/map-fixture';
-import { clickMap, expectFeatureLabel, openAnnotations } from './support/map-interactions';
+import { clickMap, expectAnnotationAt, expectFeatureLabel, openAnnotations } from './support/map-interactions';
 
 test.describe('markdown rendering in annotations', () => {
   test('renders bold and italic in text note body on map', async ({ page }) => {
@@ -138,6 +138,7 @@ test.describe('markdown rendering in annotations', () => {
     await page.keyboard.press('Escape');
 
     // Click on the marker point to trigger the popup
+    await expectAnnotationAt(page, 0.5, 0.5, { description: 'Learn more at **OpenStreetMap**' });
     await clickMap(page, 0.5, 0.5);
 
     // The popup should contain rendered markdown
