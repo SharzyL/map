@@ -47,7 +47,7 @@ until it exists, every tile request fails. The archive (several GB, worldwide, z
    skips them). That planet pass takes about 1.5 hours (two passes); its result is cached by the planet's
    md5, so later runs against the same weekly planet skip it and only apply the diffs. The manual
    "Fetch line relations" workflow runs that pass alone and uploads the result, a self-contained
-   railway extract (`lines.osm.pbf`, see `docs/line-relations-extract.md`), as an artifact for local
+   railway extract (`lines.osm.pbf`: railway lines, transit routes, stop areas, every railway way, stations, and the nodes they use), as an artifact for local
    work (`gh run download <run id> -n line-relations -D output/line-relations`):
 
    ```bash

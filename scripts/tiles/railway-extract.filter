@@ -1,6 +1,6 @@
 # The OSM objects the railway extract keeps (osmium tags-filter expressions),
 # read by fetch-line-relations.sh and update-line-relations.sh; the nodes the
-# kept ways and relations refer to come along. See docs/line-relations-extract.md.
+# kept ways and relations refer to come along.
 
 # Railway lines, transit routes and their route masters, and stop areas.
 r/route=railway,train,subway,light_rail,tram,monorail,funicular

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builds the railway extract (docs/line-relations-extract.md): the OSM objects
-# railway-extract.filter keeps (railway lines, transit routes, stop areas,
-# every railway way, stations) and the nodes those ways run through and those
-# relations list, so it has coordinates. The tile export reads the railway
-# lines and the number of tracks and opening dates of railway ways from it,
-# which the import database leaves out.
+# Builds the railway extract: the OSM objects railway-extract.filter keeps
+# (railway lines, transit routes, stop areas, every railway way, stations) and
+# the nodes those ways run through and those relations list, so it has
+# coordinates. The tile export reads the railway lines and the number of
+# tracks and opening dates of railway ways from it, which the import database
+# leaves out.
 #
 # It comes from an OSM extract, normally the planet, streamed rather than
 # stored (~95 GB, more than a CI runner's disk), twice: osmium can only follow
