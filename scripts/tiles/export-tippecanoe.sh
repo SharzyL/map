@@ -146,6 +146,20 @@ SQL
   echo ""
 fi
 
+# Number of tracks and opening dates of railway ways (tracks, start_date,
+# opening_date), which the import database does not keep either; same planet
+# extract, joined through the way id. Empty without it.
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS line_way_tags;
+CREATE TABLE line_way_tags (way_id int8 PRIMARY KEY, tracks text, start_date text, opening_date text);
+SQL
+if [ -n "${LINE_RELATIONS_OPL}" ]; then
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q \
+    -c "\\copy line_way_tags FROM '${OUTPUT_DIR}/line-relations/line_way_tags.csv' WITH (FORMAT csv)" \
+    -c "ANALYZE line_way_tags"
+fi
+
 # Many ways carry no operator tag because mappers put it on the line instead:
 # most of China's railway bureaus tag only their line relations, and Shanghai
 # Metro tags only its route relations. Segments without an operator take the
@@ -190,10 +204,22 @@ CREATE UNIQUE INDEX ON line_operators (way_id);
 ANALYZE line_operators;
 SQL
 echo ""
-# Joined to railway_line_view as LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id.
+# Line queries join railway_line_view lv to the fallback operators, the
+# operator colors and the way tags.
+LINE_JOINS="LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
+LEFT JOIN (SELECT name AS fallback_name, color AS fallback_color FROM railway_operator) fro
+  ON fro.fallback_name = lo.fallback_operator[1]
+LEFT JOIN line_way_tags wt ON wt.way_id = lv.osm_id"
 OPERATOR_SQL="nullif(array_to_string(
     CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
     U&'\001E'), '')"
+# The view's operator color (a known brand color, else a hue hashed from the
+# primary operator), computed the same way for operators filled in above.
+OPERATOR_COLOR_SQL="CASE
+    WHEN lv.primary_operator IS NOT NULL THEN lv.operator_color
+    WHEN lo.fallback_operator IS NOT NULL THEN coalesce(fro.fallback_color,
+      'hsl(' || get_byte(sha256(lo.fallback_operator[1]::bytea), 0) || ', 100%, 30%)')
+  END"
 
 echo "--- Phase 1: Export layers from PostGIS to FlatGeobuf ---"
 echo ""
@@ -251,8 +277,14 @@ export_railway_line_high() {
   array_to_string(gauges, ', ') as gauges,
   loading_gauge,
   ${OPERATOR_SQL} as operator,
+  ${OPERATOR_COLOR_SQL} as operator_color,
   primary_operator,
   owner,
+  CASE WHEN lv.preserved THEN true END as preserved,
+  rack,
+  CASE WHEN wt.tracks ~ '^[0-9]+\$' THEN wt.tracks::int END as tracks,
+  wt.start_date,
+  wt.opening_date,
   traffic_mode,
   radio,
   (SELECT nullif(array_to_string(array_agg(
@@ -287,7 +319,7 @@ SELECT
   track_ref,
   preferred_direction${popup_columns}
 FROM railway_line_view lv
-LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
+${LINE_JOINS}
 WHERE ${where_clause}
 ORDER BY
   layer,
@@ -380,10 +412,13 @@ SELECT
   name,
   maxspeed,
   electrification_state,
+  voltage,
+  frequency,
   gaugeint0,
   gaugeint1,
   traffic_mode,
   operator,
+  operator_color,
   way
 FROM (
   SELECT
@@ -394,21 +429,24 @@ FROM (
     name,
     maxspeed,
     electrification_state,
+    voltage,
+    frequency,
     gaugeint0,
     gaugeint1,
     traffic_mode,
     ${OPERATOR_SQL} as operator,
+    ${OPERATOR_COLOR_SQL} as operator_color,
     max(rank) as rank,
     (ST_Dump(ST_LineMerge(ST_Collect(way)))).geom AS way
   FROM railway_line_view lv
-  LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
+  ${LINE_JOINS}
   WHERE state = 'present'
     AND feature IN ('rail', 'ferry')
     AND usage = 'main'
     AND service IS NULL
   GROUP BY
-    feature, state, usage, highspeed, name, maxspeed, electrification_state,
-    gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}
+    feature, state, usage, highspeed, name, maxspeed, electrification_state, voltage, frequency,
+    gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}
 ) merged
 ORDER BY rank NULLS LAST
 "
@@ -935,6 +973,7 @@ TIPPECANOE_ARGS=(
   # Float attributes
   -T way_length:float
   -T maxspeed:float
+  -T tracks:int
   -T frequency:float
   -T future_frequency:float
   -T height:float

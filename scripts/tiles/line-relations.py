@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Turn OSM route=railway relations (OPL) into CSV files for PostgreSQL.
+"""Turn OSM route=railway relations and railway way tags (OPL) into CSV files for PostgreSQL.
 
 Usage: line-relations.py <relations.opl> <out_dir>
 
-The input comes from
-  osmium tags-filter <planet.osm.pbf> r/route=railway -R
-  osmium cat -f opl,add_metadata=false
-and holds one relation per line. Writes:
+The input comes from fetch-line-relations.sh (osmium tags-filter ... -R, then
+osmium cat -f opl,add_metadata=false) and holds one relation or way per line.
+Writes:
   line_relations.csv         osm_id,name,ref,color,operator
   line_relation_members.csv  relation_id,way_id
+  line_way_tags.csv          way_id,tracks,start_date,opening_date
 """
 
 import csv
@@ -31,19 +31,31 @@ def parse_tags(field):
     return tags
 
 
+WAY_TAGS = ('tracks', 'start_date', 'opening_date')
+
+
 def main(opl_path, out_dir):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    relations = members = 0
+    relations = members = ways = 0
     with (
         open(opl_path, encoding='utf-8') as src,
         open(out / 'line_relations.csv', 'w', newline='', encoding='utf-8') as rel_file,
         open(out / 'line_relation_members.csv', 'w', newline='', encoding='utf-8') as member_file,
+        open(out / 'line_way_tags.csv', 'w', newline='', encoding='utf-8') as way_file,
     ):
         rel_csv = csv.writer(rel_file)
         member_csv = csv.writer(member_file)
+        way_csv = csv.writer(way_file)
         for line in src:
             fields = line.rstrip('\n').split(' ')
+            if fields[0].startswith('w'):
+                tags = next((parse_tags(field[1:]) for field in fields[1:] if field.startswith('T')), {})
+                values = [tags.get(key, '') for key in WAY_TAGS]
+                if any(values):
+                    way_csv.writerow([int(fields[0][1:]), *values])
+                    ways += 1
+                continue
             if not fields[0].startswith('r'):
                 continue
             relation_id = int(fields[0][1:])
@@ -66,7 +78,7 @@ def main(opl_path, out_dir):
             for way_id in dict.fromkeys(way_ids):
                 member_csv.writerow([relation_id, way_id])
                 members += 1
-    print(f'{relations} line relations, {members} way members')
+    print(f'{relations} line relations, {members} way members, {ways} ways with tracks or dates')
 
 
 if __name__ == '__main__':

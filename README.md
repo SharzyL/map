@@ -41,9 +41,10 @@ until it exists, every tile request fails. The archive (several GB, worldwide, z
    `./scripts/tiles/set-r2-secrets.sh <owner>/<repo>` to store them as repository secrets.
 2. Run the "Export PMTiles" workflow (`.github/workflows/export-pmtiles.yml`, manual only). It builds
    the archive (about 40 minutes) and uploads it to `orm/openrailwaymap.pmtiles`. Railway line
-   relations (`route=railway`) are not in the database, so the workflow also streams the planet file
-   through osmium to collect them and updates them with hourly diffs
-   (`scripts/tiles/fetch-line-relations.sh`; input `line_relations_pbf`, `none` skips them):
+   relations (`route=railway`) and the track counts and opening dates of railway ways are not in the
+   database, so the workflow also streams the planet file through osmium to collect them and updates
+   them with hourly diffs (`scripts/tiles/fetch-line-relations.sh`; input `line_relations_pbf`, `none`
+   skips them):
 
    ```bash
    REPO=<owner>/<repo>

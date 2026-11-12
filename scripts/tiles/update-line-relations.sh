@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Brings an extract of route=railway relations up to date with OSM's hourly
-# replication diffs, so it matches the (nightly) import database rather than
-# the weekly planet it was cut from. Ways added to a line since then would
-# otherwise miss the line in the tiles.
+# Brings an extract of route=railway relations and railway ways up to date
+# with OSM's hourly replication diffs, so it matches the (nightly) import
+# database rather than the weekly planet it was cut from. Ways added to a line
+# since then would otherwise miss the line in the tiles.
 #
 # Usage: ./scripts/tiles/update-line-relations.sh <in.osm.pbf> <out.osm.pbf>
 #
-# Each diff is filtered down to route=railway relations as it streams in, so
-# memory stays small; a relation that lost its tag or was deleted since the
-# planet is kept as it was. Needs curl and osmium.
+# Each diff is filtered down to route=railway relations and railway ways as it
+# streams in, so memory stays small; an object that lost its tag or was
+# deleted since the planet is kept as it was. Needs curl and osmium.
 #
 # Environment variables:
 #   REPLICATION_SERVER - default https://planet.openstreetmap.org/replication/hour
@@ -59,7 +59,7 @@ echo "Extract from ${file_time}; applying diffs ${first_sequence}..${latest_sequ
 fetch_diff() {
   local sequence="$1"
   curl -sSfL --retry 5 --retry-all-errors "${SERVER}/$(sequence_path "${sequence}").osc.gz" \
-    | osmium tags-filter -F osc.gz - r/route=railway -R -O -o "${WORK}/${sequence}.osc.gz" --output-format osc.gz
+    | osmium tags-filter -F osc.gz - r/route=railway w/railway -R -O -o "${WORK}/${sequence}.osc.gz" --output-format osc.gz
   # Report every 25 finished diffs.
   touch "${WORK}/${sequence}.ok"
   local finished
