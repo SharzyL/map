@@ -206,7 +206,7 @@ describe('China Railway timetable', () => {
     expect(root.querySelector('.timetable-time-arrival').textContent).toBe('09:11');
     expect(text(root, '.timetable-platform')).toEqual(['10', '7', '']);
     const source = root.querySelector<HTMLAnchorElement>('.timetable-source');
-    expect(source.textContent).toBe('China Railway timetable (路路通 20261114)');
+    expect(source.textContent).toBe('lltskb 20261114');
     expect(source.hasAttribute('href')).toBe(false);
 
     // Date steps replace the view instead of stacking on the back button.

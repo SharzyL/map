@@ -47,7 +47,7 @@ const DAY_LABELS: Record<TimetableDay, string> = {
 const SERVICE_DAY_START = 3 * 60;
 
 const yahooSource = (href: string): Source => ({ text: 'Yahoo!乗換案内', href });
-const crSource = (version: string): Source => ({ text: `China Railway timetable (路路通 ${version})` });
+const crSource = (version: string): Source => ({ text: `lltskb ${version}` });
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const crDateLabel = (date: string) => `${date} ${WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]}`;
 
