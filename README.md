@@ -44,7 +44,8 @@ until it exists, every tile request fails. The archive (several GB, worldwide, z
    relations (`route=railway`) and the track counts and opening dates of railway ways are not in the
    database, so the workflow also streams the planet file through osmium to collect them and updates
    them with hourly diffs (`scripts/tiles/fetch-line-relations.sh`; input `line_relations_pbf`, `none`
-   skips them):
+   skips them). That planet pass takes about 45 minutes; its filtered extract is cached by the planet's
+   md5, so later runs against the same weekly planet skip it and only apply the diffs:
 
    ```bash
    REPO=<owner>/<repo>

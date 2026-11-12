@@ -9,6 +9,11 @@
 # and the ways with any of those tags) is what export-tippecanoe.sh reads
 # (LINE_RELATIONS_OPL).
 #
+# The filtered extract, <out-dir>/planet.osm.pbf, only depends on the planet
+# and on the filter below, so it is reused when it is already there (the
+# export workflow caches it by the planet's md5); the diffs are applied anew
+# either way.
+#
 # Usage: ./scripts/tiles/fetch-line-relations.sh <.osm.pbf URL> <out-dir>
 #
 # Needs curl and osmium.
@@ -16,7 +21,7 @@
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
-  sed -n '12p' "$0" >&2
+  sed -n '17p' "$0" >&2
   exit 1
 fi
 URL="$1"
@@ -25,9 +30,15 @@ mkdir -p "${OUT}"
 start="$(date +%s)"
 minutes() { echo "$(( ($(date +%s) - start) / 60 ))"; }
 
-echo "Streaming ${URL} through osmium"
-curl -sSfL "${URL}" | osmium tags-filter -F pbf - r/route=railway w/railway -R -O -o "${OUT}/planet.osm.pbf"
-echo "Extract filtered after $(minutes) min"
+if [ -s "${OUT}/planet.osm.pbf" ]; then
+  echo "Reusing the filtered extract ${OUT}/planet.osm.pbf"
+else
+  echo "Streaming ${URL} through osmium"
+  # Written under another name first, so an interrupted pass leaves nothing to reuse.
+  curl -sSfL "${URL}" | osmium tags-filter -F pbf - r/route=railway w/railway -R -O -f pbf -o "${OUT}/planet.osm.pbf.part"
+  mv "${OUT}/planet.osm.pbf.part" "${OUT}/planet.osm.pbf"
+  echo "Extract filtered after $(minutes) min"
+fi
 
 "$(dirname "$0")/update-line-relations.sh" "${OUT}/planet.osm.pbf" "${OUT}/lines.osm.pbf"
 # Every railway way was kept so diffs can update them; only the tagged ones go on.

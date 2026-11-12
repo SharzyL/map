@@ -105,7 +105,37 @@ jobs:
           pmtiles version
 
       # The import database has no route=railway relations, so they come from
-      # the planet file.
+      # the planet file. Filtering the planet takes ~45 min; its result only
+      # depends on the planet and on fetch-line-relations.sh, so it is cached
+      # by the planet's md5 (published next to it) and the script's hash. The
+      # hourly diffs are applied on every run.
+      - name: Find the line relations source version
+        id: line-relations
+        env:
+          LINE_RELATIONS_PBF: ${{ github.event.inputs.line_relations_pbf || 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf' }}
+        run: |
+          if [ "${LINE_RELATIONS_PBF}" = "none" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The md5 published next to the file, else its ETag/Last-Modified,
+          # else this run's id (no cache hit).
+          version="$(curl -sSfL "${LINE_RELATIONS_PBF}.md5" | cut -d' ' -f1 || true)"
+          if [ -z "${version}" ]; then
+            headers="$(curl -sSfIL "${LINE_RELATIONS_PBF}" | tr -d '\r' | grep -iE '^(etag|last-modified):' || true)"
+            version="$([ -n "${headers}" ] && sha256sum <<< "${headers}" | cut -c1-32 || echo "run-${GITHUB_RUN_ID}")"
+          fi
+          echo "Line relations source ${LINE_RELATIONS_PBF}: ${version}"
+          echo "key=line-relations-${{ hashFiles('scripts/tiles/fetch-line-relations.sh') }}-${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the filtered planet extract
+        id: line-relations-cache
+        if: steps.line-relations.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: line-relations/planet.osm.pbf
+          key: ${{ steps.line-relations.outputs.key }}
+
       - name: Fetch railway line relations
         timeout-minutes: 120
         env:
@@ -119,6 +149,14 @@ jobs:
           osmium --version | head -1
           ./scripts/tiles/fetch-line-relations.sh "${LINE_RELATIONS_PBF}" line-relations
           ls -lh line-relations
+
+      # Saved right away, so a failure later in the export keeps the extract.
+      - name: Save the filtered planet extract
+        if: steps.line-relations.outputs.skip != 'true' && steps.line-relations-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: line-relations/planet.osm.pbf
+          key: ${{ steps.line-relations.outputs.key }}
 
       - name: Export layers and generate PMTiles
         env:
