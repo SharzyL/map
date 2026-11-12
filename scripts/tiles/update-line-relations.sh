@@ -41,8 +41,16 @@ sequence_path() {
   echo "${padded:0:3}/${padded:3:3}/${padded:6:3}"
 }
 
+# The extract's time: its header's, else its newest object's, which is within
+# minutes of the planet's cut (fetch-line-relations.sh merges its two passes
+# with osmium merge, which writes no header timestamp).
 file_time="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "${IN}" 2>/dev/null || true)"
-[ -n "${file_time}" ] || file_time="$(osmium fileinfo -g header.option.timestamp "${IN}")"
+[ -n "${file_time}" ] || file_time="$(osmium fileinfo -g header.option.timestamp "${IN}" 2>/dev/null || true)"
+[ -n "${file_time}" ] || file_time="$(osmium fileinfo -e -g data.timestamp.last "${IN}")"
+if [ -z "${file_time}" ]; then
+  echo "No timestamp in ${IN}; cannot tell which diffs to apply" >&2
+  exit 1
+fi
 latest_state="$(curl -sSfL "${SERVER}/state.txt")"
 latest_sequence="$(state_value "${latest_state}" sequenceNumber)"
 latest_time="$(state_value "${latest_state}" timestamp)"
