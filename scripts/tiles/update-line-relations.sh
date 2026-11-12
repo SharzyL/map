@@ -6,9 +6,10 @@
 #
 # Usage: ./scripts/tiles/update-line-relations.sh <in.osm.pbf> <out.osm.pbf>
 #
-# Each diff is filtered down to route=railway relations and railway ways as it
-# streams in, so memory stays small; an object that lost its tag or was
-# deleted since the planet is kept as it was. Needs curl and osmium.
+# Each diff is filtered with railway-extract.filter as it comes in, so memory
+# stays small, and keeps the nodes of the ways it adds or changes. An object
+# that lost its tag or was deleted since the planet is kept as it was, and so
+# is a node moved without a change to its way. Needs curl and osmium.
 #
 # Environment variables:
 #   REPLICATION_SERVER - default https://planet.openstreetmap.org/replication/hour
@@ -24,8 +25,10 @@ IN="$1"
 OUT="$2"
 SERVER="${REPLICATION_SERVER:-https://planet.openstreetmap.org/replication/hour}"
 PARALLEL="${PARALLEL:-8}"
+FILTER="$(cd "$(dirname "$0")" && pwd)/railway-extract.filter"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
+mkdir "${WORK}/raw"
 
 # Value of key= in a replication state.txt (colons are escaped there).
 state_value() {
@@ -58,8 +61,12 @@ echo "Extract from ${file_time}; applying diffs ${first_sequence}..${latest_sequ
 
 fetch_diff() {
   local sequence="$1"
-  curl -sSfL --retry 5 --retry-all-errors "${SERVER}/$(sequence_path "${sequence}").osc.gz" \
-    | osmium tags-filter -F osc.gz - r/route=railway w/railway -R -O -o "${WORK}/${sequence}.osc.gz" --output-format osc.gz
+  local raw="${WORK}/raw/${sequence}.osc.gz"
+  curl -sSfL --retry 5 --retry-all-errors "${SERVER}/$(sequence_path "${sequence}").osc.gz" -o "${raw}"
+  # Read from a file, not a pipe: without -R, osmium reads the diff again for
+  # the nodes of the ways it keeps.
+  osmium tags-filter "${raw}" -e "${FILTER}" -O -o "${WORK}/${sequence}.osc.gz" --output-format osc.gz
+  rm "${raw}"
   # Report every 25 finished diffs.
   touch "${WORK}/${sequence}.ok"
   local finished
@@ -68,7 +75,7 @@ fetch_diff() {
 }
 TOTAL="$(( latest_sequence - first_sequence + 1 ))"
 export -f fetch_diff sequence_path
-export SERVER WORK TOTAL
+export SERVER WORK TOTAL FILTER
 
 seq "${first_sequence}" "${latest_sequence}" | xargs -P "${PARALLEL}" -I{} bash -c 'fetch_diff {}'
 

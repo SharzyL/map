@@ -9,10 +9,10 @@ inputs:
 runs:
   using: composite
   steps:
-    # Filtering the planet takes ~45 min; its result only depends on the
-    # planet and on fetch-line-relations.sh, so it is cached by the planet's
-    # md5 (published next to it) and the script's hash. The hourly diffs are
-    # applied on every run.
+    # Filtering the planet takes two passes of ~45 min; the result only
+    # depends on the planet, fetch-line-relations.sh and the filter, so it is
+    # cached by the planet's md5 (published next to it) and their hash. The
+    # hourly diffs are applied on every run.
     - name: Find the line relations source version
       id: version
       shell: bash
@@ -30,7 +30,7 @@ runs:
           headers="$(curl -sSfIL "${LINE_RELATIONS_PBF}" | tr -d '\r' | grep -iE '^(etag|last-modified):' || true)"
           version="$([ -n "${headers}" ] && sha256sum <<< "${headers}" | cut -c1-32 || echo "run-${GITHUB_RUN_ID}")"
         fi
-        script="$(sha256sum scripts/tiles/fetch-line-relations.sh | cut -c1-16)"
+        script="$(cat scripts/tiles/fetch-line-relations.sh scripts/tiles/railway-extract.filter | sha256sum | cut -c1-16)"
         echo "Line relations source ${LINE_RELATIONS_PBF}: ${version}"
         echo "key=line-relations-${script}-${version}" >> "$GITHUB_OUTPUT"
 
