@@ -1,0 +1,40 @@
+name: Fetch line relations
+
+# The planet pass of the PMTiles export on its own: route=railway relations and
+# every railway way, up to date with the hourly diffs, as a downloadable
+# artifact for working with them locally. It shares the export's cache, so the
+# next export skips the planet pass. Download with
+#   gh run download <run id> -n line-relations -D output/line-relations
+
+on:
+  workflow_dispatch:
+    inputs:
+      line_relations_pbf:
+        description: 'OSM .pbf to read route=railway line relations from'
+        required: false
+        default: 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf'
+
+jobs:
+  fetch:
+    name: Fetch line relations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Railway line relations
+        uses: ./.github/actions/line-relations
+        with:
+          pbf: ${{ github.event.inputs.line_relations_pbf || 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf' }}
+
+      # lines.osm.pbf: the relations and every railway way (node ids, no
+      # positions); lines.opl is only its tagged part, so it is left out.
+      - name: Upload the line relations extract
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-relations
+          path: line-relations/lines.osm.pbf
+          retention-days: 7
+          compression-level: 0

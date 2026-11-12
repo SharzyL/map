@@ -1,0 +1,62 @@
+name: Railway line relations
+description: >
+  Collects route=railway relations and railway ways from an OSM extract (normally the planet) into
+  line-relations/ (scripts/tiles/fetch-line-relations.sh), with the filtered extract cached.
+inputs:
+  pbf:
+    description: 'OSM .pbf to read them from ("none" skips them)'
+    required: true
+runs:
+  using: composite
+  steps:
+    # Filtering the planet takes ~45 min; its result only depends on the
+    # planet and on fetch-line-relations.sh, so it is cached by the planet's
+    # md5 (published next to it) and the script's hash. The hourly diffs are
+    # applied on every run.
+    - name: Find the line relations source version
+      id: version
+      shell: bash
+      env:
+        LINE_RELATIONS_PBF: ${{ inputs.pbf }}
+      run: |
+        if [ "${LINE_RELATIONS_PBF}" = "none" ]; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # The md5 published next to the file, else its ETag/Last-Modified,
+        # else this run's id (no cache hit).
+        version="$(curl -sSfL "${LINE_RELATIONS_PBF}.md5" | cut -d' ' -f1 || true)"
+        if [ -z "${version}" ]; then
+          headers="$(curl -sSfIL "${LINE_RELATIONS_PBF}" | tr -d '\r' | grep -iE '^(etag|last-modified):' || true)"
+          version="$([ -n "${headers}" ] && sha256sum <<< "${headers}" | cut -c1-32 || echo "run-${GITHUB_RUN_ID}")"
+        fi
+        script="$(sha256sum scripts/tiles/fetch-line-relations.sh | cut -c1-16)"
+        echo "Line relations source ${LINE_RELATIONS_PBF}: ${version}"
+        echo "key=line-relations-${script}-${version}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the filtered planet extract
+      id: cache
+      if: steps.version.outputs.skip != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: line-relations/planet.osm.pbf
+        key: ${{ steps.version.outputs.key }}
+
+    - name: Fetch railway line relations
+      if: steps.version.outputs.skip != 'true'
+      shell: bash
+      env:
+        LINE_RELATIONS_PBF: ${{ inputs.pbf }}
+      run: |
+        sudo apt-get install -y -qq osmium-tool
+        osmium --version | head -1
+        ./scripts/tiles/fetch-line-relations.sh "${LINE_RELATIONS_PBF}" line-relations
+        ls -lh line-relations
+
+    # Saved right away, so a failure later in the job keeps the extract.
+    - name: Save the filtered planet extract
+      if: steps.version.outputs.skip != 'true' && steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: line-relations/planet.osm.pbf
+        key: ${{ steps.version.outputs.key }}

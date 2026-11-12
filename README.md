@@ -45,7 +45,10 @@ until it exists, every tile request fails. The archive (several GB, worldwide, z
    database, so the workflow also streams the planet file through osmium to collect them and updates
    them with hourly diffs (`scripts/tiles/fetch-line-relations.sh`; input `line_relations_pbf`, `none`
    skips them). That planet pass takes about 45 minutes; its filtered extract is cached by the planet's
-   md5, so later runs against the same weekly planet skip it and only apply the diffs:
+   md5, so later runs against the same weekly planet skip it and only apply the diffs. The manual
+   "Fetch line relations" workflow runs that pass alone and uploads the result (`lines.osm.pbf`, about
+   200 MB) as an artifact, for working with the relations locally
+   (`gh run download <run id> -n line-relations -D output/line-relations`):
 
    ```bash
    REPO=<owner>/<repo>
