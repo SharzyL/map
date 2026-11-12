@@ -2,6 +2,13 @@ import { expect, test } from '@playwright/test';
 import { installBrowserErrorWatch, openApp } from './support/map-fixture';
 import { annotationFeatureTypes, clickMap, openAnnotations } from './support/map-interactions';
 
+type FixtureZoomMap = {
+  getCanvas(): HTMLCanvasElement;
+  unproject(point: [number, number]): unknown;
+  jumpTo(options: { zoom: number; center: unknown }): void;
+  panBy(offset: [number, number], options: { duration: number }): void;
+};
+
 test.describe('weather point picker in a real browser', () => {
   test('resolves a picked map point and loads the compact weather dashboard', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
@@ -109,10 +116,13 @@ test.describe('weather card annotations in a real browser', () => {
     await expect(card.locator('.annotation-weather-card-title')).toHaveText('Shanghai Hongqiao');
 
     // Expansion is the user's choice, not a zoom tier, so zooming out keeps it open.
+    // Keep the card's point (where the map was clicked) where it was, so the
+    // tall card is not pulled up out of the viewport toward the screen center.
     await page.evaluate(() => {
-      (window as unknown as { _mlmap: { jumpTo: (options: { zoom: number }) => void } })._mlmap.jumpTo({
-        zoom: 8,
-      });
+      const map = (window as unknown as { _mlmap: FixtureZoomMap })._mlmap;
+      const height = map.getCanvas().clientHeight;
+      map.jumpTo({ zoom: 8, center: map.unproject([map.getCanvas().clientWidth * 0.5, height * 0.72]) });
+      map.panBy([0, -height * 0.22], { duration: 0 });
     });
     await expect(card).toBeVisible();
     await expect(page.locator('.annotation-weather-label')).toHaveCount(0);

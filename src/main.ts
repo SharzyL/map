@@ -623,6 +623,19 @@ function installSpriteFallback(map: maplibregl.Map) {
   });
 }
 
+// Without a URL hash the map opens on the whole Yamanote loop in Tokyo (新宿
+// to 秋葉原, 田端 to 品川): zoom 12 on wide screens, further out on narrow ones
+// so the loop still fits.
+const DEFAULT_VIEW = {
+  center: [139.737, 35.685] as [number, number],
+  zoom: 12,
+  bounds: [
+    [139.7, 35.628],
+    [139.777, 35.739],
+  ] as maplibregl.LngLatBoundsLike,
+  fitBoundsOptions: { padding: 24, maxZoom: 12 },
+};
+
 async function init() {
   try {
     const screenshotFixtureModule = await loadScreenshotFixture();
@@ -646,8 +659,11 @@ async function init() {
     const map = new maplibregl.Map({
       container: 'map',
       style: style as maplibregl.StyleSpecification,
-      center: screenshotFixtureView ? screenshotFixtureView.center : [105, 35],
-      zoom: screenshotFixtureView ? screenshotFixtureView.zoom : 4,
+      center: screenshotFixtureView ? screenshotFixtureView.center : DEFAULT_VIEW.center,
+      zoom: screenshotFixtureView ? screenshotFixtureView.zoom : DEFAULT_VIEW.zoom,
+      ...(screenshotFixtureView
+        ? {}
+        : { bounds: DEFAULT_VIEW.bounds, fitBoundsOptions: DEFAULT_VIEW.fitBoundsOptions }),
       hash: true,
       attributionControl: { customAttribution: GITHUB_ATTRIBUTION } as maplibregl.AttributionControlOptions,
       renderWorldCopies: false,
