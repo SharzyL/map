@@ -211,19 +211,19 @@ echo ""
 # Line queries join railway_line_view lv to the fallback operators, the
 # operator colors and the way tags.
 LINE_JOINS="LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
-LEFT JOIN (SELECT name AS fallback_name, color AS fallback_color FROM railway_operator) fro
-  ON fro.fallback_name = lo.fallback_operator[1]
+LEFT JOIN (SELECT name AS known_operator, color AS known_color FROM railway_operator) oc
+  ON oc.known_operator = coalesce(lv.primary_operator, lo.fallback_operator[1])
 LEFT JOIN line_way_tags wt ON wt.way_id = lv.osm_id"
 OPERATOR_SQL="nullif(array_to_string(
     CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
     U&'\001E'), '')"
-# The view's operator color (a known brand color, else a hue hashed from the
-# primary operator), computed the same way for operators filled in above.
-OPERATOR_COLOR_SQL="CASE
-    WHEN lv.primary_operator IS NOT NULL THEN lv.operator_color
-    WHEN lo.fallback_operator IS NOT NULL THEN coalesce(fro.fallback_color,
-      'hsl(' || get_byte(sha256(lo.fallback_operator[1]::bytea), 0) || ', 100%, 30%)')
-  END"
+# Operator color as the view computes it (a known brand color, else a hue
+# hashed from the primary operator), also for operators filled in above. The
+# view hashes name::bytea, which fails on names with a backslash; convert_to
+# gives the same bytes for every other name.
+OPERATOR_NAME_SQL="coalesce(lv.primary_operator, lo.fallback_operator[1])"
+OPERATOR_COLOR_SQL="CASE WHEN ${OPERATOR_NAME_SQL} IS NOT NULL THEN coalesce(oc.known_color,
+    'hsl(' || get_byte(sha256(convert_to(${OPERATOR_NAME_SQL}, 'UTF8')), 0) || ', 100%, 30%)') END"
 
 # Station sizes from China Railway's timetable. OpenRailwayMap sizes stations
 # by the route relations stopping there (9 make it normal, 21 large), and
