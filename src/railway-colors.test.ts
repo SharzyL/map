@@ -100,6 +100,15 @@ describe('railway color classes', () => {
     expect(classify('gauge', {})).toBe('unknown');
   });
 
+  it('sorts lines by their number of tracks', () => {
+    expect(classify('tracks', { tracks: 1 })).toBe('1');
+    expect(classify('tracks', { tracks: 2 })).toBe('2');
+    expect(classify('tracks', { tracks: 3 })).toBe('3');
+    expect(classify('tracks', { tracks: 6 })).toBe('4plus');
+    expect(classify('tracks', { tracks: 0 })).toBe('unknown');
+    expect(classify('tracks', {})).toBe('unknown');
+  });
+
   it('has one legend entry per class', () => {
     for (const entries of Object.values(RAILWAY_COLOR_LEGENDS)) {
       const keys = entries.map(({ key }) => key);
@@ -176,6 +185,17 @@ describe('withRailwayLineColors', () => {
     expect(colorOf(id, 'default', route('#c23a30'), true)).toBe('#ffc107');
     expect(colorOf(id, 'default', route('#178ABB'), true)).toBe('#ff0000');
     expect(colorOf(id, 'default', line, true)).toBe('#ff0000');
+  });
+
+  it('draws lines in their operator color, gray without an operator', () => {
+    const id = 'railway_line_main_high_fill_present';
+    const line = { feature: 'rail', usage: 'main', state: 'present' };
+    expect(colorOf(id, 'operator', { ...line, operator_color: '#e3001b' })).toBe('#e3001b');
+    // Hashed hues come as hsl() from the database.
+    expect(colorOf(id, 'operator', { ...line, operator_color: 'hsl(120, 100%, 30%)' })).toBe('#009900');
+    expect(colorOf(id, 'operator', line)).toBe('#b8b8b8');
+    expect(colorOf(id, 'operator', { ...line, operator_color: '#e3001b' }, true)).toBe('#ffc107');
+    expect(colorOf(id, 'operator', { ...line, operator_color: '#0072b2' }, true)).toBe('#ff0000');
   });
 
   it('uses a hover color that stands out from the line color', () => {

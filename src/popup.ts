@@ -504,7 +504,21 @@ export function buildFeatureCatalog() {
       {
         title: 'Line',
         properties: [
-          { name: 'Type', parts: ['state', 'usage', 'service', 'traffic_mode', 'highspeed', 'tunnel', 'bridge'] },
+          {
+            name: 'Type',
+            parts: [
+              'state',
+              'usage',
+              'service',
+              'tracks',
+              'traffic_mode',
+              'highspeed',
+              'preserved',
+              'rack',
+              'tunnel',
+              'bridge',
+            ],
+          },
           { name: 'Speed', parts: ['maxspeed', 'speed_label'] },
           {
             name: 'Electrification',
@@ -530,6 +544,7 @@ export function buildFeatureCatalog() {
               'radio',
             ],
           },
+          { name: 'Opening', parts: ['start_date', { prefix: 'planned', properties: ['opening_date'] }] },
           'operator',
           'primary_operator',
           'owner',
@@ -549,6 +564,8 @@ export function buildFeatureCatalog() {
       'gaugeint2',
       'train_protection_rank',
       'train_protection_construction_rank',
+      // Read by the Operator color mode.
+      'operator_color',
     ],
     properties: {
       // In service is the norm, so the Type row only names other states.
@@ -556,6 +573,35 @@ export function buildFeatureCatalog() {
       usage: { name: 'Usage', format: { humanize: 'words' } },
       service: { name: 'Service', format: { humanize: 'words' } },
       highspeed: { name: 'High speed' },
+      preserved: { name: 'Heritage railway' },
+      rack: {
+        name: 'Rack railway',
+        format: {
+          labels: {
+            yes: 'Rack railway',
+            abt: 'Rack (Abt)',
+            riggenbach: 'Rack (Riggenbach)',
+            strub: 'Rack (Strub)',
+            locher: 'Rack (Locher)',
+            von_roll: 'Rack (Von Roll)',
+            marsh: 'Rack (Marsh)',
+          },
+          humanize: 'words',
+        },
+      },
+      tracks: {
+        name: 'Tracks',
+        format: {
+          labels: {
+            1: 'Single track',
+            2: 'Double track',
+            ...Object.fromEntries(Array.from({ length: 10 }, (_, index) => [index + 3, `${index + 3} tracks`])),
+          },
+          humanize: 'words',
+        },
+      },
+      start_date: { name: 'Opened' },
+      opening_date: { name: 'Planned opening' },
       preferred_direction: {
         name: 'Preferred direction',
         format: { labels: { forward: 'Forward', backward: 'Backward', both: 'Both directions' }, humanize: 'words' },

@@ -1,12 +1,14 @@
-// Alternative railway line colors: by route color, maximum speed,
-// electrification or gauge instead of the style's usage colors.
+// Alternative railway line colors: by route color, operator, maximum speed,
+// electrification, gauge or number of tracks instead of the style's usage
+// colors.
 //
 // Like the railway filter, the style is rewritten once at load time: the fill
 // of every active railway line layer and its direction arrows get a `match` on
 // global state that keeps the original color for 'usage'. 'default' draws a
-// line in its route's color and falls back to the usage colors. The other
-// modes first sort a line into a legend class, so the map and the panel legend
-// read the same table.
+// line in its route's color and falls back to the usage colors; 'operator'
+// takes each operator's color from the tiles. The other modes first sort a
+// line into a legend class, so the map and the panel legend read the same
+// table.
 //
 // The palettes were checked for color vision deficiency: speed follows
 // viridis, darkening from yellow to blue with the high-speed purple at 350
@@ -15,9 +17,17 @@
 // hues apart, and grays mark lines without data.
 import { mapZoomOutputs } from './map-layers.js';
 
-export const RAILWAY_COLOR_MODES = ['default', 'usage', 'speed', 'electrification', 'gauge'] as const;
+export const RAILWAY_COLOR_MODES = [
+  'default',
+  'usage',
+  'operator',
+  'speed',
+  'electrification',
+  'gauge',
+  'tracks',
+] as const;
 export type RailwayColorMode = (typeof RAILWAY_COLOR_MODES)[number];
-export type RailwayLegendMode = Exclude<RailwayColorMode, 'default' | 'usage'>;
+export type RailwayLegendMode = Exclude<RailwayColorMode, 'default' | 'usage' | 'operator'>;
 
 export const RAILWAY_COLOR_STATE = 'railwayColorBy';
 
@@ -71,6 +81,14 @@ export const RAILWAY_COLOR_LEGENDS: Record<RailwayLegendMode, RailwayColorClass[
     { key: 'other', label: 'Other gauges', color: '#8f8f8f' },
     { key: 'unknown', label: 'No gauge data', color: NO_DATA },
   ],
+  // Okabe-Ito hues. The low-zoom tiles carry no track counts.
+  tracks: [
+    { key: '1', label: 'Single track', color: '#e69f00' },
+    { key: '2', label: 'Double track', color: '#0072b2' },
+    { key: '3', label: 'Three tracks', color: '#009e73' },
+    { key: '4plus', label: 'Four or more tracks', color: '#cc79a7' },
+    { key: 'unknown', label: 'No track count', color: NO_DATA },
+  ],
 };
 
 const SPEED_CLASS = [
@@ -106,8 +124,6 @@ const FREQUENCY = ['to-number', ['coalesce', ['get', 'frequency'], 0], 0];
 // Lines tagged without a frequency: high voltages are AC, low ones DC.
 const IS_AC = ['case', ['has', 'frequency'], ['>', FREQUENCY, 0], ['>=', VOLTAGE, 6000]];
 
-// The low-zoom tiles carry no voltage, so zoomed far out electrified lines
-// only show as electrified.
 const ELECTRIFICATION_CLASS = [
   'match',
   ['to-string', ['coalesce', ['get', 'electrification_state'], '']],
@@ -183,10 +199,18 @@ const GAUGE_CLASS = [
   'unknown',
 ];
 
+const TRACKS_CLASS = [
+  'case',
+  ['has', 'tracks'],
+  ['step', ['to-number', ['get', 'tracks'], 0], 'unknown', 1, '1', 2, '2', 3, '3', 4, '4plus'],
+  'unknown',
+];
+
 export const RAILWAY_COLOR_CLASS_EXPRESSIONS: Record<RailwayLegendMode, unknown[]> = {
   speed: SPEED_CLASS,
   electrification: ELECTRIFICATION_CLASS,
   gauge: GAUGE_CLASS,
+  tracks: TRACKS_CLASS,
 };
 
 const MODE = ['to-string', ['global-state', RAILWAY_COLOR_STATE]];
@@ -285,6 +309,23 @@ function withRouteColor(original: unknown) {
   ];
 }
 
+// 'operator': the operator's color from the tiles (`operator_color`, a known
+// brand color or a hue hashed from the operator's name); lines without an
+// operator are gray.
+const OPERATOR_COLOR = [
+  'let',
+  'routeColor',
+  ['to-string', ['coalesce', ['get', 'operator_color'], '']],
+  [
+    'case',
+    ['==', ['var', 'routeColor'], ''],
+    ['case', IS_HOVERED, HOVER, NO_DATA],
+    IS_HOVERED,
+    ROUTE_HOVER_COLOR,
+    ['to-color', ['var', 'routeColor'], NO_DATA],
+  ],
+];
+
 // Layers built by the style's railwayLine(): fills of lines in use (abandoned,
 // razed and disused tracks keep their muted colors, ferries their own) and the
 // preferred direction arrows drawn over them.
@@ -304,6 +345,8 @@ export function withRailwayLineColors<T extends StyleLayerLike>(layer: T): T {
     original,
     'default',
     withRouteColor(original),
+    'operator',
+    OPERATOR_COLOR,
     RAILWAY_ATTRIBUTE_COLOR,
   ]);
   return { ...layer, paint: { ...layer.paint, [property]: color } };

@@ -193,6 +193,25 @@ describe('structured railway line popup', () => {
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({ id: '1924436', at: [8.68, 50.11] }));
   });
 
+  it('names track counts, heritage and rack railways and opening dates', () => {
+    const { sections } = render('high', 'railway_line_high', {
+      ...LINE_PROPERTIES,
+      tracks: 2,
+      preserved: true,
+      rack: 'abt',
+      start_date: '1846',
+      opening_date: '2027-12',
+      operator_color: 'hsl(120, 100%, 30%)',
+    });
+    const rows = Object.fromEntries(sections.Line);
+    expect(rows.Type).toBe('Main · Double track · Heritage railway · Rack (Abt) · Bridge');
+    expect(rows.Opening).toBe('1846 · planned 2027-12');
+    expect(sections.Other).toEqual([['Unexpected tag', 'kept']]);
+    expect(
+      Object.fromEntries(render('high', 'railway_line_high', { ...LINE_PROPERTIES, tracks: 6 }).sections.Line).Type,
+    ).toBe('Main · 6 tracks · Bridge');
+  });
+
   it('shows DC lines without a frequency in hertz', () => {
     const { sections } = render('high', 'railway_line_high', { ...LINE_PROPERTIES, voltage: 750, frequency: 0 });
     expect(Object.fromEntries(sections.Line).Electrification).toBe('Electrified · 750 V DC');

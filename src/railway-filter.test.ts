@@ -81,6 +81,9 @@ describe('railway line filter expression', () => {
     expect(lineVisible({ feature: 'subway', usage: 'main' }, only('urban'))).toBe(true);
     expect(lineVisible({ feature: 'subway', usage: 'main' }, only('main'))).toBe(false);
     expect(lineVisible({ feature: 'miniature' }, only('tourism'))).toBe(true);
+    // Heritage lines are tourism whatever their usage.
+    expect(lineVisible({ feature: 'rail', usage: 'branch', preserved: true }, only('tourism'))).toBe(true);
+    expect(lineVisible({ feature: 'rail', usage: 'branch', preserved: true }, only('branch'))).toBe(false);
     expect(lineVisible({ feature: 'rail' }, only('other'))).toBe(true);
     expect(lineVisible({ feature: 'rail' }, only('main'))).toBe(false);
   });

@@ -212,13 +212,16 @@ const URBAN_FEATURES = ['tram', 'subway', 'light_rail', 'monorail', 'funicular']
 const INDUSTRIAL_USAGES = ['industrial', 'military', 'freight', 'test'];
 
 // Category precedence: urban transit by feature, then service tracks
-// (sidings, yards, spurs, crossovers), then the line's usage.
+// (sidings, yards, spurs, crossovers), then heritage lines
+// (railway:preserved, whatever their usage), then the line's usage.
 export const RAILWAY_CATEGORY_EXPRESSION = [
   'case',
   ['match', ['get', 'feature'], URBAN_FEATURES, true, false],
   'urban',
   ['has', 'service'],
   'service',
+  ['==', ['get', 'preserved'], true],
+  'tourism',
   ['==', ['get', 'usage'], 'main'],
   'main',
   ['==', ['get', 'usage'], 'branch'],

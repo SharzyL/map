@@ -275,6 +275,12 @@ describe('railway filter panel', () => {
     expect(legendLabels()).toContain('AC 15 kV 16.7 Hz');
     expect(legendLabels()).not.toContain('Standard (1435 mm)');
 
+    choose(colorSelect, 'tracks');
+    expect(legendLabels()).toContain('Double track');
+
+    choose(colorSelect, 'operator');
+    expect(legendLabels()).toEqual(['Each operator has its own color; lines without an operator are gray.']);
+
     choose(colorSelect, 'usage');
     expect(legend.hidden).toBe(true);
     expect(map.globalState).toEqual({ railwayColorBy: 'usage' });

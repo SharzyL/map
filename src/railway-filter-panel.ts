@@ -90,9 +90,11 @@ const STATUS_LABELS: Record<RailwayStatus, string> = {
 const COLOR_MODE_LABELS: Record<RailwayColorMode, string> = {
   default: 'Default',
   usage: 'Usage',
+  operator: 'Operator',
   speed: 'Maximum speed',
   electrification: 'Electrification',
   gauge: 'Gauge',
+  tracks: 'Number of tracks',
 };
 
 const ELECTRIFICATION_LABELS: Record<RailwayElectrification, string> = {
@@ -348,7 +350,7 @@ class RailwayFilterPanel {
   _renderLegend(mode: RailwayColorMode) {
     if (this._legendMode === mode) return;
     this._legendMode = mode;
-    const classes = mode === 'default' || mode === 'usage' ? [] : RAILWAY_COLOR_LEGENDS[mode];
+    const classes = mode === 'default' || mode === 'usage' || mode === 'operator' ? [] : RAILWAY_COLOR_LEGENDS[mode];
     const items = classes.map(({ label, color }) => {
       const item = el('li', 'railway-filter-legend-item');
       el('span', 'railway-filter-legend-swatch', item).style.background = color;
@@ -358,6 +360,11 @@ class RailwayFilterPanel {
     if (mode === 'default') {
       const note = el('li', 'railway-filter-legend-item railway-filter-legend-note');
       note.textContent = 'Lines take the color of their route; others are colored by usage.';
+      items.push(note);
+    }
+    if (mode === 'operator') {
+      const note = el('li', 'railway-filter-legend-item railway-filter-legend-note');
+      note.textContent = 'Each operator has its own color; lines without an operator are gray.';
       items.push(note);
     }
     this._legend.hidden = items.length === 0;
