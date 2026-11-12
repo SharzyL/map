@@ -9,6 +9,7 @@
  *   installOrmPopups(map, featuresCatalog);
  */
 
+import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter, type HoveredLine } from './line-hover.js';
 import { renderMarkdown } from './markdown.js';
 import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
 import type { LineListQuery, LineLists } from './route-trace.js';
@@ -174,6 +175,11 @@ type MapLike = {
   getZoom(): number;
   queryRenderedFeatures(point: unknown): RenderedFeatureLike[];
   setFeatureState(feature: FeatureStateTarget, state: JsonRecord): void;
+  // Finds the hovered line's features (line-hover.ts); optional for tests.
+  querySourceFeatures?(
+    source: string,
+    options: { sourceLayer: string; filter: never },
+  ): Array<{ id?: string | number }>;
   on(type: 'mousemove' | 'click', listener: (event: PopupMapEvent) => void): void;
   on(type: 'move' | 'resize', listener: () => void): void;
   off(type: 'move' | 'resize', listener: () => void): void;
@@ -1819,6 +1825,7 @@ export type OrmPopupOptions = {
 // lists; the info box looks them up and is drawn again once they arrive.
 const ZOOMED_OUT_LINE_LAYER = 'standard_railway_line_low';
 const LINE_LOOKUP_RADIUS_PX = 10;
+const LINE_SOURCE_LAYERS = new Set(HOVER_LINE_SOURCE_LAYERS);
 
 function metersPerPixel(lat: number, zoom: number) {
   return (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
@@ -1862,7 +1869,32 @@ export function installOrmPopups(
     }
   };
 
+  // The rest of the hovered segment's line (line-hover.ts), lit as well.
+  let hoveredLine: HoveredLine = { id: '', name: '' };
+  let litLine: FeatureStateTarget[] = [];
+  let litKeys = new Set<string>();
+  function setHoveredLine(line: HoveredLine, source = '') {
+    if (line.id === hoveredLine.id && line.name === hoveredLine.name) return;
+    hoveredLine = line;
+    const next = new Map<string, FeatureStateTarget>();
+    const filter = lineFilter(line);
+    for (const sourceLayer of filter && source && map.querySourceFeatures ? HOVER_LINE_SOURCE_LAYERS : []) {
+      for (const feature of map.querySourceFeatures(source, { sourceLayer, filter: filter as never })) {
+        if (feature.id !== undefined && feature.id !== null) {
+          next.set(`${sourceLayer}/${feature.id}`, { source, sourceLayer, id: feature.id });
+        }
+      }
+    }
+    for (const target of litLine) {
+      if (!next.has(`${target.sourceLayer}/${target.id}`)) map.setFeatureState(target, { hover: false });
+    }
+    for (const target of next.values()) map.setFeatureState(target, { hover: true });
+    litLine = [...next.values()];
+    litKeys = new Set(next.keys());
+  }
+
   function clearHover() {
+    setHoveredLine({ id: '', name: '' });
     if (!hoveredFeature) return;
     map.setFeatureState(hoveredFeature, { hover: false });
     hoveredFeature = null;
@@ -1889,8 +1921,18 @@ export function installOrmPopups(
       }
 
       const feature = ormFeatures[0];
+      // A line segment lights up its whole line; anything else only itself.
+      setHoveredLine(
+        LINE_SOURCE_LAYERS.has(feature.sourceLayer || '')
+          ? hoveredLineOf(feature.properties || {})
+          : { id: '', name: '' },
+        feature.source,
+      );
       if (hoveredFeature && hoveredFeature.id !== feature.id) {
-        map.setFeatureState(hoveredFeature, { hover: false });
+        // A segment of the lit line stays lit.
+        if (!litKeys.has(`${hoveredFeature.sourceLayer}/${hoveredFeature.id}`)) {
+          map.setFeatureState(hoveredFeature, { hover: false });
+        }
         hoveredFeature = null;
       }
       if (feature.id && !(hoveredFeature && hoveredFeature.id === feature.id)) {
