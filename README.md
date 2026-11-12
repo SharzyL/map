@@ -131,6 +131,18 @@ line colors, the info boxes and the highlight read what `scripts/tiles/export-ti
 zoom filters mirror the zooms the style draws each layer at. Change them together, test with a `bbox`
 export (see above), and bump `TILE_VERSION` once the new archive is live.
 
+Chinese stations are sized by China Railway's timetable rather than by mapped train routes, which OSM
+rarely has for China. `data/cr-station-trains.csv` holds trains per day for each matched OSM station;
+the export sizes those stations from it (large from 120 trains a day, normal from 24) and picks the
+zoomed-out stations by it. To refresh it from a new timetable export (a lulutong CSV export, kept out
+of git), run:
+
+```bash
+python3 scripts/tiles/cr-station-trains.py lulutong-timetable-csv-<date>
+```
+
+It matches the stations to OSM through Overpass and reports any it could not match.
+
 ### Tests and checks
 
 ```bash

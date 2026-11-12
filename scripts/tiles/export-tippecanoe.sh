@@ -14,6 +14,9 @@
 #                   each update becomes a log line in CI)
 #   LINE_RELATIONS_OPL - optional OPL file of route=railway relations (see
 #                   line-relations.py); adds line_relations to railway_line_high
+#   CR_STATION_TRAINS - China Railway trains per day by OSM station (default:
+#                   data/cr-station-trains.csv, see cr-station-trains.py); sizes
+#                   those stations by timetable instead of mapped routes
 
 set -euo pipefail
 
@@ -25,6 +28,7 @@ BBOX="${BBOX:-}"
 LAYERS="${LAYERS:-standard}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 LINE_RELATIONS_OPL="${LINE_RELATIONS_OPL:-}"
+CR_STATION_TRAINS="${CR_STATION_TRAINS:-$(dirname "$0")/../../data/cr-station-trains.csv}"
 FGB_DIR="${OUTPUT_DIR}/fgb"
 
 mkdir -p "${FGB_DIR}"
@@ -220,6 +224,94 @@ OPERATOR_COLOR_SQL="CASE
     WHEN lo.fallback_operator IS NOT NULL THEN coalesce(fro.fallback_color,
       'hsl(' || get_byte(sha256(lo.fallback_operator[1]::bytea), 0) || ', 100%, 30%)')
   END"
+
+# Station sizes from China Railway's timetable. OpenRailwayMap sizes stations
+# by the route relations stopping there (9 make it normal, 21 large), and
+# Chinese train routes are rarely mapped, so major Chinese stations came out
+# small and missed the zoomed-out map. Stations in CR_STATION_TRAINS are sized
+# by trains per day instead (CR_NORMAL_TRAINS and CR_LARGE_TRAINS), and their
+# importance is mapped onto the route scale so those thresholds meet 9 and 21.
+# Their isolation (discr_iso, which picks the zoomed-out stations) becomes the
+# distance to the nearest mainline station of higher importance, counting
+# only stations the zoomed-out layers can show, so metro stations do not hide
+# them. Other stations keep their values, except that a sized station of
+# higher importance closer than their old neighbour lowers their isolation.
+CR_NORMAL_TRAINS=24
+CR_LARGE_TRAINS=120
+echo "--- Building station overrides ---"
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS station_overrides, timetable_stations, station_candidates, cr_station_trains;
+CREATE TABLE cr_station_trains (osm_type text, osm_id int8, cr_name text, trains_per_day real);
+SQL
+if [ -f "${CR_STATION_TRAINS}" ]; then
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q \
+    -c "\\copy cr_station_trains FROM '$(realpath "${CR_STATION_TRAINS}")' WITH (FORMAT csv, HEADER true)"
+else
+  echo "  ${CR_STATION_TRAINS} not found; station sizes stay as mapped"
+fi
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+CREATE TABLE station_candidates AS
+WITH matched AS (
+  SELECT gs.id, max(c.trains_per_day) AS trains
+  FROM grouped_stations_with_importance gs
+  CROSS JOIN LATERAL unnest(gs.osm_ids, gs.osm_types) AS member(osm_id, osm_type)
+  JOIN cr_station_trains c ON c.osm_id = member.osm_id AND c.osm_type = member.osm_type
+  GROUP BY gs.id
+)
+SELECT
+  gs.id,
+  gs.center,
+  gs.discr_iso,
+  m.trains,
+  CASE WHEN m.trains IS NULL THEN gs.importance
+    ELSE 9 * power(m.trains / ${CR_NORMAL_TRAINS}.0, ln(21 / 9.0) / ln(${CR_LARGE_TRAINS}.0 / ${CR_NORMAL_TRAINS}))
+  END AS importance
+FROM grouped_stations_with_importance gs
+LEFT JOIN matched m ON m.id = gs.id
+WHERE gs.feature = 'station' AND gs.state = 'present'
+  AND (gs.station IS NULL OR gs.station NOT IN ('light_rail', 'monorail', 'subway'));
+CREATE INDEX ON station_candidates USING gist (center);
+CREATE TABLE timetable_stations AS SELECT * FROM station_candidates WHERE trains IS NOT NULL;
+CREATE INDEX ON timetable_stations USING gist (center);
+CREATE TABLE station_overrides AS
+SELECT
+  c.id,
+  CASE WHEN c.trains IS NOT NULL THEN c.importance END AS cr_importance,
+  CASE
+    WHEN c.trains IS NULL THEN NULL
+    WHEN c.trains >= ${CR_LARGE_TRAINS} THEN 'large'
+    WHEN c.trains >= ${CR_NORMAL_TRAINS} THEN 'normal'
+    ELSE 'small'
+  END AS cr_size,
+  CASE WHEN c.trains IS NOT NULL THEN coalesce(higher.distance, 1e9) ELSE higher_timetable.distance END AS cr_discr_iso
+FROM station_candidates c
+LEFT JOIN LATERAL (
+  SELECT ST_Distance(c.center, o.center) AS distance
+  FROM station_candidates o
+  WHERE c.trains IS NOT NULL AND o.importance > c.importance
+  ORDER BY o.center <-> c.center
+  LIMIT 1
+) higher ON true
+LEFT JOIN LATERAL (
+  SELECT ST_Distance(c.center, o.center) AS distance
+  FROM timetable_stations o
+  WHERE c.trains IS NULL AND o.importance > c.importance
+  ORDER BY o.center <-> c.center
+  LIMIT 1
+) higher_timetable ON true
+WHERE c.trains IS NOT NULL OR higher_timetable.distance < c.discr_iso;
+CREATE UNIQUE INDEX ON station_overrides (id);
+ANALYZE station_overrides;
+SQL
+psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) FILTER (WHERE cr_size IS NOT NULL) || ' stations sized by timetable (' || count(*) FILTER (WHERE cr_size = 'large') || ' large, ' || count(*) FILTER (WHERE cr_size = 'normal') || ' normal), ' || count(*) FILTER (WHERE cr_size IS NULL) || ' others closer to one' FROM station_overrides"
+echo ""
+# Station label layers read railway_text_stations s through these.
+STATION_JOIN="LEFT JOIN station_overrides so ON so.id = s.id"
+STATION_SIZE_SQL="coalesce(so.cr_size, s.station_size)"
+STATION_DISCR_ISO_SQL="coalesce(so.cr_discr_iso, s.discr_iso)"
+STATION_IMPORTANCE_SQL="coalesce(so.cr_importance, s.importance)"
 
 echo "--- Phase 1: Export layers from PostGIS to FlatGeobuf ---"
 echo ""
@@ -462,7 +554,7 @@ SELECT
   feature,
   state,
   station,
-  station_size,
+  ${STATION_SIZE_SQL} as station_size,
   map_reference as label,
   name,
   name as localized_name,
@@ -482,12 +574,13 @@ SELECT
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
   ${STATION_ROUTES_SQL} as station_routes,
-  discr_iso
+  ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
+${STATION_JOIN}
 WHERE name IS NOT NULL
 ORDER BY
   rank DESC NULLS LAST,
-  importance DESC NULLS LAST
+  ${STATION_IMPORTANCE_SQL} DESC NULLS LAST
 "
 
 # Station low-zoom layers. Martin applies a z-dependent discr_iso threshold
@@ -508,7 +601,7 @@ SELECT
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature, state, station,
   map_reference as label, name, name as localized_name,
-  station_size,
+  ${STATION_SIZE_SQL} as station_size,
   (SELECT nullif(array_to_string(array_agg(e.k || U&'\001E' || e.v ORDER BY e.k), U&'\001D'), '') FROM each(s.\"references\") AS e(k, v)) as references,
   nullif(array_to_string(operator, U&'\001E'), '') as operator,
   nullif(array_to_string(network, U&'\001E'), '') as network,
@@ -524,13 +617,14 @@ SELECT
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
   ${STATION_ROUTES_SQL} as station_routes,
-  discr_iso
+  ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
+${STATION_JOIN}
 WHERE feature = 'station' AND state = 'present'
   AND (station IS NULL OR station NOT IN ('light_rail', 'monorail', 'subway'))
-  AND 213000 * exp(-0.33 * ${z}) - 18000 < discr_iso
-  AND station_size IN ('large', 'normal')
-ORDER BY importance DESC NULLS LAST
+  AND 213000 * exp(-0.33 * ${z}) - 18000 < ${STATION_DISCR_ISO_SQL}
+  AND ${STATION_SIZE_SQL} IN ('large', 'normal')
+ORDER BY ${STATION_IMPORTANCE_SQL} DESC NULLS LAST
 "
 
 # z7-8: all station types except light_rail/monorail/subway.
@@ -542,7 +636,7 @@ SELECT
   nullif(array_to_string(s.osm_type, U&'\001E'), '') as osm_type,
   feature, state, station,
   map_reference as label, name, name as localized_name,
-  station_size,
+  ${STATION_SIZE_SQL} as station_size,
   (SELECT nullif(array_to_string(array_agg(e.k || U&'\001E' || e.v ORDER BY e.k), U&'\001D'), '') FROM each(s.\"references\") AS e(k, v)) as references,
   nullif(array_to_string(operator, U&'\001E'), '') as operator,
   nullif(array_to_string(network, U&'\001E'), '') as network,
@@ -558,12 +652,13 @@ SELECT
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
   ${STATION_ROUTES_SQL} as station_routes,
-  discr_iso
+  ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
+${STATION_JOIN}
 WHERE feature = 'station' AND state = 'present'
   AND (station IS NULL OR station NOT IN ('light_rail', 'monorail', 'subway'))
-  AND 213000 * exp(-0.33 * ${z}) - 18000 < discr_iso
-ORDER BY importance DESC NULLS LAST
+  AND 213000 * exp(-0.33 * ${z}) - 18000 < ${STATION_DISCR_ISO_SQL}
+ORDER BY ${STATION_IMPORTANCE_SQL} DESC NULLS LAST
 "
 
 # standard_railway_turntables (z10+)

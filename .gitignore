@@ -44,3 +44,6 @@ test-results
 /track.json
 /operator.json
 /route.json
+
+# China Railway timetable exports (lulutong); only data/cr-station-trains.csv is derived from them
+/lulutong-timetable-csv-*
