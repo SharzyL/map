@@ -149,7 +149,7 @@ describe('Timetable button', () => {
   it('opens the timetable from the info box', () => {
     const content = document.createElement('div');
     content.innerHTML =
-      '<h5 class="orm-popup-title">Station</h5><h6 class="orm-popup-osm"></h6><div class="orm-popup-section"></div>';
+      '<h5 class="orm-popup-title">Station</h5><h6 class="orm-popup-label">渋谷</h6><div class="orm-popup-section"></div>';
     document.body.appendChild(content);
     const opened = vi.fn();
     document.body.addEventListener(TIMETABLE_OPEN_EVENT, (event) => opened((event as CustomEvent).detail));
@@ -161,7 +161,7 @@ describe('Timetable button', () => {
       },
       content,
     );
-    expect(content.querySelector('.orm-popup-osm').nextElementSibling.className).toBe('orm-popup-actions');
+    expect(content.querySelector('.orm-popup-label').nextElementSibling.className).toBe('orm-popup-actions');
     content.querySelector<HTMLButtonElement>('.orm-popup-action').click();
     expect(opened).toHaveBeenCalledWith({ name: '渋谷', codes: ['22715'] });
   });

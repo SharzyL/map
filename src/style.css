@@ -2996,12 +2996,6 @@ body,
   font-weight: 400;
 }
 
-/* OSM ID button group row */
-.orm-popup h6.orm-popup-osm {
-  margin: 6px 0;
-  font-size: 0;
-}
-
 /* Badge container */
 .orm-popup h6.orm-popup-badges {
   margin: 6px 0 4px;
@@ -3077,56 +3071,6 @@ body,
   box-shadow: 0 0 1px 1px #333;
   line-height: 1rem;
   box-sizing: border-box;
-}
-
-/* Button group — mimics Bootstrap btn-group btn-group-sm */
-.orm-btn-group {
-  display: inline-flex;
-  margin-right: 4px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid #6c757d;
-}
-
-.orm-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  text-decoration: none;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  color: #333;
-}
-
-.orm-btn-id {
-  cursor: default;
-  color: #555;
-  border-right: 1px solid #6c757d;
-}
-.orm-btn-id:disabled {
-  opacity: 1;
-}
-
-.orm-btn-action {
-  color: #0d6efd;
-  border-left: 1px solid #6c757d;
-}
-.orm-btn-action:first-of-type {
-  border-left: none;
-}
-.orm-btn-action:hover {
-  background: #e7f1ff;
-  text-decoration: none;
-}
-
-.orm-osm-icon {
-  width: 1.4rem;
-  height: auto;
 }
 
 /* Badge (property tag) — mirrors Bootstrap badge + ORM tweaks */

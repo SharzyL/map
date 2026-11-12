@@ -95,7 +95,10 @@ describe('structured railway line popup', () => {
       ['Operator', 'VGF'],
       ['Preferred direction', 'Forward'],
     ]);
-    expect(sections.Links).toEqual([['Wikipedia', 'A-Strecke']]);
+    expect(sections.Links).toEqual([
+      ['Wikipedia', 'A-Strecke'],
+      ['OpenStreetMap', 'way 137315646 · edit'],
+    ]);
     expect(sections.Other).toEqual([['Unexpected tag', 'kept']]);
   });
 
@@ -252,6 +255,20 @@ describe('unstructured popups', () => {
     });
     expect(content.querySelector('.orm-popup-sections')).toBeNull();
     expect(content.querySelector('.orm-popup-badges').textContent).toContain('Reference: 3');
+  });
+
+  it('lists the OSM element under Links', () => {
+    const { content } = render('openrailwaymap_standard', 'standard_railway_platforms', {
+      feature: 'platform',
+      osm_id: 42,
+      osm_type: 'N',
+    });
+    const links = [...content.querySelectorAll<HTMLAnchorElement>('.orm-popup-section a')];
+    expect(content.querySelector('.orm-popup-section-title').textContent).toBe('Links');
+    expect(links.map((link) => [link.textContent, link.href])).toEqual([
+      ['node 42', 'https://www.openstreetmap.org/node/42'],
+      ['edit', 'https://www.openstreetmap.org/edit?node=42'],
+    ]);
   });
 });
 

@@ -298,7 +298,7 @@ export function timetableButton(feature: StationFeatureLike, content: HTMLElemen
   if (!request) return;
   // Below the info box's header, so it shows without scrolling a long box.
   const actions = el('div', 'orm-popup-actions');
-  const header = Array.from(content.querySelectorAll('.orm-popup-title, .orm-popup-label, .orm-popup-osm')).at(-1);
+  const header = Array.from(content.querySelectorAll('.orm-popup-title, .orm-popup-label')).at(-1);
   (header?.parentNode ?? content).insertBefore(actions, header?.nextSibling ?? null);
   const button = el('button', 'orm-popup-action', actions);
   button.type = 'button';

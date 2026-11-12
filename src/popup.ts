@@ -15,16 +15,6 @@ import type { LineListQuery, LineLists } from './route-trace.js';
 import { buildWeatherDashboardUrl, buildWeatherRouteSummary } from './weather-dashboard.js';
 
 // ---------------------------------------------------------------------------
-// OSM element type icons (base64 SVGs from ORM upstream)
-// ---------------------------------------------------------------------------
-const OSM_ICONS = {
-  node: 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiI+CjxwYXRoIGZpbGwtcnVsZT0ibm9uemVybyIgZmlsbD0icmdiKDEwMCUsIDEwMCUsIDEwMCUpIiBmaWxsLW9wYWNpdHk9IjEiIGQ9Ik0gMS44MjgxMjUgMC4zMjgxMjUgTCAxMC4xNzE4NzUgMC4zMjgxMjUgQyAxMSAwLjMyODEyNSAxMS42NzE4NzUgMSAxMS42NzE4NzUgMS44MjgxMjUgTCAxMS42NzE4NzUgMTAuMTcxODc1IEMgMTEuNjcxODc1IDExIDExIDExLjY3MTg3NSAxMC4xNzE4NzUgMTEuNjcxODc1IEwgMS44MjgxMjUgMTEuNjcxODc1IEMgMSAxMS42NzE4NzUgMC4zMjgxMjUgMTEgMC4zMjgxMjUgMTAuMTcxODc1IEwgMC4zMjgxMjUgMS44MjgxMjUgQyAwLjMyODEyNSAxIDEgMC4zMjgxMjUgMS44MjgxMjUgMC4zMjgxMjUgWiBNIDEuODI4MTI1IDAuMzI4MTI1ICIvPgo8cGF0aCBmaWxsLXJ1bGU9Im5vbnplcm8iIGZpbGw9InJnYig3NC41MDk4MDQlLCA5MC4xOTYwNzglLCA3NC41MDk4MDQlKSIgZmlsbC1vcGFjaXR5PSIxIiBzdHJva2Utd2lkdGg9IjEwIiBzdHJva2UtbGluZWNhcD0iYnV0dCIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIgc3Ryb2tlPSJyZ2IoMCUsIDAlLCAwJSkiIHN0cm9rZS1vcGFjaXR5PSIxIiBzdHJva2UtbWl0ZXJsaW1pdD0iNCIgZD0iTSAxNTIgMTI4IEMgMTUyIDE0MS4yNSAxNDEuMjUgMTUyIDEyOCAxNTIgQyAxMTQuNzUgMTUyIDEwNCAxNDEuMjUgMTA0IDEyOCBDIDEwNCAxMTQuNzUgMTE0Ljc1IDEwNCAxMjggMTA0IEMgMTQxLjI1IDEwNCAxNTIgMTE0Ljc1IDE1MiAxMjggWiBNIDE1MiAxMjggIiB0cmFuc2Zvcm09Im1hdHJpeCgwLjA0Njg3NSwgMCwgMCwgMC4wNDY4NzUsIDAsIDApIi8+CjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZS13aWR0aD0iMTIiIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtbGluZWpvaW49Im1pdGVyIiBzdHJva2U9InJnYigwJSwgMCUsIDAlKSIgc3Ryb2tlLW9wYWNpdHk9IjEiIHN0cm9rZS1taXRlcmxpbWl0PSI0IiBkPSJNIDM5IDcgTCAyMTcgNyBDIDIzNC42NjY2NjcgNyAyNDkgMjEuMzMzMzMzIDI0OSAzOSBMIDI0OSAyMTcgQyAyNDkgMjM0LjY2NjY2NyAyMzQuNjY2NjY3IDI0OSAyMTcgMjQ5IEwgMzkgMjQ5IEMgMjEuMzMzMzMzIDI0OSA3IDIzNC42NjY2NjcgNyAyMTcgTCA3IDM5IEMgNyAyMS4zMzMzMzMgMjEuMzMzMzMzIDcgMzkgNyBaIE0gMzkgNyAiIHRyYW5zZm9ybT0ibWF0cml4KDAuMDQ2ODc1LCAwLCAwLCAwLjA0Njg3NSwgMCwgMCkiLz4KPC9zdmc+Cg==',
-  way: 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiI+CjxwYXRoIGZpbGwtcnVsZT0ibm9uemVybyIgZmlsbD0icmdiKDEwMCUsIDEwMCUsIDEwMCUpIiBmaWxsLW9wYWNpdHk9IjEiIGQ9Ik0gMS44MjgxMjUgMC4zMjgxMjUgTCAxMC4xNzE4NzUgMC4zMjgxMjUgQyAxMSAwLjMyODEyNSAxMS42NzE4NzUgMSAxMS42NzE4NzUgMS44MjgxMjUgTCAxMS42NzE4NzUgMTAuMTcxODc1IEMgMTEuNjcxODc1IDExIDExIDExLjY3MTg3NSAxMC4xNzE4NzUgMTEuNjcxODc1IEwgMS44MjgxMjUgMTEuNjcxODc1IEMgMSAxMS42NzE4NzUgMC4zMjgxMjUgMTEgMC4zMjgxMjUgMTAuMTcxODc1IEwgMC4zMjgxMjUgMS44MjgxMjUgQyAwLjMyODEyNSAxIDEgMC4zMjgxMjUgMS44MjgxMjUgMC4zMjgxMjUgWiBNIDEuODI4MTI1IDAuMzI4MTI1ICIvPgo8cGF0aCBmaWxsPSJub25lIiBzdHJva2Utd2lkdGg9IjE2IiBzdHJva2UtbGluZWNhcD0iYnV0dCIgc3Ryb2tlLWxpbmVqb2luPSJtaXRlciIgc3Ryb2tlPSJyZ2IoODAlLCA4MCUsIDgwJSkiIHN0cm9rZS1vcGFjaXR5PSIxIiBzdHJva2UtbWl0ZXJsaW1pdD0iNCIgZD0iTSAxNjkgNTggTCA1NyAxNDUgTCAxOTUgMTk5ICIgdHJhbnNmb3JtPSJtYXRyaXgoMC4wNDY4NzUsIDAsIDAsIDAuMDQ2ODc1LCAwLCAwKSIvPgo8cGF0aCBmaWxsLXJ1bGU9Im5vbnplcm8iIGZpbGw9InJnYigwJSwgMCUsIDAlKSIgZmlsbC1vcGFjaXR5PSIxIiBkPSJNIDkuMDQ2ODc1IDIuNzE4NzUgQyA5LjA0Njg3NSAzLjMzOTg0NCA4LjU0Mjk2OSAzLjg0Mzc1IDcuOTIxODc1IDMuODQzNzUgQyA3LjMwMDc4MSAzLjg0Mzc1IDYuNzk2ODc1IDMuMzM5ODQ0IDYuNzk2ODc1IDIuNzE4NzUgQyA2Ljc5Njg3NSAyLjA5NzY1NiA3LjMwMDc4MSAxLjU5Mzc1IDcuOTIxODc1IDEuNTkzNzUgQyA4LjU0Mjk2OSAxLjU5Mzc1IDkuMDQ2ODc1IDIuMDk3NjU2IDkuMDQ2ODc1IDIuNzE4NzUgWiBNIDkuMDQ2ODc1IDIuNzE4NzUgIi8+CjxwYXRoIGZpbGwtcnVsZT0ibm9uemVybyIgZmlsbD0icmdiKDAlLCAwJSwgMCUpIiBmaWxsLW9wYWNpdHk9IjEiIGQ9Ik0gMy43OTY4NzUgNi43OTY4NzUgQyAzLjc5Njg3NSA3LjQxNzk2OSAzLjI5Mjk2OSA3LjkyMTg3NSAyLjY3MTg3NSA3LjkyMTg3NSBDIDIuMDUwNzgxIDcuOTIxODc1IDEuNTQ2ODc1IDcuNDE3OTY5IDEuNTQ2ODc1IDYuNzk2ODc1IEMgMS41NDY4NzUgNi4xNzU3ODEgMi4wNTA3ODEgNS42NzE4NzUgMi42NzE4NzUgNS42NzE4NzUgQyAzLjI5Mjk2OSA1LjY3MTg3NSAzLjc5Njg3NSA2LjE3NTc4MSAzLjc5Njg3NSA2Ljc5Njg3NSBaIE0gMy43OTY4NzUgNi43OTY4NzUgIi8+CjxwYXRoIGZpbGwtcnVsZT0ibm9uemVybyIgZmlsbD0icmdiKDAlLCAwJSwgMCUpIiBmaWxsLW9wYWNpdHk9IjEiIGQ9Ik0gMTAuMjY1NjI1IDkuMzI4MTI1IEMgMTAuMjY1NjI1IDkuOTQ5MjE5IDkuNzYxNzE5IDEwLjQ1MzEyNSA5LjE0MDYyNSAxMC40NTMxMjUgQyA4LjUxOTUzMSAxMC40NTMxMjUgOC4wMTU2MjUgOS45NDkyMTkgOC4wMTU2MjUgOS4zMjgxMjUgQyA4LjAxNTYyNSA4LjcwNzAzMSA4LjUxOTUzMSA4LjIwMzEyNSA5LjE0MDYyNSA4LjIwMzEyNSBDIDkuNzYxNzE5IDguMjAzMTI1IDEwLjI2NTYyNSA4LjcwNzAzMSAxMC4yNjU2MjUgOS4zMjgxMjUgWiBNIDEwLjI2NTYyNSA5LjMyODEyNSAiLz4KPHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIxMiIgc3Ryb2tlLWxpbmVjYXA9ImJ1dHQiIHN0cm9rZS1saW5lam9pbj0ibWl0ZXIiIHN0cm9rZT0icmdiKDAlLCAwJSwgMCUpIiBzdHJva2Utb3BhY2l0eT0iMSIgc3Ryb2tlLW1pdGVybGltaXQ9IjQiIGQ9Ik0gMzkgNyBMIDIxNyA3IEMgMjM0LjY2NjY2NyA3IDI0OSAyMS4zMzMzMzMgMjQ5IDM5IEwgMjQ5IDIxNyBDIDI0OSAyMzQuNjY2NjY3IDIzNC42NjY2NjcgMjQ5IDIxNyAyNDkgTCAzOSAyNDkgQyAyMS4zMzMzMzMgMjQ5IDcgMjM0LjY2NjY2NyA3IDIxNyBMIDcgMzkgQyA3IDIxLjMzMzMzMyAyMS4zMzMzMzMgNyAzOSA3IFogTSAzOSA3ICIgdHJhbnNmb3JtPSJtYXRyaXgoMC4wNDY4NzUsIDAsIDAsIDAuMDQ2ODc1LCAwLCAwKSIvPgo8L3N2Zz4K',
-  relation:
-    'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgdmVyc2lvbj0iMS4wIiBoZWlnaHQ9IjI1NiIgd2lkdGg9IjI1NiI+PHRpdGxlPk9wZW5TdHJlZXRNYXAgcmVsYXRpb24gZWxlbWVudCBpY29uPC90aXRsZT48bWV0YWRhdGE+PHJkZjpSREY+PGNjOldvcmsgcmRmOmFib3V0PSIiPjxkYzpmb3JtYXQ+aW1hZ2Uvc3ZnK3htbDwvZGM6Zm9ybWF0PjxkYzp0eXBlIHJkZjpyZXNvdXJjZT0iaHR0cDovL3B1cmwub3JnL2RjL2RjbWl0eXBlL1N0aWxsSW1hZ2UiLz48ZGM6dGl0bGU+T3BlblN0cmVldE1hcCByZWxhdGlvbiBlbGVtZW50IGljb248L2RjOnRpdGxlPjxjYzpsaWNlbnNlIHJkZjpyZXNvdXJjZT0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbGljZW5zZXMvYnkvMy4wLyIvPjxkYzpkYXRlPjIwMTQtMDMtMTA8L2RjOmRhdGU+PGRjOmNyZWF0b3I+PGNjOkFnZW50PjxkYzp0aXRsZT5odHRwczovL3dpa2kub3BlbnN0cmVldG1hcC5vcmcvd2lraS9Vc2VyOk1vcmVzYnk8L2RjOnRpdGxlPjwvY2M6QWdlbnQ+PC9kYzpjcmVhdG9yPjwvY2M6V29yaz48Y2M6TGljZW5zZSByZGY6YWJvdXQ9Imh0dHA6Ly9jcmVhdGl2ZWNvbW1vbnMub3JnL2xpY2Vuc2VzL2J5LzMuMC8iPjxjYzpwZXJtaXRzIHJkZjpyZXNvdXJjZT0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbnMjUmVwcm9kdWN0aW9uIi8+PGNjOnBlcm1pdHMgcmRmOnJlc291cmNlPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyNEaXN0cmlidXRpb24iLz48Y2M6cmVxdWlyZXMgcmRmOnJlc291cmNlPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyNOb3RpY2UiLz48Y2M6cmVxdWlyZXMgcmRmOnJlc291cmNlPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyNBdHRyaWJ1dGlvbiIvPjxjYzpwZXJtaXRzIHJkZjpyZXNvdXJjZT0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbnMjRGVyaXZhdGl2ZVdvcmtzIi8+PGNjOnJlcXVpcmVzIHJkZjpyZXNvdXJjZT0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbnMjU2hhcmVBbGlrZSIvPjwvY2M6TGljZW5zZT48L3JkZjpSREY+PC9tZXRhZGF0YT48Zz48cmVjdCB3aWR0aD0iMjQyIiBoZWlnaHQ9IjI0MiIgc3Ryb2tlPSJub25lIiBmaWxsPSJ3aGl0ZSIgcnk9IjMyIiB4PSI3IiB5PSI3Ii8+PGc+PHBhdGggZD0iTSAwNjggMDY4IEwgMTk2IDA2MiIgc3Ryb2tlLXdpZHRoPSIxNiIgc3Ryb2tlPSIjY2NjIi8+PHBhdGggZD0iTSAwNjggMDY4IEwgMTk2IDE0MiIgc3Ryb2tlLXdpZHRoPSIxNiIgc3Ryb2tlPSIjY2NjIi8+PHBhdGggZD0iTSAwNjggMDY4IEwgMDYyIDE5NiIgc3Ryb2tlLXdpZHRoPSIxNiIgc3Ryb2tlPSIjY2NjIi8+PGNpcmNsZSBjeD0iMTk2IiBjeT0iMDYyIiByPSIwMjQiIGZpbGw9ImJsYWNrIi8+PGNpcmNsZSBjeD0iMTk2IiBjeT0iMTQyIiByPSIwMjQiIGZpbGw9ImJsYWNrIi8+PGNpcmNsZSBjeD0iMDYyIiBjeT0iMTk2IiByPSIwMjQiIGZpbGw9ImJsYWNrIi8+PC9nPjxnPjxwYXRoIGQ9Ik0gMDY4IDA2OCBMIDE0MiAxOTYiIHN0cm9rZS13aWR0aD0iMTYiIHN0cm9rZT0iI2NjYyIvPjxjaXJjbGUgY3g9IjE0MiIgY3k9IjE5NiIgcj0iMDI0IiBmaWxsPSJibGFjayIvPjxjaXJjbGUgY3g9IjA3MiIgY3k9IjA3MiIgcj0iMDMyIiBmaWxsPSIjYmVlNmJlIiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjgiLz48L2c+PHJlY3Qgd2lkdGg9IjI0MiIgaGVpZ2h0PSIyNDIiIHN0cm9rZT0iYmxhY2siIGZpbGw9Im5vbmUiIHN0cm9rZS13aWR0aD0iMTIiIHJ5PSIzMiIgeD0iNyIgeT0iNyIvPjwvZz48L3N2Zz4K',
-};
-
-// ---------------------------------------------------------------------------
 // External link templates
 // ---------------------------------------------------------------------------
 const LINKS = {
@@ -1263,37 +1253,6 @@ export function popupContent(
     }
   }
 
-  // OSM ID buttons
-  if (osmFeatures.length > 0) {
-    const osmRow = el('h6', 'orm-popup-osm', popupContainer);
-    osmFeatures.forEach(({ id, type }) => {
-      const group = el('div', 'orm-btn-group', osmRow);
-
-      const idBtn = el('button', 'orm-btn orm-btn-id', group);
-      idBtn.type = 'button';
-      idBtn.disabled = true;
-
-      const icon = el('img', 'orm-osm-icon', idBtn);
-      icon.src = OSM_ICONS[type] || OSM_ICONS.node;
-      icon.alt = type;
-
-      const code = el('code', undefined, idBtn);
-      code.innerText = id;
-
-      const viewLink = el('a', 'orm-btn orm-btn-action', group);
-      viewLink.title = 'View on OpenStreetMap';
-      viewLink.href = featureLinks.view.replace('{osm_type}', type).replace('{osm_id}', id);
-      viewLink.target = '_blank';
-      viewLink.innerText = 'View';
-
-      const editLink = el('a', 'orm-btn orm-btn-action', group);
-      editLink.title = 'Edit on OpenStreetMap';
-      editLink.href = featureLinks.edit.replace('{osm_type}', type).replace('{osm_id}', id);
-      editLink.target = '_blank';
-      editLink.innerText = 'Edit';
-    });
-  }
-
   // Wikidata / Wikimedia Commons / direct image
   if (properties.wikidata || properties.wikimedia_commons_file || properties.image) {
     const imgContainer = el('p', 'orm-popup-images', popupContainer);
@@ -1324,8 +1283,9 @@ export function popupContent(
 
   // Property sections (structured catalogs) or badges (non-paragraph, non-list)
   const badgeProps = propertyValues.filter((it) => !it.paragraph && !it.list);
+  const osmRows = osmFeatures.map(({ id, type }) => osmLinkRow(type, id, featureLinks));
   if (featureCatalog.sections) {
-    renderPropertySections(popupContainer, properties, featureCatalog, featuresCatalog);
+    renderPropertySections(popupContainer, properties, featureCatalog, featuresCatalog, osmRows);
   } else if (badgeProps.length > 0) {
     const badgeContainer = el('h6', 'orm-popup-badges', popupContainer);
     badgeProps.forEach(({ title, body, value, link, tooltip }) => {
@@ -1405,7 +1365,23 @@ export function popupContent(
     });
   }
 
+  if (!featureCatalog.sections && osmRows.length > 0) {
+    renderSection(el('div', 'orm-popup-sections', popupContainer), 'Links', osmRows);
+  }
+
   return popupContainer;
+}
+
+// A Links row with the OSM element's id linking to its page, plus an edit link.
+function osmLinkRow(
+  type: OsmElementType,
+  id: string,
+  featureLinks: Partial<FeatureLinks> = FEATURE_LINKS,
+): PropertyRow {
+  const link = (template: string) => template.replace('{osm_type}', type).replace('{osm_id}', id);
+  const links = [{ text: `${type} ${id}`, href: link(featureLinks.view) }];
+  if (featureLinks.edit) links.push({ text: 'edit', href: link(featureLinks.edit) });
+  return { label: 'OpenStreetMap', value: links[0].text, links };
 }
 
 function listGroups(value: unknown, list: ListSpec) {
@@ -1470,7 +1446,7 @@ function makeRouteSelectable(item: HTMLElement, route: RouteSelection, title = '
 // Structured property sections: titled groups of label/value rows, then an
 // "Other" group with every remaining property so no metadata is hidden.
 // ---------------------------------------------------------------------------
-type PropertyRow = { label: string; value: string; href?: string };
+type PropertyRow = { label: string; value: string; href?: string; links?: Array<{ text: string; href: string }> };
 
 const POPUP_HANDLED_PROPERTIES = ['osm_id', 'osm_type', 'icon', 'image', 'wikimedia_commons_file'];
 
@@ -1550,7 +1526,9 @@ function otherPropertyRow(property: string, value: unknown): PropertyRow {
 function mergeRows(rows: PropertyRow[]) {
   const merged: PropertyRow[] = [];
   for (const row of rows) {
-    const previous = merged.find((item) => item.label === row.label && !item.href && !row.href);
+    const previous = merged.find(
+      (item) => item.label === row.label && !item.href && !row.href && !item.links && !row.links,
+    );
     if (previous) previous.value = `${previous.value}, ${row.value}`;
     else merged.push({ ...row });
   }
@@ -1571,7 +1549,16 @@ function renderSection(container: Element, title: string, rows: PropertyRow[], l
   for (const row of mergeRows(rows)) {
     el('dt', undefined, list).innerText = row.label;
     const dd = el('dd', undefined, list);
-    if (row.href) {
+    if (row.links) {
+      row.links.forEach(({ text, href }, index) => {
+        if (index > 0) dd.append(' · ');
+        const link = el('a', undefined, dd);
+        link.href = href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.innerText = text;
+      });
+    } else if (row.href) {
       const link = el('a', undefined, dd);
       link.href = row.href;
       link.target = '_blank';
@@ -1588,6 +1575,7 @@ function renderPropertySections(
   properties: JsonRecord,
   catalog: FeatureCatalog,
   featuresCatalog: FeaturesCatalog,
+  osmRows: PropertyRow[] = [],
 ) {
   const sectionContainer = el('div', 'orm-popup-sections', container);
   const shown = new Set<string>([
@@ -1609,6 +1597,7 @@ function renderPropertySections(
       shown.add(entry);
       return catalogPropertyRows(entry, properties, featuresCatalog, catalog);
     });
+    if (section.title === 'Links') rows.push(...osmRows);
     const lists = Object.entries(catalog.properties || {})
       .filter(
         ([property, definition]) => definition.list?.section === section.title && hasDisplayValue(properties[property]),
@@ -1620,6 +1609,8 @@ function renderPropertySections(
       }));
     renderSection(sectionContainer, section.title, rows, lists);
   }
+  if (!catalog.sections?.some((section) => section.title === 'Links'))
+    renderSection(sectionContainer, 'Links', osmRows);
   const otherRows = Object.keys(properties)
     .filter((property) => !shown.has(property) && hasDisplayValue(properties[property]))
     .sort()
@@ -1669,21 +1660,9 @@ function fallbackPopupContent(properties: JsonRecord, _layerSource: string) {
 
   // OSM link
   if (properties.osm_id) {
-    const osmRow = el('h6', 'orm-popup-osm', container);
     const osmType = properties.osm_type === 'N' ? 'node' : properties.osm_type === 'R' ? 'relation' : 'way';
-    const group = el('div', 'orm-btn-group', osmRow);
-    const idBtn = el('button', 'orm-btn orm-btn-id', group);
-    idBtn.type = 'button';
-    idBtn.disabled = true;
-    const icon = el('img', 'orm-osm-icon', idBtn);
-    icon.src = OSM_ICONS[osmType] || OSM_ICONS.node;
-    icon.alt = osmType;
-    const code = el('code', undefined, idBtn);
-    code.innerText = stringValue(properties.osm_id);
-    const viewLink = el('a', 'orm-btn orm-btn-action', group);
-    viewLink.href = `https://www.openstreetmap.org/${osmType}/${properties.osm_id}`;
-    viewLink.target = '_blank';
-    viewLink.innerText = 'View';
+    const row = osmLinkRow(osmType, stringValue(properties.osm_id), { view: FEATURE_LINKS.view });
+    renderSection(el('div', 'orm-popup-sections', container), 'Links', [row]);
   }
 
   return container;
