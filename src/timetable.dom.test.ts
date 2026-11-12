@@ -161,7 +161,7 @@ describe('Timetable button', () => {
       },
       content,
     );
-    expect(content.querySelector('.orm-popup-label').nextElementSibling.className).toBe('orm-popup-actions');
+    expect(content.querySelector('.orm-popup-label .orm-popup-action').textContent).toBe('Timetable');
     content.querySelector<HTMLButtonElement>('.orm-popup-action').click();
     expect(opened).toHaveBeenCalledWith({ name: '渋谷', codes: ['22715'] });
   });

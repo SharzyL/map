@@ -292,17 +292,29 @@ export function timetableRequestFor(feature: StationFeatureLike): TimetableReque
   return lng >= west && lng <= east && lat >= south && lat <= north ? { name, codes: [] } : null;
 }
 
+const CLOCK_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.3 1.5"/></svg>';
+
 // Adds a Timetable button to a station's info box.
 export function timetableButton(feature: StationFeatureLike, content: HTMLElement) {
   const request = timetableRequestFor(feature);
   if (!request) return;
-  // Below the info box's header, so it shows without scrolling a long box.
-  const actions = el('div', 'orm-popup-actions');
-  const header = Array.from(content.querySelectorAll('.orm-popup-title, .orm-popup-label')).at(-1);
-  (header?.parentNode ?? content).insertBefore(actions, header?.nextSibling ?? null);
+  // At the end of the name row (or below the title), so it shows without
+  // scrolling a long box and takes no row of its own.
+  const label = content.querySelector<HTMLElement>('.orm-popup-label');
+  const actions = el('span', 'orm-popup-actions');
+  if (label) {
+    label.classList.add('orm-popup-label-with-actions');
+    label.appendChild(actions);
+  } else {
+    const title = content.querySelector('.orm-popup-title');
+    (title?.parentNode ?? content).insertBefore(actions, title?.nextSibling ?? null);
+  }
   const button = el('button', 'orm-popup-action', actions);
   button.type = 'button';
-  button.textContent = 'Timetable';
+  button.title = 'Departures from Yahoo!乗換案内';
+  button.innerHTML = CLOCK_ICON;
+  el('span', undefined, button).textContent = 'Timetable';
   button.addEventListener('click', () =>
     button.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { bubbles: true, detail: request })),
   );
