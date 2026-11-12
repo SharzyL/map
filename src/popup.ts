@@ -1831,6 +1831,8 @@ function annotationPopupContent(feature: RenderedFeatureLike) {
 export type OrmPopupOptions = {
   // Finds the line and route lists of the segments near a point (route-trace.ts lineListsNear).
   lookupLineLists?: (query: LineListQuery, signal: AbortSignal) => Promise<LineLists>;
+  // Adds to a railway feature's info box, e.g. a station's Timetable button.
+  extendContent?: (feature: RenderedFeatureLike, content: HTMLElement) => void;
 };
 
 // Lines drawn below z7 come from this layer, which carries no line or route
@@ -1980,6 +1982,7 @@ export function installOrmPopups(
         ? annotationPopupContent(feature)
         : popupContent(feature, featuresCatalog, abortController, clicked);
     if (!content) return;
+    if (!isOsrmPopup && !isAnnotationPopup) options.extendContent?.(feature, content);
 
     const shown = new maplibregl.Popup({ offset: popupOffsets, maxWidth: 'min(400px, calc(100vw - 24px))' })
       .setLngLat(coordinates)
@@ -2007,7 +2010,9 @@ export function installOrmPopups(
           if (abortController.signal.aborted || popup !== shown) return;
           if (!lists.line_relations && !lists.line_routes) return;
           const properties = { ...feature.properties, ...lists };
-          shown.setDOMContent(popupContent({ ...feature, properties }, featuresCatalog, abortController, clicked));
+          const redrawn = popupContent({ ...feature, properties }, featuresCatalog, abortController, clicked);
+          options.extendContent?.({ ...feature, properties }, redrawn);
+          shown.setDOMContent(redrawn);
         })
         .catch(() => {});
     }

@@ -1948,12 +1948,15 @@ body,
 .map-layers-panel,
 .map-layers-panel *,
 .railway-filter-panel,
-.railway-filter-panel * {
+.railway-filter-panel *,
+.timetable-panel,
+.timetable-panel * {
   box-sizing: border-box;
 }
 
 .map-layers-panel,
-.railway-filter-panel {
+.railway-filter-panel,
+.timetable-panel {
   position: absolute;
   top: 12px;
   right: 52px;
@@ -1976,14 +1979,16 @@ body,
 }
 
 .map-layers-panel-visible,
-.railway-filter-panel-visible {
+.railway-filter-panel-visible,
+.timetable-panel-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
 }
 
 .map-layers-header,
-.railway-filter-header {
+.railway-filter-header,
+.timetable-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 30px;
   align-items: center;
@@ -1995,12 +2000,14 @@ body,
 }
 
 .map-layers-title-wrap,
-.railway-filter-title-wrap {
+.railway-filter-title-wrap,
+.timetable-title-wrap {
   min-width: 0;
 }
 
 .map-layers-title,
-.railway-filter-title {
+.railway-filter-title,
+.timetable-title {
   color: #111827;
   font-size: 13px;
   font-weight: 800;
@@ -2008,7 +2015,8 @@ body,
 }
 
 .map-layers-summary,
-.railway-filter-summary {
+.railway-filter-summary,
+.timetable-summary {
   margin-top: 2px;
   overflow: hidden;
   color: #64748b;
@@ -2020,7 +2028,8 @@ body,
 }
 
 .map-layers-close,
-.railway-filter-close {
+.railway-filter-close,
+.timetable-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2038,14 +2047,17 @@ body,
 .map-layers-close:hover,
 .map-layers-close:focus,
 .railway-filter-close:hover,
-.railway-filter-close:focus {
+.railway-filter-close:focus,
+.timetable-close:hover,
+.timetable-close:focus {
   background: #f1f5f9;
   color: #0f172a;
   outline: none;
 }
 
 .map-layers-body,
-.railway-filter-body {
+.railway-filter-body,
+.timetable-body {
   display: grid;
   gap: 10px;
   min-height: 0;
@@ -2057,6 +2069,204 @@ body,
 .railway-filter-options {
   display: grid;
   gap: 10px;
+}
+
+/* Station timetable (src/timetable.ts): left of the map, below the search box */
+.timetable-panel {
+  top: 64px;
+  right: auto;
+  left: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(340px, calc(100vw - 72px));
+  max-height: calc(100vh - 88px);
+  transform: translateX(-18px);
+}
+
+.timetable-body {
+  align-content: start;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.timetable-status {
+  color: #64748b;
+}
+
+.timetable-error {
+  color: #b91c1c;
+}
+
+.timetable-back,
+.timetable-direction,
+.timetable-day,
+.timetable-departure-button,
+.timetable-stop-name {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timetable-back {
+  justify-self: start;
+  padding: 2px 0;
+  color: #2563eb;
+  font-weight: 650;
+}
+
+.timetable-station-name {
+  margin: 4px 0 2px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.timetable-line {
+  display: grid;
+  padding: 6px 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.timetable-line-name {
+  font-weight: 750;
+}
+
+.timetable-direction {
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.timetable-direction:hover,
+.timetable-direction:focus-visible,
+.timetable-departure-button:hover,
+.timetable-departure-button:focus-visible,
+.timetable-stop-name:hover,
+.timetable-stop-name:focus-visible {
+  background: #f1f5f9;
+  outline: none;
+}
+
+.timetable-days {
+  display: flex;
+  gap: 4px;
+}
+
+.timetable-day {
+  padding: 3px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  color: #475569;
+  font-size: 11.5px;
+}
+
+.timetable-day[aria-pressed='true'] {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.timetable-departures,
+.timetable-stops {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timetable-hour {
+  position: sticky;
+  top: -10px;
+  padding: 4px 0 2px;
+  background: #fff;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.timetable-departure-button {
+  display: grid;
+  grid-template-columns: 44px auto minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.timetable-next .timetable-departure-button {
+  background: #fef3c7;
+  font-weight: 700;
+}
+
+.timetable-time,
+.timetable-stop-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.timetable-kind {
+  color: #64748b;
+}
+
+.timetable-destination {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-comment {
+  margin: 0;
+  color: #475569;
+}
+
+.timetable-stop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.timetable-stop-name {
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.timetable-stop-here {
+  font-weight: 800;
+}
+
+.timetable-source {
+  padding: 6px 12px 8px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  color: #64748b;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.timetable-source:hover {
+  text-decoration: underline;
+}
+
+/* The Timetable button in a station's info box */
+.orm-popup-actions {
+  margin: 6px 0 8px;
+}
+
+.orm-popup-action {
+  padding: 4px 10px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.orm-popup-action:hover,
+.orm-popup-action:focus-visible {
+  background: #dbeafe;
+  outline: none;
 }
 
 .railway-filter-options[data-disabled] {
@@ -2265,7 +2475,8 @@ body,
 
 @media (max-width: 640px) {
   .map-layers-panel,
-  .railway-filter-panel {
+  .railway-filter-panel,
+  .timetable-panel {
     top: auto;
     right: 0;
     bottom: 0;
@@ -2280,12 +2491,14 @@ body,
   }
 
   .map-layers-panel-visible,
-  .railway-filter-panel-visible {
+  .railway-filter-panel-visible,
+  .timetable-panel-visible {
     transform: translateY(0);
   }
 
   .map-layers-body,
-  .railway-filter-body {
+  .railway-filter-body,
+  .timetable-body {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 

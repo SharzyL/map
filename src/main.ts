@@ -17,6 +17,7 @@ import { installLocate, type DemTileLike } from './cursor-position.js';
 import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import { lineListsNear } from './route-trace.js';
+import { installTimetable, timetableButton } from './timetable.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -695,6 +696,7 @@ async function init() {
     }
     installRailwayFilter(map, railwayFilter);
     installRouteHighlight(map);
+    installTimetable(map);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }
@@ -764,6 +766,7 @@ async function init() {
       didRunMapReadySetup = true;
       installOrmPopups(map, maplibregl, featuresCatalog, {
         lookupLineLists: (query, signal) => lineListsNear(query, fetchRailwayTile, signal),
+        extendContent: timetableButton,
       });
       drainGpxQueue(map);
       let resizeFrame = 0;
