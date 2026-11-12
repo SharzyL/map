@@ -11,7 +11,12 @@ import { runWhenStyleInfrastructureReady } from './style-ready.js';
 import { LayerStore } from './layer-store.js';
 import { installAnnotationRenderer } from './annotation-renderer.js';
 import { installAnnotationTools } from './annotation-tools.js';
-import { applyRailwayFilterToStyle, loadRailwayFilterSettings, type RailwayFilterSettings } from './railway-filter.js';
+import {
+  applyRailwayFilterToStyle,
+  HISTORICAL_RAILWAY_SOURCE,
+  loadRailwayFilterSettings,
+  type RailwayFilterSettings,
+} from './railway-filter.js';
 import { installRailwayFilter } from './railway-filter-panel.js';
 import { installLocate, type DemTileLike } from './cursor-position.js';
 import { installControlIcons } from './control-icons.js';
@@ -445,8 +450,9 @@ function addSatelliteSourceAndLayer(style: StyleLike): StyleLike {
   return style;
 }
 
+// No `date`: the style's own default is the year it was generated, which its
+// layers compare `date` against to tell today's map from a historical one.
 const STATE_DEFAULTS = {
-  date: 2026,
   allDates: false,
   theme: 'light',
   // Station names rather than short reference codes, which are often bare numbers.
@@ -516,7 +522,12 @@ async function loadStyle(
   const ormStyle = rewriteOrmStyle(ormStyleRaw);
   const railwaySources = (ormStyle.metadata?.ormRewrittenSources as string[] | undefined) ?? [];
   const merged = addRouteHighlightToStyle(
-    applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter),
+    // OpenHistoricalMap's railways follow the overlay switch too.
+    applyRailwayFilterToStyle(
+      mergeBaseAndOrm(baseStyle, ormStyle),
+      [...railwaySources, HISTORICAL_RAILWAY_SOURCE],
+      railwayFilter,
+    ),
     railwaySources,
   );
   const withTerrain = addMapterhornTerrain(merged, demSource);
@@ -694,7 +705,7 @@ async function init() {
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }
-    installRailwayFilter(map, railwayFilter);
+    installRailwayFilter(map, railwayFilter, Number(style.state?.date?.default) || new Date().getFullYear());
     installRouteHighlight(map);
     installTimetable(map);
     if (screenshotFixtureModule && screenshotFixtureMode) {

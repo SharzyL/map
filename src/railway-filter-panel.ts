@@ -2,10 +2,13 @@ import TrainFrontIcon from 'lucide/dist/esm/icons/train-front.mjs';
 import {
   countActiveRailwayFilters,
   defaultRailwayFilterSettings,
+  EARLIEST_RAILWAY_YEAR,
   RAILWAY_CATEGORIES,
+  RAILWAY_DATE_STATE,
   RAILWAY_LINE_SOURCE_LAYERS,
   RAILWAY_MIN_SPEED_OPTIONS,
   RAILWAY_STATUSES,
+  railwayDateState,
   railwayFilterGlobalState,
   saveRailwayFilterSettings,
   type RailwayCategory,
@@ -42,6 +45,9 @@ export type RailwayFilterMap = Parameters<typeof setGlobalStatePropertyWhenReady
   };
 
 const OPERATOR_INPUT_DELAY_MS = 350;
+// Dragging the year slider re-evaluates the historical line tiles, so a new
+// year applies once the slider pauses (and at once when it is let go).
+const DATE_INPUT_DELAY_MS = 150;
 const OPERATOR_SUGGESTION_LIMIT = 40;
 
 // The same company is often tagged with and without a legal form or a
@@ -116,7 +122,7 @@ const TRAFFIC_LABELS: Record<RailwayTraffic, string> = {
   freight: 'Freight',
 };
 
-const { checkboxRow, selectField, group } = createPanelFields('railway-filter');
+const { checkboxRow, selectField, rangeField, group } = createPanelFields('railway-filter');
 
 class RailwayFilterPanel {
   _settings: RailwayFilterSettings;
@@ -127,6 +133,13 @@ class RailwayFilterPanel {
   _summary: HTMLElement;
   _overlayInput: HTMLInputElement;
   _filters: HTMLElement;
+  _presentYear: number;
+  _year: number;
+  _dateInput: HTMLInputElement;
+  _dateValue: HTMLElement;
+  _todayButton: HTMLButtonElement;
+  _dateNote: HTMLElement;
+  _dateTimer: ReturnType<typeof setTimeout> | null = null;
   _colorSelect: HTMLSelectElement;
   _legend: HTMLUListElement;
   _legendMode: RailwayColorMode | null = null;
@@ -148,8 +161,10 @@ class RailwayFilterPanel {
   _boundAnyPanelOpen: (event: Event) => void;
   _removeOutsideClick: () => void;
 
-  constructor(settings: RailwayFilterSettings) {
+  constructor(settings: RailwayFilterSettings, presentYear: number) {
     this._settings = structuredClone(settings);
+    this._presentYear = presentYear;
+    this._year = presentYear;
     this._boundEscape = (event) => {
       if (event.key === 'Escape' && this._expanded) this.setExpanded(false);
     };
@@ -194,6 +209,28 @@ class RailwayFilterPanel {
     this._overlayInput.addEventListener('change', () => this._update((s) => (s.overlay = this._overlayInput.checked)));
 
     this._filters = el('div', 'railway-filter-options', body);
+    const date = group(this._filters, 'Date');
+    ({ input: this._dateInput, value: this._dateValue } = rangeField(date, 'Year', {
+      min: EARLIEST_RAILWAY_YEAR,
+      max: this._presentYear,
+      step: 1,
+    }));
+    this._dateInput.addEventListener('input', () => this._scheduleDate());
+    this._dateInput.addEventListener('change', () => this._applyDate());
+    this._todayButton = el('button', 'railway-filter-today', this._dateValue.parentElement);
+    this._todayButton.type = 'button';
+    this._todayButton.textContent = 'Today';
+    this._todayButton.title = 'Show today’s railways';
+    this._todayButton.addEventListener('click', (event) => {
+      // The button sits in the slider's label, which would otherwise focus the slider.
+      event.preventDefault();
+      this._dateInput.value = String(this._presentYear);
+      this._applyDate();
+    });
+    this._dateNote = el('p', 'railway-filter-date-note', date);
+    this._dateNote.textContent =
+      'Railways of that year from OpenHistoricalMap, fullest for Europe, North America and Japan. ' +
+      'The colors and filters below apply to today’s map.';
     const colors = group(this._filters, 'Line style');
     this._colorSelect = selectField(colors, 'Color by', Object.entries(COLOR_MODE_LABELS));
     this._colorSelect.addEventListener('change', () =>
@@ -282,6 +319,7 @@ class RailwayFilterPanel {
 
   onRemove() {
     if (this._operatorTimer) clearTimeout(this._operatorTimer);
+    if (this._dateTimer) clearTimeout(this._dateTimer);
     this._removeOutsideClick?.();
     this._map.off?.('moveend', this._boundMoveEnd);
     this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
@@ -313,6 +351,27 @@ class RailwayFilterPanel {
     this._operatorTimer = null;
     const operator = this._operatorInput.value.trim();
     if (operator !== this._settings.operator) this._update((s) => (s.operator = operator));
+  }
+
+  _scheduleDate() {
+    this._dateValue.textContent = this._yearLabel(Number(this._dateInput.value));
+    if (this._dateTimer) clearTimeout(this._dateTimer);
+    this._dateTimer = setTimeout(() => this._applyDate(), DATE_INPUT_DELAY_MS);
+  }
+
+  _applyDate() {
+    if (this._dateTimer) clearTimeout(this._dateTimer);
+    this._dateTimer = null;
+    const year = Number(this._dateInput.value);
+    if (year !== this._year) {
+      this._year = year;
+      setGlobalStatePropertyWhenReady(this._map, RAILWAY_DATE_STATE, railwayDateState(year, this._presentYear));
+    }
+    this._sync();
+  }
+
+  _yearLabel(year: number) {
+    return year >= this._presentYear ? 'Today' : String(year);
   }
 
   // Suggest the most common operators among the railway lines in view, one
@@ -384,8 +443,12 @@ class RailwayFilterPanel {
   _sync() {
     const settings = this._settings;
     const activeFilters = countActiveRailwayFilters(settings);
+    const historical = this._year < this._presentYear;
     this._button.classList.toggle('maplibregl-ctrl-railways-enabled', this._expanded);
-    this._button.classList.toggle('maplibregl-ctrl-railways-filtered', !settings.overlay || activeFilters > 0);
+    this._button.classList.toggle(
+      'maplibregl-ctrl-railways-filtered',
+      !settings.overlay || activeFilters > 0 || historical,
+    );
     this._button.setAttribute('aria-pressed', this._expanded ? 'true' : 'false');
     this._panel.classList.toggle('railway-filter-panel-visible', this._expanded);
     this._panel.setAttribute('aria-hidden', this._expanded ? 'false' : 'true');
@@ -394,11 +457,19 @@ class RailwayFilterPanel {
 
     this._summary.textContent = !settings.overlay
       ? 'Overlay hidden'
-      : activeFilters === 0
-        ? 'All railways shown'
-        : `${activeFilters} filter${activeFilters === 1 ? '' : 's'} active`;
+      : historical
+        ? `Railways in ${this._year}`
+        : activeFilters === 0
+          ? 'All railways shown'
+          : `${activeFilters} filter${activeFilters === 1 ? '' : 's'} active`;
     this._overlayInput.checked = settings.overlay;
     this._filters.toggleAttribute('data-disabled', !settings.overlay);
+    this._dateInput.value = String(this._year);
+    this._dateInput.disabled = !settings.overlay;
+    this._dateValue.textContent = this._yearLabel(this._year);
+    this._todayButton.hidden = !historical;
+    this._todayButton.disabled = !settings.overlay;
+    this._dateNote.hidden = !historical;
     for (const [category, input] of this._categoryInputs) {
       input.checked = settings.categories[category];
       input.disabled = !settings.overlay;
@@ -436,6 +507,11 @@ class RailwayFilterPanel {
   }
 }
 
-export function installRailwayFilter(map: RailwayFilterMap, settings: RailwayFilterSettings) {
-  map.addControl(new RailwayFilterPanel(settings), 'top-right');
+// presentYear is the style's default `date`, the year that shows today's map.
+export function installRailwayFilter(
+  map: RailwayFilterMap,
+  settings: RailwayFilterSettings,
+  presentYear = new Date().getFullYear(),
+) {
+  map.addControl(new RailwayFilterPanel(settings, presentYear), 'top-right');
 }

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   defaultRailwayFilterSettings,
   loadRailwayFilterSettings,
@@ -253,6 +253,49 @@ describe('railway filter panel', () => {
     expect(checkbox('Main lines').checked).toBe(true);
     expect(colorSelect.value).toBe('speed');
     expect(panel.querySelector('.railway-filter-summary').textContent).toBe('All railways shown');
+  });
+
+  it('shows the railways of an earlier year until Today, without storing the year', () => {
+    const map = createMap();
+    installRailwayFilter(map, defaultRailwayFilterSettings(), 2026);
+    const panel = map.container.querySelector<HTMLElement>('.railway-filter-panel');
+    const button = map.controls[0].querySelector<HTMLButtonElement>('.maplibregl-ctrl-railways');
+    const slider = panel.querySelector<HTMLInputElement>('.railway-filter-range');
+    const value = panel.querySelector('.railway-filter-range-value');
+    const today = panel.querySelector<HTMLButtonElement>('.railway-filter-today');
+    expect([slider.min, slider.max, slider.value]).toEqual(['1800', '2026', '2026']);
+    expect(value.textContent).toBe('Today');
+    expect(today.hidden).toBe(true);
+
+    slider.value = '1900';
+    slider.dispatchEvent(new Event('input'));
+    expect(value.textContent).toBe('1900');
+    slider.dispatchEvent(new Event('change'));
+    expect(map.globalState.date).toBe(1900.5);
+    expect(panel.querySelector('.railway-filter-summary').textContent).toBe('Railways in 1900');
+    expect(panel.querySelector<HTMLElement>('.railway-filter-date-note').hidden).toBe(false);
+    expect(today.hidden).toBe(false);
+    expect(button.classList.contains('maplibregl-ctrl-railways-filtered')).toBe(true);
+    expect(localStorage.getItem(RAILWAY_FILTER_STORAGE_KEY) ?? '').not.toContain('1900');
+
+    today.click();
+    expect(map.globalState.date).toBe(2026);
+    expect(slider.value).toBe('2026');
+    expect(value.textContent).toBe('Today');
+    expect(panel.querySelector('.railway-filter-summary').textContent).toBe('All railways shown');
+    expect(button.classList.contains('maplibregl-ctrl-railways-filtered')).toBe(false);
+  });
+
+  it('applies the year once the slider pauses', async () => {
+    const map = createMap();
+    installRailwayFilter(map, defaultRailwayFilterSettings(), 2026);
+    const slider = map.container.querySelector<HTMLInputElement>('.railway-filter-range');
+    for (const year of ['1990', '1950', '1920']) {
+      slider.value = year;
+      slider.dispatchEvent(new Event('input'));
+    }
+    expect(map.globalState.date).toBeUndefined();
+    await vi.waitFor(() => expect(map.globalState.date).toBe(1920.5));
   });
 
   it('switches line colors and shows a legend for attribute colors', () => {

@@ -100,6 +100,20 @@ const GAUGE_STATE = 'railwayGauge';
 const TRAFFIC_STATE = 'railwayTraffic';
 const OPERATOR_STATE = 'railwayOperator';
 
+// The year the map shows. The style draws today's railways while `date` is
+// its default (the year the style was generated) and, for an earlier `date`,
+// OpenHistoricalMap's railways of that year instead. The year is not stored:
+// a reload shows today's map.
+export const RAILWAY_DATE_STATE = 'date';
+export const HISTORICAL_RAILWAY_SOURCE = 'openhistoricalmap';
+export const EARLIEST_RAILWAY_YEAR = 1800;
+
+// OpenHistoricalMap dates are decimal years; the middle of a year shows the
+// railways open during it.
+export function railwayDateState(year: number, presentYear: number) {
+  return year >= presentYear ? presentYear : year + 0.5;
+}
+
 export function railwayCategoryStateName(category: RailwayCategory) {
   return `railwayShow${category[0].toUpperCase()}${category.slice(1)}`;
 }
