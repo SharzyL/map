@@ -1,7 +1,8 @@
 // Client for the norikae API (https://norikae.shz.al/v1/doc.md): Japanese
-// station timetables from Yahoo! 乗換案内. Stations are identified by Yahoo's
-// station code; the export puts the codes on OSM stations in Japan
-// (`yahoo_codes`), and stations without them are looked up by name.
+// station timetables from Yahoo! 乗換案内, identified by Yahoo's station code
+// (the export puts the codes on OSM stations in Japan as `yahoo_codes`), and
+// China Railway timetables (/v1/cr-*), whose stations the API finds by their
+// OSM elements or name.
 
 export const NORIKAE_API = 'https://norikae.shz.al/v1';
 
@@ -37,6 +38,47 @@ export type TrainStops = {
   stops: Array<{ code: string | null; name: string; arrival: string | null; departure: string | null }>;
 };
 
+export type CrStationTrain = {
+  train: string;
+  arrival: string | null;
+  departure: string | null;
+  origin: string;
+  destination: string;
+  // Day of the train's run (1 = the day it left its origin) this stop falls on.
+  day: number;
+  platform: string | null;
+};
+export type CrStationTimetable = {
+  data_version: string;
+  station: { name: string; telecode: string };
+  date: string;
+  trains: CrStationTrain[];
+};
+export type CrStop = {
+  name: string;
+  telecode: string;
+  arrival: string | null;
+  departure: string | null;
+  day: number;
+  km: number;
+  platform: string | null;
+};
+export type CrTrainSchedule = {
+  data_version: string;
+  train: string;
+  date: string;
+  trains: Array<{ train: string; service: { from: string; to: string | null }; runs: boolean; stops: CrStop[] }>;
+};
+
+export class NorikaeError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 const responses = new Map<string, Promise<unknown>>();
 
 // GET with an in-memory cache; the API sets its own Cache-Control as well.
@@ -47,7 +89,7 @@ async function get<T>(path: string, params: Record<string, string> = {}, signal?
   if (!response) {
     response = fetch(url, { signal }).then(async (res) => {
       const body = (await res.json().catch((): null => null)) as { error?: { message?: string } } | null;
-      if (!res.ok) throw new Error(body?.error?.message || `HTTP ${res.status}`);
+      if (!res.ok) throw new NorikaeError(body?.error?.message || `HTTP ${res.status}`, res.status);
       return body as T;
     });
     responses.set(url, response);
@@ -78,6 +120,17 @@ export function trainStops(code: string, gid: string, trainId: string, signal?: 
     {},
     signal,
   );
+}
+
+// `station` is a station name or comma-separated OSM elements (N1,W2); `date`
+// defaults to today in China.
+export function crStationTimetable(station: string, date: string | null, signal?: AbortSignal) {
+  return get<CrStationTimetable>(`/cr-stations/${encodeURIComponent(station)}/timetable`, date ? { date } : {}, signal);
+}
+
+// `date` is the day the train leaves its origin.
+export function crTrain(train: string, date: string, signal?: AbortSignal) {
+  return get<CrTrainSchedule>(`/cr-trains/${encodeURIComponent(train)}`, { date }, signal);
 }
 
 // Yahoo names stations as OSM does, but adds a suffix where a name is shared:
@@ -119,6 +172,19 @@ export function japanNow(now = new Date()) {
     minutes: jst.getUTCHours() * 60 + jst.getUTCMinutes(),
     weekday: jst.getUTCDay(),
   };
+}
+
+// Today's date and the time in China (UTC+8), as the China Railway timetables use.
+export function chinaNow(now = new Date()) {
+  const cst = new Date(now.getTime() + 8 * 3600_000);
+  return { date: cst.toISOString().slice(0, 10), minutes: cst.getUTCHours() * 60 + cst.getUTCMinutes() };
+}
+
+// 'YYYY-MM-DD' moved by whole days.
+export function addDays(date: string, days: number) {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + days);
+  return day.toISOString().slice(0, 10);
 }
 
 export function minutesOf(time: string) {

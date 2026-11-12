@@ -2230,6 +2230,43 @@ body,
   color: #475569;
 }
 
+/* China Railway: a date stepper and a platform column */
+.timetable-date {
+  align-self: center;
+  padding: 0 4px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timetable-cr-trains .timetable-departure-button {
+  grid-template-columns: 40px minmax(52px, auto) minmax(0, 1fr) auto;
+}
+
+.timetable-train-number {
+  color: #0f172a;
+  font-weight: 650;
+}
+
+.timetable-time-arrival {
+  color: #64748b;
+  font-style: italic;
+}
+
+.timetable-platform {
+  color: #64748b;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timetable-stop-day {
+  margin-left: 3px;
+  color: #b45309;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
 .timetable-stop {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

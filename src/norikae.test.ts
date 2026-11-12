@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { findStationsByName, japanNow, normalizeStationName, stationsNamed, type NorikaeStation } from './norikae.js';
-import { nextDepartureIndex } from './timetable.js';
+import {
+  addDays,
+  chinaNow,
+  findStationsByName,
+  japanNow,
+  normalizeStationName,
+  stationsNamed,
+  type NorikaeStation,
+} from './norikae.js';
+import { nextCrTrainIndex, nextDepartureIndex } from './timetable.js';
 
 const station = (code: string, name: string, address = '東京'): NorikaeStation => ({
   code,
@@ -65,5 +73,38 @@ describe('next departure', () => {
   it('counts departures after midnight as the end of the service day', () => {
     // 15:00 UTC is 00:00 on Tuesday in Japan; still Monday's service.
     expect(nextDepartureIndex(table('weekday'), { minutes: 23 * 60 + 55, weekday: 1 })).toBe(3);
+  });
+});
+
+describe('China Railway dates', () => {
+  it('uses China time', () => {
+    // 17:30 UTC is 01:30 the next day in China.
+    expect(chinaNow(new Date('2026-11-16T17:30:00Z'))).toEqual({ date: '2026-11-17', minutes: 90 });
+  });
+
+  it('steps across months and years', () => {
+    expect(addDays('2026-11-30', 1)).toBe('2026-12-01');
+    expect(addDays('2027-01-01', -1)).toBe('2026-12-31');
+  });
+
+  it('highlights the next train, by arrival for trains ending here, only today', () => {
+    const table = {
+      date: '2026-11-16',
+      trains: [
+        { departure: '06:02', arrival: '05:36' },
+        { departure: null, arrival: '09:11' },
+        { departure: '12:00', arrival: null },
+      ].map((times) => ({
+        train: 'X',
+        origin: 'A',
+        destination: 'B',
+        day: 1,
+        platform: null as string | null,
+        ...times,
+      })),
+    };
+    expect(nextCrTrainIndex(table, { date: '2026-11-16', minutes: 8 * 60 })).toBe(1);
+    expect(nextCrTrainIndex(table, { date: '2026-11-16', minutes: 23 * 60 })).toBe(-1);
+    expect(nextCrTrainIndex(table, { date: '2026-11-17', minutes: 0 })).toBe(-1);
   });
 });

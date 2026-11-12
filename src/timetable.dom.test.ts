@@ -3,7 +3,63 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installTimetable, timetableButton, TIMETABLE_OPEN_EVENT, timetableRequestFor } from './timetable.js';
 
+const crPath = (path: string) => '/v1/' + path.split('/').map(encodeURIComponent).join('/');
+const CR_STATION = {
+  data_version: '20261114',
+  station: { name: '北京西', telecode: 'BXP' },
+  date: '2026-11-16',
+  trains: [
+    {
+      train: 'Z156/Z157',
+      arrival: '05:36',
+      departure: '06:02',
+      origin: '泰州',
+      destination: '哈尔滨西',
+      day: 2,
+      platform: '10',
+    },
+    {
+      train: 'G301',
+      arrival: null,
+      departure: '08:00',
+      origin: '北京西',
+      destination: '广州南',
+      day: 1,
+      platform: '7',
+    },
+    {
+      train: 'K2550',
+      arrival: '09:11',
+      departure: null,
+      origin: '沈阳北',
+      destination: '北京西',
+      day: 1,
+      platform: null,
+    },
+  ],
+};
+const CR_TRAIN = {
+  data_version: '20261114',
+  train: 'Z156/Z157',
+  date: '2026-11-15',
+  trains: [
+    {
+      train: 'Z156/Z157',
+      service: { from: '2024-04-02', to: '2026-11-24' },
+      runs: true,
+      stops: [
+        { name: '泰州', telecode: 'UTH', arrival: null, departure: '15:00', day: 1, km: 0, platform: null },
+        { name: '北京西', telecode: 'BXP', arrival: '05:36', departure: '06:02', day: 2, km: 1200, platform: '10' },
+        { name: '哈尔滨西', telecode: 'VAB', arrival: '18:00', departure: null, day: 2, km: 2400, platform: null },
+      ],
+    },
+  ],
+};
+
 const API = {
+  [crPath('cr-stations/北京西/timetable')]: CR_STATION,
+  [crPath('cr-stations/泰州/timetable')]: { ...CR_STATION, station: { name: '泰州', telecode: 'UTH' } },
+  [crPath('cr-trains/Z156/Z157').replace('/Z157', '%2FZ157')]: CR_TRAIN,
   '/v1/stations': { results: [{ code: '22715', name: '渋谷', type: 'station', address: '東京' }] },
   '/v1/stations/22715/timetables': {
     source_url: 'https://transit.yahoo.co.jp/timetable/22715',
@@ -130,6 +186,64 @@ describe('timetable panel', () => {
   });
 });
 
+describe('China Railway timetable', () => {
+  it('lists a station’s trains by date and opens a train’s stops', async () => {
+    const { container, panel, requests } = setup();
+    // The OSM elements are unknown here, so the panel falls back to the name.
+    container.dispatchEvent(
+      new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西站', cr: ['N1,W2', '北京西'] } }),
+    );
+    const root = panel.panel;
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['Z156/Z157', 'G301', 'K2550']));
+    expect(requests.slice(0, 2)).toEqual([
+      crPath('cr-stations/N1,W2/timetable'),
+      crPath('cr-stations/北京西/timetable'),
+    ]);
+    expect(root.querySelector('.timetable-title').textContent).toBe('北京西');
+    expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 Mon · 3 trains');
+    expect(text(root, '.timetable-hour')).toEqual(['6时', '8时', '9时']);
+    expect(text(root, '.timetable-time')).toEqual(['06:02', '08:00', '09:11']);
+    expect(root.querySelector('.timetable-time-arrival').textContent).toBe('09:11');
+    expect(text(root, '.timetable-platform')).toEqual(['10', '7', '']);
+    const source = root.querySelector<HTMLAnchorElement>('.timetable-source');
+    expect(source.textContent).toBe('China Railway timetable (路路通 20261114)');
+    expect(source.hasAttribute('href')).toBe(false);
+
+    // Date steps replace the view instead of stacking on the back button.
+    Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
+      .find((button) => button.textContent === '›')
+      .click();
+    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/北京西/timetable')}?date=2026-11-17`));
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    expect(root.querySelector('.timetable-back')).toBeNull();
+
+    // Z156/Z157 stops here on the second day of its run, so it left the day before.
+    root.querySelector<HTMLButtonElement>('.timetable-departure-button').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['泰州', '北京西', '哈尔滨西']));
+    expect(requests.at(-1)).toBe('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
+    expect(root.querySelector('.timetable-summary').textContent).toBe('Z156/Z157 · 泰州 → 哈尔滨西');
+    expect(root.querySelector('.timetable-stop-here').textContent).toContain('北京西');
+    expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
+    expect(root.querySelector('.timetable-back').textContent).toBe('← Trains');
+
+    // A stop opens that station's trains on the day the train is there.
+    root.querySelector<HTMLButtonElement>('.timetable-stop-name').click();
+    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/泰州/timetable')}?date=2026-11-15`));
+  });
+
+  it('says so when no way of naming the station is known', async () => {
+    const { container, panel } = setup();
+    container.dispatchEvent(
+      new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '申滨南路', cr: ['N9', '申滨南路'] } }),
+    );
+    await vi.waitFor(() =>
+      expect(panel.panel.querySelector('.timetable-status').textContent).toBe(
+        'No China Railway timetable for 申滨南路.',
+      ),
+    );
+  });
+});
+
 describe('Timetable button', () => {
   const stationAt = (lng: number, lat: number, properties: Record<string, unknown>) => ({
     sourceLayer: 'standard_railway_text_stations',
@@ -137,17 +251,38 @@ describe('Timetable button', () => {
     geometry: { type: 'Point', coordinates: [lng, lat] },
   });
 
-  it('appears on Japanese stations and on any station with Yahoo codes', () => {
-    expect(timetableRequestFor(stationAt(139.7, 35.66, { name: '渋谷' }))).toEqual({ name: '渋谷', codes: [] });
+  it('appears on stations with Yahoo codes', () => {
     expect(timetableRequestFor(stationAt(139.7, 35.66, { name: '渋谷', yahoo_codes: '22715;29342' }))).toEqual({
       name: '渋谷',
       codes: ['22715', '29342'],
     });
-    expect(timetableRequestFor(stationAt(126.97, 37.55, { name: '서울역' }))).toBeNull();
-    expect(timetableRequestFor(stationAt(116.32, 39.89, { name: '北京西' }))).toBeNull();
+    // Without codes a Japanese station gets none, even a kanji-only name in Kyushu.
+    expect(timetableRequestFor(stationAt(139.7, 35.66, { name: '渋谷' }))).toBeNull();
+    expect(timetableRequestFor(stationAt(130.42, 33.59, { name: '博多', station: 'train' }))).toBeNull();
     expect(
-      timetableRequestFor({ ...stationAt(139.7, 35.66, { name: '渋谷' }), sourceLayer: 'railway_line_high' }),
+      timetableRequestFor({
+        ...stationAt(139.7, 35.66, { name: '渋谷', yahoo_codes: '22715' }),
+        sourceLayer: 'railway_line_high',
+      }),
     ).toBeNull();
+  });
+
+  it('appears on mainline stations in China, with their OSM elements and then their name', () => {
+    const china = (lng: number, lat: number, properties: Record<string, unknown>) =>
+      timetableRequestFor(
+        stationAt(lng, lat, { station: 'train', osm_id: '7780210950', osm_type: 'N', ...properties }),
+      );
+    expect(china(116.32, 39.89, { name: '北京西' })).toEqual({ name: '北京西', cr: ['N7780210950', '北京西'] });
+    expect(china(116.32, 39.89, { name: '北京西站', osm_id: '1\u001e1\u001e2', osm_type: 'N\u001eN\u001eW' })).toEqual({
+      name: '北京西站',
+      cr: ['N1,W2', '北京西'],
+    });
+    // Shenyang lies inside a box around Japan, but is no Japanese station.
+    expect(china(123.43, 41.82, { name: '沈阳北' })).toEqual({ name: '沈阳北', cr: ['N7780210950', '沈阳北'] });
+    expect(china(116.32, 39.89, { name: '北京西站', station: 'subway' })).toBeNull();
+    expect(china(121.52, 25.05, { name: '臺北' })).toBeNull();
+    expect(china(126.97, 37.55, { name: '서울역' })).toBeNull();
+    expect(china(116.32, 39.89, { name: 'Beijing West' })).toBeNull();
   });
 
   it('opens the timetable from the info box', () => {
