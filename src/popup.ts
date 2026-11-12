@@ -679,7 +679,8 @@ export function buildFeatureCatalog() {
       { title: 'References', properties: ['references'] },
       { title: 'Links', properties: ['wikidata', 'wikipedia', 'wikimedia_commons', 'mapillary'] },
     ],
-    hiddenProperties: ['id', 'discr_iso', 'count', 'label'],
+    // yahoo_codes opens the timetable (timetable.ts).
+    hiddenProperties: ['id', 'discr_iso', 'count', 'label', 'yahoo_codes'],
     properties: {
       station: { name: 'Type', format: { humanize: 'words' } },
       state: { name: 'State', format: { humanize: 'words' } },

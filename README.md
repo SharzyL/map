@@ -143,6 +143,16 @@ python3 scripts/tiles/cr-station-trains.py lulutong-timetable-csv-<date>
 
 It matches the stations to OSM through Overpass and reports any it could not match.
 
+Stations in Japan open a timetable from Yahoo! 乗換案内 through the
+[norikae API](https://norikae.shz.al/v1/doc.md). `data/jp-station-codes.csv` maps OSM stations to
+Yahoo's station codes, which the export writes to the station layers as `yahoo_codes`; stations
+without codes are looked up by name when the timetable opens. To refresh it (it queries Overpass and
+then the API's station search, caching searches under `output/`, so reruns only search new names):
+
+```bash
+python3 scripts/tiles/jp-station-codes.py
+```
+
 ### Tests and checks
 
 ```bash

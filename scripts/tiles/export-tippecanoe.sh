@@ -17,6 +17,9 @@
 #   CR_STATION_TRAINS - China Railway trains per day by OSM station (default:
 #                   data/cr-station-trains.csv, see cr-station-trains.py); sizes
 #                   those stations by timetable instead of mapped routes
+#   JP_STATION_CODES - Yahoo! 乗換案内 station codes by OSM station in Japan
+#                   (default: data/jp-station-codes.csv, see jp-station-codes.py);
+#                   become the stations' yahoo_codes, which open their timetable
 
 set -euo pipefail
 
@@ -29,6 +32,7 @@ LAYERS="${LAYERS:-standard}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 LINE_RELATIONS_OPL="${LINE_RELATIONS_OPL:-}"
 CR_STATION_TRAINS="${CR_STATION_TRAINS:-$(dirname "$0")/../../data/cr-station-trains.csv}"
+JP_STATION_CODES="${JP_STATION_CODES:-$(dirname "$0")/../../data/jp-station-codes.csv}"
 FGB_DIR="${OUTPUT_DIR}/fgb"
 
 mkdir -p "${FGB_DIR}"
@@ -306,9 +310,37 @@ CREATE UNIQUE INDEX ON station_overrides (id);
 ANALYZE station_overrides;
 SQL
 psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) FILTER (WHERE cr_size IS NOT NULL) || ' stations sized by timetable (' || count(*) FILTER (WHERE cr_size = 'large') || ' large, ' || count(*) FILTER (WHERE cr_size = 'normal') || ' normal), ' || count(*) FILTER (WHERE cr_size IS NULL) || ' others closer to one' FROM station_overrides"
+
+# Yahoo! 乗換案内 station codes for stations in Japan, the ids the timetable
+# (src/timetable.ts) asks the norikae API for. A station grouped from several
+# OSM features gets the codes of all of them.
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS station_yahoo_codes, jp_station_codes;
+CREATE TABLE jp_station_codes (osm_type text, osm_id int8, name text, codes text, status text);
+SQL
+if [ -f "${JP_STATION_CODES}" ]; then
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q \
+    -c "\\copy jp_station_codes FROM '$(realpath "${JP_STATION_CODES}")' WITH (FORMAT csv, HEADER true)"
+else
+  echo "  ${JP_STATION_CODES} not found; timetables look stations up by name"
+fi
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+CREATE TABLE station_yahoo_codes AS
+SELECT gs.id, string_agg(DISTINCT code, ';' ORDER BY code) AS yahoo_codes
+FROM grouped_stations_with_importance gs
+CROSS JOIN LATERAL unnest(gs.osm_ids, gs.osm_types) AS member(osm_id, osm_type)
+JOIN jp_station_codes j ON j.osm_id = member.osm_id AND j.osm_type = member.osm_type
+CROSS JOIN LATERAL unnest(string_to_array(j.codes, ';')) AS code
+GROUP BY gs.id;
+CREATE UNIQUE INDEX ON station_yahoo_codes (id);
+ANALYZE station_yahoo_codes;
+SQL
+psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' stations with Yahoo station codes' FROM station_yahoo_codes"
 echo ""
 # Station label layers read railway_text_stations s through these.
-STATION_JOIN="LEFT JOIN station_overrides so ON so.id = s.id"
+STATION_JOIN="LEFT JOIN station_overrides so ON so.id = s.id LEFT JOIN station_yahoo_codes sy ON sy.id = s.id"
 STATION_SIZE_SQL="coalesce(so.cr_size, s.station_size)"
 STATION_DISCR_ISO_SQL="coalesce(so.cr_discr_iso, s.discr_iso)"
 STATION_IMPORTANCE_SQL="coalesce(so.cr_importance, s.importance)"
@@ -574,6 +606,7 @@ SELECT
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
   ${STATION_ROUTES_SQL} as station_routes,
+  sy.yahoo_codes,
   ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
 ${STATION_JOIN}
@@ -617,6 +650,7 @@ SELECT
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
   ${STATION_ROUTES_SQL} as station_routes,
+  sy.yahoo_codes,
   ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
 ${STATION_JOIN}
@@ -652,6 +686,7 @@ SELECT
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
   ${STATION_ROUTES_SQL} as station_routes,
+  sy.yahoo_codes,
   ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
 ${STATION_JOIN}
