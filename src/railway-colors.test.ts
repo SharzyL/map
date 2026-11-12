@@ -169,6 +169,16 @@ describe('withRailwayLineColors', () => {
     expect(colorOf(id, 'default', { ...line, line_routes: routes('Line 1 color') })).toBe(usage);
   });
 
+  it('takes the line color the export set over the first route color, also on zoomed-out lines', () => {
+    const id = 'railway_line_light_rail_fill_present';
+    const line = { feature: 'subway', usage: 'main', state: 'present' };
+    // A through service listed first no longer colors the track.
+    const routes = '1\u001e#01AAAA\u001eThrough service\u001d2\u001e#ED772D\u001eSeibu Ikebukuro Line';
+    expect(colorOf(id, 'default', { ...line, line_routes: routes })).toBe('#01aaaa');
+    expect(colorOf(id, 'default', { ...line, line_routes: routes, line_color: '#ed772d' })).toBe('#ed772d');
+    expect(colorOf(id, 'default', { ...line, line_color: '#ed772d' })).toBe('#ed772d');
+  });
+
   it('draws service tracks without a route color in gray by default', () => {
     const id = 'railway_line_light_rail_fill_present';
     const depot = { feature: 'subway', state: 'present', service: 'yard' };

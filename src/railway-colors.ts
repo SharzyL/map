@@ -245,17 +245,20 @@ const IS_HOVERED = ['boolean', ['feature-state', 'hover'], false];
 
 export const RAILWAY_ATTRIBUTE_COLOR = ['case', IS_HOVERED, HOVER_COLOR, COLOR];
 
-// A line's route color (OSM `colour`) is the first one set among its first few
-// `line_routes`: groups of `id\x1Ecolor\x1Elabel` joined by `\x1D` and sorted
-// by route id, so track shared by several routes takes the color of one of
-// them. Lines without a colored route, including every line in the low-zoom
-// tiles (they carry no routes), get an empty string.
+// A line's route color (OSM `colour`) is its `line_color`: the export gives
+// every segment of a line (same name and operator) the color of its routes by
+// length-weighted majority, so parallel tracks of one line look alike. Tiles
+// from before that attribute fall back to the first color set among the
+// segment's first few `line_routes` (groups of `id\x1Ecolor\x1Elabel` joined by
+// `\x1D`, sorted by route id). Lines without either get an empty string.
 const ROUTES_CHECKED = 4;
 const ROUTES = ['var', 'routes'];
 const routeColorAt = (index: number) => ['at', 1, ['split', ['at', index, ROUTES], '\u001e']];
 
 const ROUTE_COLOR = [
   'case',
+  ['has', 'line_color'],
+  ['to-string', ['get', 'line_color']],
   ['has', 'line_routes'],
   [
     'let',

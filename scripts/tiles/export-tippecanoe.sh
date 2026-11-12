@@ -212,12 +212,51 @@ CREATE UNIQUE INDEX ON line_operators (way_id);
 ANALYZE line_operators;
 SQL
 echo ""
+
+# One route color per line, so parallel tracks of a line (local and express,
+# up and down) look alike: segments group by name and operator, and a group
+# takes the color of its routes by length-weighted majority, each segment
+# counting each color once. Picking a segment's color from its own routes let
+# whichever route came first win, often a through service of another operator
+# (東京地下鉄の直通運転 on JR and Seibu tracks).
+echo "--- Building line colors ---"
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS line_colors;
+CREATE TABLE line_colors AS
+WITH segment_colors AS (
+  SELECT DISTINCT
+    lv.osm_id,
+    lv.name,
+    coalesce(lv.primary_operator, lo.fallback_operator[1], '') AS operator,
+    coalesce(lv.way_length, 0) AS way_length,
+    lower(trim(r.color)) AS color
+  FROM railway_line_view lv
+  JOIN route_line rl ON rl.line_id = lv.osm_id
+  JOIN routes r ON r.osm_id = rl.route_id
+  LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
+  WHERE lv.name IS NOT NULL AND lv.state = 'present' AND nullif(trim(r.color), '') IS NOT NULL
+)
+SELECT DISTINCT ON (name, operator) name AS line_name, operator AS line_operator, color
+FROM (
+  SELECT name, operator, color, sum(way_length) AS weight, count(*) AS segments
+  FROM segment_colors
+  GROUP BY name, operator, color
+) votes
+ORDER BY name, operator, weight DESC, segments DESC, color;
+CREATE UNIQUE INDEX ON line_colors (line_name, line_operator);
+ANALYZE line_colors;
+SQL
+psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' lines colored by their routes' FROM line_colors"
+echo ""
 # Line queries join railway_line_view lv to the fallback operators, the
-# operator colors and the way tags.
+# operator colors, the way tags and the line colors.
 LINE_JOINS="LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
 LEFT JOIN (SELECT name AS known_operator, color AS known_color FROM railway_operator) oc
   ON oc.known_operator = coalesce(lv.primary_operator, lo.fallback_operator[1])
-LEFT JOIN line_way_tags wt ON wt.way_id = lv.osm_id"
+LEFT JOIN line_way_tags wt ON wt.way_id = lv.osm_id
+LEFT JOIN line_colors lc
+  ON lc.line_name = lv.name AND lc.line_operator = coalesce(lv.primary_operator, lo.fallback_operator[1], '')"
 OPERATOR_SQL="nullif(array_to_string(
     CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
     U&'\001E'), '')"
@@ -402,6 +441,7 @@ export_railway_line_high() {
   loading_gauge,
   ${OPERATOR_SQL} as operator,
   ${OPERATOR_COLOR_SQL} as operator_color,
+  lc.color as line_color,
   primary_operator,
   owner,
   CASE WHEN lv.preserved THEN true END as preserved,
@@ -543,6 +583,7 @@ SELECT
   traffic_mode,
   operator,
   operator_color,
+  line_color,
   way
 FROM (
   SELECT
@@ -560,6 +601,7 @@ FROM (
     traffic_mode,
     ${OPERATOR_SQL} as operator,
     ${OPERATOR_COLOR_SQL} as operator_color,
+    lc.color as line_color,
     max(rank) as rank,
     (ST_Dump(ST_LineMerge(ST_Collect(way)))).geom AS way
   FROM railway_line_view lv
@@ -570,7 +612,7 @@ FROM (
     AND service IS NULL
   GROUP BY
     feature, state, usage, highspeed, name, maxspeed, electrification_state, voltage, frequency,
-    gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}
+    gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}, lc.color
 ) merged
 ORDER BY rank NULLS LAST
 "
