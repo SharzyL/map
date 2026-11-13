@@ -1,8 +1,9 @@
 // Client for the norikae API (https://norikae.shz.al/v1/doc.md): Japanese
 // station timetables from Yahoo! 乗換案内, identified by Yahoo's station code
-// (the export puts the codes on OSM stations in Japan as `yahoo_codes`), and
+// (the export puts the codes on OSM stations in Japan as `yahoo_codes`),
 // China Railway timetables (/v1/cr-*), whose stations the API finds by their
-// OSM elements or name.
+// OSM elements or name, the track trains run on, and OSM's railway routes
+// and lines (/v1/relations), all answered with OSM ids the map's tiles share.
 
 export const NORIKAE_API = 'https://norikae.shz.al/v1';
 
@@ -35,7 +36,16 @@ export type TrainStops = {
   name: string | null;
   line: string | null;
   comments: string[];
-  stops: Array<{ code: string | null; name: string; arrival: string | null; departure: string | null }>;
+  stops: Array<{
+    code: string | null;
+    name: string;
+    arrival: string | null;
+    departure: string | null;
+    // The OSM stations matched to the code and their centre; [] and null without a match.
+    osm?: string[];
+    lat?: number | null;
+    lon?: number | null;
+  }>;
 };
 
 export type CrStationTrain = {
@@ -62,12 +72,68 @@ export type CrStop = {
   day: number;
   km: number;
   platform: string | null;
+  // The OSM station features and their centre ([lon, lat]); null without a match.
+  elements?: string[] | null;
+  position?: [number, number] | null;
 };
 export type CrTrainSchedule = {
   data_version: string;
   train: string;
   date: string;
   trains: Array<{ train: string; service: { from: string; to: string | null }; runs: boolean; stops: CrStop[] }>;
+};
+
+// A train's track (…/trains/{id}/route, /cr-trains/{train}/route): the OSM
+// ways it covers whole, the parts of others as geometry, an outline for small
+// scales, its stops on the track, and how each leg was found. Geometry is in
+// encoded polylines (decodePolyline).
+export type TrainRoute = {
+  data_version: string;
+  bbox: [number, number, number, number];
+  ways: number[];
+  partial: string[];
+  overview: string[];
+  stops: Array<{ name: string; position: [number, number] | null; elements: string[] | null }>;
+  legs: Array<{
+    from: string;
+    to: string;
+    line: string | null;
+    method: 'line' | 'graph' | 'straight';
+    straight?: string;
+  }>;
+};
+
+export type RelationSummary = {
+  id: number | string;
+  kind: 'route' | 'line' | 'master';
+  type: string;
+  name: string | null;
+  ref: string | null;
+  from: string | null;
+  to: string | null;
+  operator: string | null;
+  network: string | null;
+  colour: string | null;
+  master?: number | null;
+  wikidata: string | null;
+  wikipedia: string | null;
+  // Japan's official lines (jp-…): other names on their track, and the credit
+  // anything showing them must display.
+  aliases?: string[];
+  attribution?: { text: string; url: string };
+};
+
+// A route, line or route master (/v1/relations/{id}); a master lists `routes`
+// instead of ways and stops.
+export type RelationDetails = {
+  data_version: string;
+  relation: RelationSummary;
+  bbox: [number, number, number, number];
+  length_m?: number;
+  overview: string[];
+  ways?: number[];
+  stops?: Array<{ name: string; position: [number, number] | null; elements: string[] | null; km: number | null }>;
+  routes?: RelationSummary[];
 };
 
 export class NorikaeError extends Error {
@@ -131,6 +197,49 @@ export function crStationTimetable(station: string, date: string | null, signal?
 // `date` is the day the train leaves its origin.
 export function crTrain(train: string, date: string, signal?: AbortSignal) {
   return get<CrTrainSchedule>(`/cr-trains/${encodeURIComponent(train)}`, { date }, signal);
+}
+
+export function trainRoute(code: string, gid: string, trainId: string, signal?: AbortSignal) {
+  return get<TrainRoute>(
+    `/stations/${encodeURIComponent(code)}/timetables/${encodeURIComponent(gid)}/trains/${encodeURIComponent(trainId)}/route`,
+    {},
+    signal,
+  );
+}
+
+export function crTrainRoute(train: string, date: string, signal?: AbortSignal) {
+  return get<TrainRoute>(`/cr-trains/${encodeURIComponent(train)}/route`, { date }, signal);
+}
+
+export function relationDetails(id: string, signal?: AbortSignal) {
+  return get<RelationDetails>(`/relations/${encodeURIComponent(id)}`, {}, signal);
+}
+
+// A Google encoded polyline as [lon, lat] points (the API encodes latitude
+// first, precision 6).
+export function decodePolyline(encoded: string, precision = 6): Array<[number, number]> {
+  const factor = 10 ** precision;
+  const points: Array<[number, number]> = [];
+  let index = 0;
+  let lat = 0;
+  let lon = 0;
+  const next = () => {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    return result & 1 ? ~(result >> 1) : result >> 1;
+  };
+  while (index < encoded.length) {
+    lat += next();
+    lon += next();
+    points.push([lon / factor, lat / factor]);
+  }
+  return points;
 }
 
 // Yahoo names stations as OSM does, but adds a suffix where a name is shared:

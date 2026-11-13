@@ -23,6 +23,7 @@ import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import { lineListsNear } from './route-trace.js';
 import { installTimetable, timetableButton } from './timetable.js';
+import { installTrainRoute } from './train-route.js';
 import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
 import { installLoadStatus } from './load-status.js';
 import {
@@ -724,7 +725,7 @@ async function init() {
     }
     installRailwayFilter(map, railwayFilter, Number(style.state?.date?.default) || new Date().getFullYear());
     installRouteHighlight(map);
-    installTimetable(map);
+    installTimetable(map, installTrainRoute(map));
     installCredits(map);
     installLoadStatus(map, style.sources || {}, [ORM_SOURCE, HISTORICAL_RAILWAY_SOURCE], ['contourSource']);
     if (screenshotFixtureModule && screenshotFixtureMode) {

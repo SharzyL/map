@@ -47,7 +47,10 @@ describe('addRouteHighlightToStyle', () => {
     .filter(([, source]) => source.type === 'vector' && typeof source.url === 'string' && source.url.startsWith('/'))
     .map(([name]) => name);
   const styled = addRouteHighlightToStyle(ormStyle, railwaySources);
-  const highlight = styled.layers.filter((layer) => layer.id.startsWith('route_highlight_'));
+  // The highlight's layers, a train route's among them.
+  const highlight = styled.layers.filter(
+    (layer) => layer.id.startsWith('route_highlight_') || layer.id.startsWith('train_route_'),
+  );
 
   it('produces a valid style with the highlight state', () => {
     expect(validateStyleMin(styled)).toEqual([]);

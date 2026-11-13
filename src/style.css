@@ -2262,8 +2262,90 @@ body,
   cursor: default;
 }
 
+.route-info-status {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.route-info-heading {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* A route's stations in order, a line down their left like a line diagram;
+   each name flies the map there. */
+.route-info-stations {
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 3px solid #cbd5e1;
+  list-style: none;
+}
+
+.route-info-stations li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 0;
+  font-size: 12.5px;
+}
+
+.route-info-station {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+span.route-info-station {
+  color: #0f172a;
+  cursor: default;
+}
+
+button.route-info-station:hover,
+button.route-info-station:focus-visible {
+  background: #eff6ff;
+  text-decoration: underline;
+  outline: none;
+}
+
+.route-info-km {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .timetable-meta {
   margin-bottom: 4px;
+}
+
+.timetable-stop-locate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #64748b;
+  cursor: pointer;
+}
+
+button.timetable-stop-locate:hover,
+button.timetable-stop-locate:focus-visible {
+  background: #eff6ff;
+  color: #1d4ed8;
+  outline: none;
 }
 
 /* Rows are placed explicitly, so a hidden back button leaves an empty row. */
@@ -2453,7 +2535,7 @@ body,
 
 .timetable-stop {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
   gap: 8px;
   padding: 2px 0;
 }

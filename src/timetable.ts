@@ -11,24 +11,31 @@
 //
 // China Railway: every train stopping at a station on a date, then the stops
 // of one train. The API finds the station by its OSM elements, else by name.
+//
+// A train's view draws its route on the map (train-route.ts) and gives each
+// stop the API placed on OSM a button that flies the map there.
 import { createPanelShell, el } from './map-panel.js';
 import {
   addDays,
   chinaNow,
   crStationTimetable,
   crTrain,
+  crTrainRoute,
   departures,
   findStationsByName,
   japanNow,
   minutesOf,
   NorikaeError,
   stationLines,
+  trainRoute,
   trainStops,
   type CrStationTimetable,
   type Departure,
   type DepartureTable,
+  type TrainRoute,
   type TimetableDay,
 } from './norikae.js';
+import type { TrainRouteDrawer } from './train-route.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 
 export const TIMETABLE_OPEN_EVENT = 'orm:timetable';
@@ -51,7 +58,11 @@ const crSource = (version: string): Source => ({ text: `lltskb ${version}` });
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const crDateLabel = (date: string) => `${date} ${WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]}`;
 
-type TimetableMap = { getContainer(): HTMLElement };
+type TimetableMap = {
+  getContainer(): HTMLElement;
+  flyTo?(options: { center: [number, number]; zoom: number }): unknown;
+  getZoom?(): number;
+};
 type View = () => Promise<void>;
 
 function serviceMinutes(time: string) {
@@ -81,12 +92,17 @@ class TimetablePanel {
   private readonly _nav: HTMLElement;
   private readonly _body: HTMLElement;
   private readonly _source: HTMLAnchorElement;
+  private readonly _map: TimetableMap;
+  private readonly _route: TrainRouteDrawer | null;
   private _abort: AbortController | null = null;
   private _history: View[] = [];
   private _open = false;
 
-  constructor(container: HTMLElement) {
+  constructor(map: TimetableMap, route: TrainRouteDrawer | null) {
+    const container = map.getContainer();
     this._container = container;
+    this._map = map;
+    this._route = route;
     const shell = createPanelShell(container, 'timetable', {
       title: 'Timetable',
       label: 'Station timetable',
@@ -126,6 +142,7 @@ class TimetablePanel {
   close() {
     this._open = false;
     this._abort?.abort();
+    this._route?.clear();
     this.panel.classList.remove('timetable-panel-visible');
     this.panel.setAttribute('aria-hidden', 'true');
     this.panel.inert = true;
@@ -147,6 +164,8 @@ class TimetablePanel {
     this._abort?.abort();
     this._abort = new AbortController();
     const signal = this._abort.signal;
+    // Only a train's view shows its route.
+    this._route?.clear();
     this._setBack();
     this._body.replaceChildren(el('div', 'timetable-status'));
     this._body.firstElementChild.textContent = 'Loading…';
@@ -171,6 +190,43 @@ class TimetablePanel {
     button.type = 'button';
     button.textContent = `← ${label}`;
     button.addEventListener('click', () => this._back());
+  }
+
+  // Draws a train's route once the API has it, unless the view changed meanwhile;
+  // a route the API cannot give (an error, a train not routed yet) is left out.
+  private _drawRoute(load: Promise<TrainRoute>, here: string | null) {
+    const signal = this._signal;
+    if (!this._route) return;
+    load
+      .then((route) => {
+        if (signal.aborted) return;
+        // Clear of the panel: beside it on a wide screen, above the bottom sheet on a phone.
+        const map = this._container.getBoundingClientRect();
+        const panel = this.panel.getBoundingClientRect();
+        const margin = 48;
+        const padding =
+          panel.width < map.width * 0.6
+            ? { top: margin + 16, right: margin + 40, bottom: margin, left: panel.right - map.left + margin }
+            : { top: margin + 16, right: margin, bottom: map.bottom - panel.top + margin, left: margin };
+        this._route.show(route, here, padding);
+      })
+      .catch(() => {});
+  }
+
+  // A button that flies the map to a stop, or an empty cell keeping the column.
+  private _locate(item: HTMLElement, name: string, position: [number, number] | null | undefined) {
+    if (!position || !this._map.flyTo) {
+      el('span', 'timetable-stop-locate', item);
+      return;
+    }
+    const button = el('button', 'timetable-stop-locate', item);
+    button.type = 'button';
+    button.title = `Show ${name} on the map`;
+    button.setAttribute('aria-label', button.title);
+    button.innerHTML = LOCATE_ICON;
+    button.addEventListener('click', () =>
+      this._map.flyTo({ center: position, zoom: Math.max(this._map.getZoom?.() ?? 0, 14) }),
+    );
   }
 
   // A train's facts above its stops, as label and value rows.
@@ -314,8 +370,12 @@ class TimetablePanel {
         .map((time) => time ?? '')
         .join(' – ')
         .replace(/^ – | – $/g, '');
+      const position = stop.lon !== null && stop.lon !== undefined ? ([stop.lon, stop.lat] as [number, number]) : null;
+      this._locate(item, stop.name, position);
     }
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
+    const here = train.stops.find((stop) => stop.code === code)?.name ?? null;
+    this._drawRoute(trainRoute(code, gid, trainId, this._signal), here);
   }
 
   private async _renderCrStation(candidates: string[], name: string, date: string | null) {
@@ -446,8 +506,10 @@ class TimetablePanel {
         day.title = `${stop.day - 1} day${stop.day > 2 ? 's' : ''} after leaving its origin`;
       }
       if (stop.platform) item.title = `Platform or gate ${stop.platform}`;
+      this._locate(item, stop.name, stop.position);
     }
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
+    this._drawRoute(crTrainRoute(run?.train ?? train, date, this._signal), stationName);
   }
 }
 
@@ -499,6 +561,9 @@ export function timetableRequestFor(feature: StationFeatureLike): TimetableReque
   return { name, cr };
 }
 
+const LOCATE_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke-linecap="round"/></svg>';
+
 const CLOCK_ICON =
   '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.3 1.5"/></svg>';
 
@@ -527,9 +592,9 @@ export function timetableButton(feature: StationFeatureLike, content: HTMLElemen
   );
 }
 
-export function installTimetable(map: TimetableMap) {
+export function installTimetable(map: TimetableMap, route: TrainRouteDrawer | null = null) {
   const container = map.getContainer();
-  const panel = new TimetablePanel(container);
+  const panel = new TimetablePanel(map, route);
   container.addEventListener(TIMETABLE_OPEN_EVENT, (event) => {
     const request = (event as CustomEvent<TimetableRequest>).detail;
     if (request?.name || ('codes' in request && request.codes.length)) panel.open(request);

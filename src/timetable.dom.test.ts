@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { CrTrainSchedule, TrainRoute } from './norikae.js';
 import { installTimetable, timetableButton, TIMETABLE_OPEN_EVENT, timetableRequestFor } from './timetable.js';
 
 const crPath = (path: string) => '/v1/' + path.split('/').map(encodeURIComponent).join('/');
@@ -38,7 +39,7 @@ const CR_STATION = {
     },
   ],
 };
-const CR_TRAIN = {
+const CR_TRAIN: CrTrainSchedule = {
   data_version: '20261114',
   train: 'Z156/Z157',
   date: '2026-11-15',
@@ -49,14 +50,37 @@ const CR_TRAIN = {
       runs: true,
       stops: [
         { name: '泰州', telecode: 'UTH', arrival: null, departure: '15:00', day: 1, km: 0, platform: null },
-        { name: '北京西', telecode: 'BXP', arrival: '05:36', departure: '06:02', day: 2, km: 1200, platform: '10' },
+        {
+          name: '北京西',
+          telecode: 'BXP',
+          arrival: '05:36',
+          departure: '06:02',
+          day: 2,
+          km: 1200,
+          platform: '10',
+          elements: ['N7780210950'],
+          position: [116.3151, 39.8937],
+        },
         { name: '哈尔滨西', telecode: 'VAB', arrival: '18:00', departure: null, day: 2, km: 2400, platform: null },
       ],
     },
   ],
 };
 
-const API = {
+// A train route as the API gives it; what is in it is the drawer's business.
+const ROUTE: TrainRoute = {
+  data_version: '2026-11-12T16:00:00Z',
+  bbox: [0, 0, 1, 1],
+  ways: [1],
+  partial: [],
+  overview: [],
+  stops: [],
+  legs: [],
+};
+
+const API: Record<string, unknown> = {
+  [crPath('cr-trains/Z156/Z157/route').replace('/Z157', '%2FZ157')]: ROUTE,
+  '/v1/stations/22715/timetables/1051/trains/33471/route': ROUTE,
   [crPath('cr-stations/北京西/timetable')]: CR_STATION,
   [crPath('cr-stations/泰州/timetable')]: { ...CR_STATION, station: { name: '泰州', telecode: 'UTH' } },
   [crPath('cr-trains/Z156/Z157').replace('/Z157', '%2FZ157')]: CR_TRAIN,
@@ -94,7 +118,15 @@ const API = {
     comments: ['大宮−小山間快速。'],
     stops: [
       { code: '23096', name: '大船', arrival: null, departure: '07:30' },
-      { code: '22715', name: '渋谷', arrival: '08:01', departure: '08:02' },
+      {
+        code: '22715',
+        name: '渋谷',
+        arrival: '08:01',
+        departure: '08:02',
+        osm: ['N241896099'],
+        lat: 35.6587,
+        lon: 139.7016,
+      },
       { code: '23500', name: '宇都宮', arrival: '09:50', departure: null },
     ],
   },
@@ -109,12 +141,14 @@ function setup() {
     vi.fn(async (url: string) => {
       const { pathname, search } = new URL(url);
       requests.push(pathname + search);
-      const body = API[pathname as keyof typeof API];
+      const body = API[pathname];
       return new Response(JSON.stringify(body ?? { error: { message: 'not found' } }), { status: body ? 200 : 404 });
     }),
   );
-  const panel = installTimetable({ getContainer: () => container });
-  return { container, panel, requests };
+  const map = { getContainer: () => container, flyTo: vi.fn(), getZoom: () => 10 };
+  const route = { show: vi.fn(), clear: vi.fn() };
+  const panel = installTimetable(map, route);
+  return { container, panel, requests, map, route };
 }
 
 const text = (root: HTMLElement, selector: string) =>
@@ -127,7 +161,7 @@ afterEach(() => {
 
 describe('timetable panel', () => {
   it('goes from lines to departures to a train’s stops and back', async () => {
-    const { container, panel } = setup();
+    const { container, panel, map, route } = setup();
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
     expect(panel.isOpen).toBe(true);
     const root = panel.panel;
@@ -152,9 +186,17 @@ describe('timetable panel', () => {
     expect(text(root, '.timetable-stop-time')).toEqual(['07:30', '08:01 – 08:02', '09:50']);
     expect(text(root, '.timetable-comment')).toEqual(['大宮−小山間快速。']);
     expect(text(root, '.timetable-meta dd')).toEqual(['快速', 'ＪＲ湘南新宿ライン', '3']);
+    // The train's route goes on the map, and stops the API placed get a button to fly there.
+    await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '渋谷', expect.anything()));
+    const locate = root.querySelectorAll<HTMLButtonElement>('button.timetable-stop-locate');
+    expect(locate).toHaveLength(1);
+    locate[0].click();
+    expect(map.flyTo).toHaveBeenCalledWith({ center: [139.7016, 35.6587], zoom: 14 });
+    const clears = route.clear.mock.calls.length;
 
     root.querySelector<HTMLButtonElement>('.timetable-back').click();
     await vi.waitFor(() => expect(text(root, '.timetable-time')).toEqual(['07:16', '08:02']));
+    expect(route.clear.mock.calls.length).toBeGreaterThan(clears);
     root.querySelector<HTMLButtonElement>('.timetable-back').click();
     await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
     expect(root.querySelector('.timetable-back')).toBeNull();
@@ -189,7 +231,7 @@ describe('timetable panel', () => {
 
 describe('China Railway timetable', () => {
   it('lists a station’s trains by date and opens a train’s stops', async () => {
-    const { container, panel, requests } = setup();
+    const { container, panel, requests, route } = setup();
     // The OSM elements are unknown here, so the panel falls back to the name.
     container.dispatchEvent(
       new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西站', cr: ['N1,W2', '北京西'] } }),
@@ -221,7 +263,9 @@ describe('China Railway timetable', () => {
     // Z156/Z157 stops here on the second day of its run, so it left the day before.
     root.querySelector<HTMLButtonElement>('.timetable-departure-button').click();
     await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['泰州', '北京西', '哈尔滨西']));
-    expect(requests.at(-1)).toBe('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
+    expect(requests).toContain('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
+    await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '北京西', expect.anything()));
+    expect(requests).toContain('/v1/cr-trains/Z156%2FZ157/route?date=2026-11-15');
     expect(root.querySelector('.timetable-summary').textContent).toBe('Z156/Z157 · 泰州 → 哈尔滨西');
     expect(text(root, '.timetable-meta dt')).toEqual(['Train', 'Departs', 'In service', 'Distance', 'Stops']);
     expect(text(root, '.timetable-meta dd')).toEqual([
