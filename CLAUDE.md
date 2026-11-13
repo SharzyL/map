@@ -46,7 +46,7 @@ Local dev environment notes:
 
 ### Worker (`src/worker.ts` -> `src/worker/`)
 
-`src/worker.ts` only re-exports `src/worker/entry.ts`, which handles CORS preflight, serves `/tiles/*` from PMTiles archives in R2 (`src/worker/tiles.ts`, range reads plus a one-day edge cache), and falls back to static assets from `dist/` with SPA fallback. The only bindings are `ORM_BUCKET` (R2) and `ASSETS`.
+`src/worker.ts` only re-exports `src/worker/entry.ts`, which handles CORS preflight, serves `/tiles/*` from PMTiles archives in R2 (`src/worker/tiles.ts`, range reads plus the Workers cache; versioned tile URLs, empty ones included, are `immutable` for a year so browsers reuse them without invoking the Worker, which is why `TILE_VERSION` must change with every archive), and falls back to static assets from `dist/` with SPA fallback. The only bindings are `ORM_BUCKET` (R2) and `ASSETS`.
 
 ### Tiles
 
