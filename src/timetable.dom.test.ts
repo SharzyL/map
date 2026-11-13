@@ -283,6 +283,7 @@ describe('China Railway timetable', () => {
     ]);
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('北京西');
     expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
+    expect(text(root, '.timetable-cr-stops .timetable-platform')).toEqual(['', '10', '']);
     expect(root.querySelector('.timetable-back').textContent).toBe('← Trains');
 
     // A stop opens that station's trains on the day the train is there.

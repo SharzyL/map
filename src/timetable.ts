@@ -488,7 +488,7 @@ class TimetablePanel {
     ]);
     if (run && !run.runs)
       el('p', 'timetable-comment', this._body).textContent = `Does not leave its origin on ${date}.`;
-    const list = el('ol', 'timetable-stops', this._body);
+    const list = el('ol', 'timetable-stops timetable-cr-stops', this._body);
     for (const stop of stops) {
       const item = el('li', 'timetable-stop', list);
       if (stop.name === stationName) item.classList.add('timetable-stop-here');
@@ -509,7 +509,9 @@ class TimetablePanel {
         day.textContent = `+${stop.day - 1}`;
         day.title = `${stop.day - 1} day${stop.day > 2 ? 's' : ''} after leaving its origin`;
       }
-      if (stop.platform) item.title = `Platform or gate ${stop.platform}`;
+      const platform = el('span', 'timetable-platform', item);
+      platform.textContent = stop.platform ?? '';
+      if (stop.platform) platform.title = `Platform or gate ${stop.platform}`;
       this._locate(item, stop.name, stop.position);
     }
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });

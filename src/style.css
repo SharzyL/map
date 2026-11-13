@@ -2552,6 +2552,17 @@ button.timetable-stop-locate:focus-visible {
   border-radius: 4px;
 }
 
+/* China Railway stops add the platform or gate, as the station's list does. */
+.timetable-cr-stops .timetable-stop {
+  grid-template-columns: minmax(0, 1fr) auto 22px 20px;
+}
+
+.timetable-cr-stops .timetable-platform {
+  align-self: center;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .timetable-stop-here {
   font-weight: 800;
 }
