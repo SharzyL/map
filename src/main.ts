@@ -23,6 +23,7 @@ import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import { lineListsNear } from './route-trace.js';
 import { installTimetable, timetableButton } from './timetable.js';
+import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -51,12 +52,6 @@ const TILE_ARCHIVE = new URLSearchParams(window.location.search).get('tileset') 
 const TILE_URL = `${window.location.origin}/tiles/${TILE_ARCHIVE}/{z}/{x}/{y}.mvt?v=${TILE_VERSION}`;
 // The single vector source every railway layer draws from.
 const ORM_SOURCE = 'openrailwaymap';
-// Japan's railway lines in the tiles are MLIT's official lines (国土数値情報
-// N02, CC BY 4.0, matched to OSM by scripts/tiles/line-groups.py), which ask
-// for this credit.
-const N02_ATTRIBUTION =
-  '<a href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener">' +
-  '国土数値情報（鉄道データ）</a>（国土交通省）を加工して作成';
 // Source code link at the start of the attribution line, bottom right.
 const GITHUB_ATTRIBUTION =
   '<a class="attribution-github" href="https://github.com/SharzyL/map" target="_blank" rel="noopener">' +
@@ -227,12 +222,7 @@ function rewriteOrmStyle(style: StyleLike): StyleLike {
   const attribution = Object.values(style.sources || {}).find(isRailwaySource)?.attribution;
   style.sources = {
     ...Object.fromEntries(Object.entries(style.sources || {}).filter(([name]) => !railwaySourceNames.has(name))),
-    [ORM_SOURCE]: {
-      type: 'vector',
-      tiles: [TILE_URL],
-      attribution: [attribution, N02_ATTRIBUTION].filter(Boolean).join(' '),
-      maxzoom: 15,
-    },
+    [ORM_SOURCE]: { type: 'vector', tiles: [TILE_URL], attribution, maxzoom: 15 },
   };
   style.layers = style.layers?.map((layer) =>
     railwaySourceNames.has(layer.source as string) ? { ...layer, source: ORM_SOURCE } : layer,
@@ -542,7 +532,20 @@ async function loadStyle(
     railwaySources,
   );
   const withTerrain = addMapterhornTerrain(merged, demSource);
-  return withGlobe(applyMapLayerState(addSatelliteSourceAndLayer(withTerrain), mapLayers));
+  return withShortAttributions(withGlobe(applyMapLayerState(addSatelliteSourceAndLayer(withTerrain), mapLayers)));
+}
+
+// The attribution line only credits OpenStreetMap, on the base map and the
+// railways so it stays in satellite mode (its licence asks for the credit on
+// the map), and imagery while it shows; the Credits panel (credits.ts) lists
+// the rest. A source's attribution here overrides the one in its TileJSON.
+function withShortAttributions(style: StyleLike): StyleLike {
+  const keep = new Set(['satellite']);
+  const osm = new Set(['openmaptiles', ORM_SOURCE]);
+  for (const [name, source] of Object.entries(style.sources || {})) {
+    if (!keep.has(name)) source.attribution = osm.has(name) ? OSM_ATTRIBUTION : '';
+  }
+  return style;
 }
 
 // Always a globe: MapLibre draws a sphere at low zoom and blends into the flat
@@ -688,7 +691,9 @@ async function init() {
         ? {}
         : { bounds: DEFAULT_VIEW.bounds, fitBoundsOptions: DEFAULT_VIEW.fitBoundsOptions }),
       hash: true,
-      attributionControl: { customAttribution: GITHUB_ATTRIBUTION } as maplibregl.AttributionControlOptions,
+      attributionControl: {
+        customAttribution: [GITHUB_ATTRIBUTION, CREDITS_ATTRIBUTION],
+      } as maplibregl.AttributionControlOptions,
       renderWorldCopies: false,
       maxZoom: 20,
       maxPitch: 85,
@@ -719,6 +724,7 @@ async function init() {
     installRailwayFilter(map, railwayFilter, Number(style.state?.date?.default) || new Date().getFullYear());
     installRouteHighlight(map);
     installTimetable(map);
+    installCredits(map);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }
