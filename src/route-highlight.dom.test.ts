@@ -67,6 +67,7 @@ function createMap() {
   document.body.appendChild(container);
   const state: Record<string, unknown> = {};
   const overview = { setData: vi.fn() };
+  const hover = { setData: vi.fn() };
   const map = {
     getContainer: () => container,
     isStyleLoaded: () => true,
@@ -76,13 +77,13 @@ function createMap() {
     once: vi.fn(),
     off: vi.fn(),
     setGlobalStateProperty: vi.fn((name: string, value: unknown) => (state[name] = value)),
-    getSource: () => overview,
+    getSource: (id: string) => (id === 'station_hover' ? hover : overview),
     getBounds: () => ({ getWest: () => 121.2, getSouth: () => 31.0, getEast: () => 121.6, getNorth: () => 31.4 }),
     fitBounds: vi.fn(),
     flyTo: vi.fn(),
     getZoom: () => 10,
   };
-  return { map, container, state, overview };
+  return { map, container, state, overview, hover };
 }
 
 function routeItem(container: HTMLElement, id: string) {
@@ -123,7 +124,7 @@ describe('installRouteHighlight', () => {
 
   it('fills the panel from the relations API: details, outline, extent and stations', async () => {
     relations['900821540'] = SHANGHAI_15;
-    const { map, container, overview } = createMap();
+    const { map, container, overview, hover } = createMap();
     installRouteHighlight(map as never);
     selectRoute(container, ROUTE);
     const panel = container.querySelector<HTMLElement>('.route-info-panel');
@@ -144,12 +145,10 @@ describe('installRouteHighlight', () => {
       Links: 'Wikidata · Wikipedia',
     });
     expect(panel.querySelector('.route-info-km').textContent).toBe('42.3 km');
-    // The API's outline replaces the trace through z7 tiles.
-    expect(overview.setData).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        features: [expect.objectContaining({ geometry: expect.objectContaining({ type: 'LineString' }) })],
-      }),
-    );
+    // The API's outline replaces the trace through z7 tiles, with the stops for their labels.
+    const { features } = overview.setData.mock.lastCall[0];
+    expect(features.map(({ geometry }: GeoJSON.Feature) => geometry.type)).toEqual(['LineString', 'Point', 'Point']);
+    expect(features[1].properties).toEqual({ kind: 'stop', name: '顾村公园', here: false, end: true });
     expect(fetched.some((url) => url.includes('.mvt'))).toBe(false);
 
     panel.querySelector<HTMLButtonElement>('.route-info-zoom').click();
@@ -162,6 +161,18 @@ describe('installRouteHighlight', () => {
     );
     panel.querySelector<HTMLButtonElement>('.route-info-station').click();
     expect(map.flyTo).toHaveBeenCalledWith({ center: [121.38, 31.35], zoom: 14 });
+
+    // Pointing at a station marks it on the map.
+    const station = panel.querySelector('.route-info-stations li');
+    station.dispatchEvent(new Event('pointerenter'));
+    expect(hover.setData.mock.lastCall[0].features).toEqual([
+      expect.objectContaining({
+        properties: { name: '顾村公园' },
+        geometry: { type: 'Point', coordinates: [121.38, 31.35] },
+      }),
+    ]);
+    station.dispatchEvent(new Event('pointerleave'));
+    expect(hover.setData.mock.lastCall[0].features).toEqual([]);
   });
 
   it('names a railway line with its number, and an official Japanese line by its source', async () => {

@@ -31,6 +31,8 @@ export const NO_TRAIN_WAYS = ['==', ['get', 'osm_id'], -1];
 const TRAIN_COLOR = '#2563eb';
 // Dispatched (bubbling) by popup route list items; detail is a RouteSelection.
 export const ROUTE_SELECT_EVENT = 'orm:routeselect';
+// The station a pointer is on in the route or timetable panel's list of stops.
+const STATION_HOVER_SOURCE = 'station_hover';
 
 const FALLBACK_COLOR = '#e6007e';
 const OVERVIEW_SOURCE = 'route_highlight_overview';
@@ -130,6 +132,67 @@ const LINE_PAINT = {
   'line-color': ROUTE_COLOR,
   'line-width': ['interpolate', ['linear'], ['zoom'], 4, 2, 10, 3, 16, 5],
 };
+const isStop = ['==', ['get', 'kind'], 'stop'];
+
+// The names of a highlighted route's or train's stops, from the API's stop
+// list. They go above every other layer, so they are placed before (and push
+// aside) the other railway and base map labels, which fade meanwhile; the
+// stop the train was opened at, and then the ends, win among themselves.
+function stopLabelLayer(id: string, source: string, color: unknown): StyleLayerLike {
+  return {
+    id,
+    type: 'symbol',
+    source,
+    filter: isStop,
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-font': ['Noto Sans Bold'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 4, 11, 10, 13, 16, 15],
+      'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+      'text-radial-offset': 0.7,
+      'text-justify': 'auto',
+      'text-padding': 4,
+      'symbol-sort-key': ['case', ['==', ['get', 'here'], true], 0, ['==', ['get', 'end'], true], 1, 2],
+    },
+    paint: {
+      'text-color': color,
+      'text-halo-color': '#ffffff',
+      'text-halo-width': 2,
+    },
+  };
+}
+
+// The hovered stop: a ring and its name, drawn over everything else.
+function stationHoverLayers(): StyleLayerLike[] {
+  return [
+    {
+      id: 'station_hover_ring',
+      type: 'circle',
+      source: STATION_HOVER_SOURCE,
+      paint: {
+        'circle-color': 'rgba(37, 99, 235, 0.22)',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 11, 16, 15],
+        'circle-stroke-color': TRAIN_COLOR,
+        'circle-stroke-width': 2.5,
+      },
+    },
+    {
+      id: 'station_hover_label',
+      type: 'symbol',
+      source: STATION_HOVER_SOURCE,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': 15,
+        'text-anchor': 'bottom',
+        'text-offset': [0, -1.1],
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2.5 },
+    },
+  ];
+}
 
 function trainRouteLayers(lineRanges: SourceRange[]): StyleLayerLike[] {
   const linePaint = { ...LINE_PAINT, 'line-color': TRAIN_COLOR };
@@ -212,7 +275,8 @@ function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
   const lineRanges = sourceRanges(layers, (sourceLayer) => sourceLayer === LINE_SOURCE_LAYER);
   const stationRanges = sourceRanges(layers, (sourceLayer) => sourceLayer.startsWith(STATION_SOURCE_LAYER_PREFIX));
   const filter = ['any', ...LINE_LIST_PROPERTIES.map(routeListFilter)];
-  const overview = { source: OVERVIEW_SOURCE, maxzoom: ROUTE_TRACE_ZOOM, layout: LINE_LAYOUT };
+  // The overview source holds the route's stops too, for their labels.
+  const overview = { source: OVERVIEW_SOURCE, maxzoom: ROUTE_TRACE_ZOOM, filter: ['!', isStop], layout: LINE_LAYOUT };
   return [
     { id: 'route_highlight_overview_casing', type: 'line', ...overview, paint: CASING_PAINT },
     { id: 'route_highlight_overview_line', type: 'line', ...overview, paint: LINE_PAINT },
@@ -252,9 +316,11 @@ function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
 // While a route is highlighted every other railway layer fades to this
 // opacity; stations on the route stay fully visible. Other stations fade only
 // a little: route stop lists in OSM are often incomplete, so a station the
-// route serves may not list it and must stay readable.
+// route serves may not list it and must stay readable. Base map labels fade
+// as much, so the route's stop labels stand out.
 const DIMMED_OPACITY = 0.25;
 const DIMMED_STATION_OPACITY = 0.6;
+const DIMMED_LABEL_OPACITY = 0.6;
 const OPACITY_PROPERTIES: Record<string, string[]> = {
   line: ['line-opacity'],
   fill: ['fill-opacity'],
@@ -262,17 +328,18 @@ const OPACITY_PROPERTIES: Record<string, string[]> = {
   symbol: ['icon-opacity', 'text-opacity'],
 };
 
-function dimmedOpacity(layer: StyleLayerLike) {
+function dimmedOpacity(layer: StyleLayerLike, railway: boolean) {
+  if (!railway) return ['case', DIMMING, DIMMED_LABEL_OPACITY, 1];
   if (!layer['source-layer']?.startsWith(STATION_SOURCE_LAYER_PREFIX)) {
     return ['case', DIMMING, DIMMED_OPACITY, 1];
   }
   return ['case', ['!', DIMMING], 1, routeListFilter('station_routes'), 1, DIMMED_STATION_OPACITY];
 }
 
-function withRouteDimming(layer: StyleLayerLike): StyleLayerLike {
+function withRouteDimming(layer: StyleLayerLike, railway = true): StyleLayerLike {
   const properties = OPACITY_PROPERTIES[layer.type || ''];
   if (!properties) return layer;
-  const factor = dimmedOpacity(layer);
+  const factor = dimmedOpacity(layer, railway);
   const paint = { ...((layer.paint as Record<string, unknown>) || {}) };
   for (const property of properties) {
     paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, factor]);
@@ -282,15 +349,28 @@ function withRouteDimming(layer: StyleLayerLike): StyleLayerLike {
 
 // Adds the highlight layers right above the last line layer drawing railway
 // lines (tunnel covers included) and below every railway label, so station
-// names stay readable over the highlight, and lets the other railway layers
-// fade while a route is highlighted.
+// names stay readable over the highlight, and the stop labels and hovered stop
+// on top; lets the other railway layers and the base map's labels fade while a
+// route is highlighted.
 export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwaySources: readonly string[]): T {
   const layers = style.layers || [];
   const railway = new Set(railwaySources);
   const isRailway = (layer: StyleLayerLike) => !!layer.source && railway.has(layer.source);
   const highlight = routeHighlightLayers(layers.filter(isRailway)).map(withRailwayOverlayVisibility);
   if (highlight.length === 0) return style;
-  const dimmed = layers.map((layer) => (isRailway(layer) ? withRouteDimming(layer) : layer));
+  const labels = [
+    stopLabelLayer('route_highlight_stop_labels', OVERVIEW_SOURCE, '#0f172a'),
+    stopLabelLayer('train_route_stop_labels', TRAIN_ROUTE_SOURCE, [
+      'case',
+      ['==', ['get', 'here'], true],
+      TRAIN_COLOR,
+      '#0f172a',
+    ]),
+    ...stationHoverLayers(),
+  ].map(withRailwayOverlayVisibility);
+  const dimmed = layers.map((layer) =>
+    isRailway(layer) ? withRouteDimming(layer) : layer.type === 'symbol' ? withRouteDimming(layer, false) : layer,
+  );
   const insertAt =
     layers.findLastIndex(
       (layer) => isRailway(layer) && layer.type === 'line' && layer['source-layer'] === LINE_SOURCE_LAYER,
@@ -304,10 +384,11 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
   const sources = { ...((style.sources as Record<string, unknown>) || {}) };
   sources[OVERVIEW_SOURCE] = { type: 'geojson', data: EMPTY_GEOMETRY };
   sources[TRAIN_ROUTE_SOURCE] = { type: 'geojson', data: EMPTY_GEOMETRY };
+  sources[STATION_HOVER_SOURCE] = { type: 'geojson', data: EMPTY_GEOMETRY };
   return {
     ...style,
     sources,
-    layers: [...dimmed.slice(0, insertAt), ...highlight, ...dimmed.slice(insertAt)],
+    layers: [...dimmed.slice(0, insertAt), ...highlight, ...dimmed.slice(insertAt), ...labels],
     state,
   };
 }
@@ -315,16 +396,63 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
 const OSM_RELATION = 'https://www.openstreetmap.org/relation/';
 const OSM_EDIT = 'https://www.openstreetmap.org/edit?relation=';
 
-// Encoded outline polylines as the zoomed-out highlight's geometry.
-function overviewGeometry(lines: string[]): RouteGeometry {
+type Stop = { name: string; position: [number, number] | null };
+
+// Stops with a position as labeled points; `here` is the stop to put first.
+export function stopFeatures(stops: Stop[], here: string | null = null): GeoJSON.Feature[] {
+  return stops.flatMap((stop, index): GeoJSON.Feature[] =>
+    stop.position
+      ? [
+          {
+            type: 'Feature',
+            properties: {
+              kind: 'stop',
+              name: stop.name,
+              here: stop.name === here,
+              end: index === 0 || index === stops.length - 1,
+            },
+            geometry: { type: 'Point', coordinates: stop.position },
+          },
+        ]
+      : [],
+  );
+}
+
+// Encoded outline polylines as the zoomed-out highlight's geometry, with the
+// stops for their labels.
+function overviewGeometry(lines: string[], stops: Stop[]): RouteGeometry {
   return {
     type: 'FeatureCollection',
-    features: lines.map((line) => ({
-      type: 'Feature',
-      properties: {},
-      geometry: { type: 'LineString', coordinates: decodePolyline(line) },
-    })),
+    features: [
+      ...lines.map(
+        (line): GeoJSON.Feature => ({
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: decodePolyline(line) },
+        }),
+      ),
+      ...stopFeatures(stops),
+    ],
   };
+}
+
+// Marks the stop a pointer is on in a panel's list, or none.
+export function setStationHover(map: { getSource(id: string): unknown }, stop: Stop | null) {
+  (map.getSource(STATION_HOVER_SOURCE) as GeoJsonSourceLike | undefined)?.setData({
+    type: 'FeatureCollection',
+    features: stop?.position
+      ? [{ type: 'Feature', properties: { name: stop.name }, geometry: { type: 'Point', coordinates: stop.position } }]
+      : [],
+  });
+}
+
+// Marks a list item's stop on the map while a pointer or the focus is on it.
+export function hoverStopOnMap(item: HTMLElement, stop: Stop, hover: (stop: Stop | null) => void) {
+  if (!stop.position) return;
+  item.addEventListener('pointerenter', () => hover(stop));
+  item.addEventListener('pointerleave', () => hover(null));
+  item.addEventListener('focusin', () => hover(stop));
+  item.addEventListener('focusout', () => hover(null));
 }
 
 // The extent of a traced route, or null before the trace has any of it.
@@ -361,6 +489,7 @@ type PanelActions = {
   close(): void;
   zoomTo(bounds: Bounds): void;
   flyTo(position: [number, number]): void;
+  hover(stop: Stop | null): void;
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -412,6 +541,7 @@ class RoutePanel {
   // Opens on a selection with what the tiles know; fill() adds the rest.
   show(route: RouteSelection | null) {
     this._bounds = null;
+    this._actions.hover(null);
     this.panel.classList.toggle('route-info-panel-visible', Boolean(route));
     this.panel.setAttribute('aria-hidden', route ? 'false' : 'true');
     this.panel.inert = !route;
@@ -487,6 +617,7 @@ class RoutePanel {
       const list = el('ol', 'route-info-stations', this._body);
       for (const stop of stops) {
         const item = el('li', undefined, list);
+        hoverStopOnMap(item, stop, this._actions.hover);
         const name = el(stop.position ? 'button' : 'span', 'route-info-station', item);
         name.textContent = stop.name;
         if (stop.km !== null && stop.km !== undefined) el('span', 'route-info-km', item).textContent = `${stop.km} km`;
@@ -560,6 +691,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     zoomTo: (bounds) =>
       map.fitBounds?.(bounds, { padding: { top: 64, right: 72, bottom: 48, left: 380 }, maxZoom: 14 }),
     flyTo: (center) => map.flyTo?.({ center, zoom: Math.max(map.getZoom?.() ?? 0, 14) }),
+    hover: (stop) => setStationHover(map, stop),
   });
 
   function markListItems() {
@@ -622,7 +754,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     }
     if (signal.aborted) return;
     panel.fill(details);
-    overview()?.setData(overviewGeometry(details.overview));
+    overview()?.setData(overviewGeometry(details.overview, details.stops ?? []));
   }
 
   function select(route: RouteSelection | null) {

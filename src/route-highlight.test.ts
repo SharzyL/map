@@ -47,9 +47,11 @@ describe('addRouteHighlightToStyle', () => {
     .filter(([, source]) => source.type === 'vector' && typeof source.url === 'string' && source.url.startsWith('/'))
     .map(([name]) => name);
   const styled = addRouteHighlightToStyle(ormStyle, railwaySources);
-  // The highlight's layers, a train route's among them.
+  // The highlight's layers, a train route's among them; stop labels and the hovered stop go on top instead.
+  const onTop = ['route_highlight_stop_labels', 'train_route_stop_labels', 'station_hover_ring', 'station_hover_label'];
   const highlight = styled.layers.filter(
-    (layer) => layer.id.startsWith('route_highlight_') || layer.id.startsWith('train_route_'),
+    (layer) =>
+      (layer.id.startsWith('route_highlight_') || layer.id.startsWith('train_route_')) && !onTop.includes(layer.id),
   );
 
   it('produces a valid style with the highlight state', () => {
@@ -117,6 +119,10 @@ describe('addRouteHighlightToStyle', () => {
     );
   });
 
+  it('labels the stops and marks the hovered one above every other layer', () => {
+    expect(styled.layers.slice(-onTop.length).map((layer) => layer.id)).toEqual(onTop);
+  });
+
   function opacity(layerId: string, property: string, routeId: string, properties: Record<string, unknown> = {}) {
     const layer = styled.layers.find((candidate) => candidate.id === layerId);
     const value = (layer.paint as Record<string, unknown>)[property];
@@ -148,10 +154,18 @@ describe('addRouteHighlightToStyle', () => {
     expect(opacity(station.id, 'text-opacity', '', {})).toBe(1);
   });
 
-  it('leaves the highlight and non-railway layers at full opacity', () => {
+  it('fades other labels a little while a route is highlighted', () => {
+    const label = styled.layers.find(
+      (layer) => layer.type === 'symbol' && 'source' in layer && !railwaySources.includes(layer.source as string),
+    );
+    expect(opacity(label.id, 'text-opacity', '')).toBe(1);
+    expect(opacity(label.id, 'text-opacity', '5611108')).toBeCloseTo(0.6);
+  });
+
+  it('leaves the highlight and other non-railway layers at full opacity', () => {
     const original = new Map(ormStyle.layers.map((layer) => [layer.id, layer]));
     for (const layer of styled.layers) {
-      if (!('source' in layer) || !railwaySources.includes(layer.source as string)) {
+      if (layer.type !== 'symbol' && (!('source' in layer) || !railwaySources.includes(layer.source as string))) {
         if (original.has(layer.id)) expect(layer).toEqual(original.get(layer.id));
       }
     }

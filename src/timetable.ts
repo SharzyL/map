@@ -13,7 +13,8 @@
 // of one train. The API finds the station by its OSM elements, else by name.
 //
 // A train's view draws its route on the map (train-route.ts) and gives each
-// stop the API placed on OSM a button that flies the map there.
+// stop the API placed on OSM a button that flies the map there; pointing at a
+// stop marks it on the map.
 import { createPanelShell, el } from './map-panel.js';
 import {
   addDays,
@@ -35,6 +36,7 @@ import {
   type TrainRoute,
   type TimetableDay,
 } from './norikae.js';
+import { hoverStopOnMap } from './route-highlight.js';
 import type { TrainRouteDrawer } from './train-route.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 
@@ -213,8 +215,10 @@ class TimetablePanel {
       .catch(() => {});
   }
 
-  // A button that flies the map to a stop, or an empty cell keeping the column.
+  // A button that flies the map to a stop, or an empty cell keeping the column;
+  // pointing at the stop's row marks it on the map.
   private _locate(item: HTMLElement, name: string, position: [number, number] | null | undefined) {
+    if (position && this._route) hoverStopOnMap(item, { name, position }, (stop) => this._route.hover(stop));
     if (!position || !this._map.flyTo) {
       el('span', 'timetable-stop-locate', item);
       return;

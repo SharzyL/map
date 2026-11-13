@@ -146,7 +146,7 @@ function setup() {
     }),
   );
   const map = { getContainer: () => container, flyTo: vi.fn(), getZoom: () => 10 };
-  const route = { show: vi.fn(), clear: vi.fn() };
+  const route = { show: vi.fn(), hover: vi.fn(), clear: vi.fn() };
   const panel = installTimetable(map, route);
   return { container, panel, requests, map, route };
 }
@@ -192,6 +192,12 @@ describe('timetable panel', () => {
     expect(locate).toHaveLength(1);
     locate[0].click();
     expect(map.flyTo).toHaveBeenCalledWith({ center: [139.7016, 35.6587], zoom: 14 });
+    // Pointing at a placed stop marks it on the map.
+    const placed = locate[0].closest('li');
+    placed.dispatchEvent(new Event('pointerenter'));
+    expect(route.hover).toHaveBeenLastCalledWith({ name: '渋谷', position: [139.7016, 35.6587] });
+    placed.dispatchEvent(new Event('pointerleave'));
+    expect(route.hover).toHaveBeenLastCalledWith(null);
     const clears = route.clear.mock.calls.length;
 
     root.querySelector<HTMLButtonElement>('.timetable-back').click();

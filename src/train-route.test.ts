@@ -35,7 +35,7 @@ describe('trainRouteFeatures', () => {
   it('draws the outline, partial ways, straight legs and placed stops', () => {
     const features = trainRouteFeatures(ROUTE, '北京南').features;
     expect(features.map(({ properties }) => properties.kind)).toEqual(['overview', 'partial', 'straight', 'stop']);
-    expect(features[3].properties).toEqual({ kind: 'stop', name: '北京南', here: true });
+    expect(features[3].properties).toEqual({ kind: 'stop', name: '北京南', here: true, end: true });
   });
 });
 

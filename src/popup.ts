@@ -13,6 +13,7 @@ import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter, type HoveredLine }
 import { renderMarkdown } from './markdown.js';
 import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
 import type { LineListQuery, LineLists } from './route-trace.js';
+import { UI_PANEL_OPEN_EVENT, type UiPanelOpenDetail } from './ui-panels.js';
 import { buildWeatherDashboardUrl, buildWeatherRouteSummary } from './weather-dashboard.js';
 
 // ---------------------------------------------------------------------------
@@ -1857,6 +1858,13 @@ export function installOrmPopups(
   map.getContainer().addEventListener('annotation:editopen', () => {
     popup?.remove();
     popup = null;
+  });
+  // A station's timetable takes over from its info box.
+  map.getContainer().addEventListener(UI_PANEL_OPEN_EVENT, (event) => {
+    if ((event as CustomEvent<UiPanelOpenDetail>).detail?.id === 'timetable') {
+      popup?.remove();
+      popup = null;
+    }
   });
 
   // Railway features are the ones whose source layer has a catalog entry.

@@ -5,9 +5,16 @@
 // GeoJSON source: the outline below z7, the parts of ways it covers partly,
 // legs without a path as dashed straight lines, and its stops. The layers and
 // the dimming of other railways come with the route highlight's
-// (route-highlight.ts).
+// (route-highlight.ts), as does the mark on the stop hovered in the timetable.
 import { decodePolyline, type TrainRoute } from './norikae.js';
-import { NO_TRAIN_WAYS, TRAIN_ROUTE_SOURCE, TRAIN_ROUTE_STATE, TRAIN_ROUTE_WAY_LAYER } from './route-highlight.js';
+import {
+  NO_TRAIN_WAYS,
+  setStationHover,
+  stopFeatures,
+  TRAIN_ROUTE_SOURCE,
+  TRAIN_ROUTE_STATE,
+  TRAIN_ROUTE_WAY_LAYER,
+} from './route-highlight.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
 
 type Bounds = [[number, number], [number, number]];
@@ -38,17 +45,7 @@ export function trainRouteFeatures(route: TrainRoute, here: string | null): GeoJ
       ...route.legs.flatMap((leg) =>
         leg.method === 'straight' && leg.straight ? [line('straight', leg.straight)] : [],
       ),
-      ...route.stops.flatMap((stop): GeoJSON.Feature[] =>
-        stop.position
-          ? [
-              {
-                type: 'Feature',
-                properties: { kind: 'stop', name: stop.name, here: stop.name === here },
-                geometry: { type: 'Point', coordinates: stop.position },
-              },
-            ]
-          : [],
-      ),
+      ...stopFeatures(route.stops, here),
     ],
   };
 }
@@ -61,6 +58,7 @@ export function trainWaysFilter(ways: number[]) {
 export function installTrainRoute(map: TrainRouteMap) {
   const wayLayers = () => (map.getStyle().layers ?? []).filter(({ id }) => TRAIN_ROUTE_WAY_LAYER.test(id));
   let shown = false;
+  let hovered = false;
 
   const draw = (route: TrainRoute | null, here: string | null = null) => {
     const filter = trainWaysFilter(route ? [...new Set(route.ways)] : []);
@@ -85,7 +83,14 @@ export function installTrainRoute(map: TrainRouteMap) {
         { padding, maxZoom: 14, duration: 600 },
       );
     },
+    // Marks the stop a pointer is on in the timetable, or none.
+    hover(stop: { name: string; position: [number, number] | null } | null) {
+      if (!stop && !hovered) return;
+      hovered = Boolean(stop);
+      setStationHover(map, stop);
+    },
     clear() {
+      this.hover(null);
       if (shown) draw(null);
     },
   };

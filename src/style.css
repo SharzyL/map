@@ -2189,16 +2189,23 @@ body,
 }
 
 /* Station timetable (src/timetable.ts) and route panel (src/route-highlight.ts):
-   left of the map, below the search box */
+   left of the map, below the search box and lined up with it (MapLibre puts
+   controls 10px in) */
 .timetable-panel,
 .route-info-panel {
   top: 64px;
   right: auto;
-  left: 12px;
+  left: 10px;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: min(340px, calc(100vw - 72px));
   max-height: calc(100vh - 88px);
   transform: translateX(-18px);
+}
+
+/* Again after the slide-in offset above, which would otherwise win. */
+.timetable-panel-visible,
+.route-info-panel-visible {
+  transform: translateX(0);
 }
 
 /* The route panel has no back row or source link: header and body only. */

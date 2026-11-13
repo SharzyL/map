@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildFeatureCatalog, installOrmPopups, popupContent, popupRoom } from './popup.js';
+import { emitUiPanelOpen } from './ui-panels.js';
 import { ROUTE_SELECT_EVENT } from './route-highlight.js';
 
 // Attributes of a real light rail segment and station in Frankfurt (OpenRailwayMap tiles).
@@ -284,7 +285,8 @@ describe('unstructured popups', () => {
 });
 
 describe('installOrmPopups', () => {
-  // A map whose click lands on the given features; returns the popups opened.
+  // A map whose click lands on the given features; returns the popups opened,
+  // with the map container and a count of popups removed.
   function clickMap(
     features: Array<{ source: string; sourceLayer?: string; properties?: Record<string, unknown> }>,
     options = {},
@@ -303,6 +305,7 @@ describe('installOrmPopups', () => {
       project: () => ({ y: 100 }),
     };
     const opened: Node[] = [];
+    let removed = 0;
     class Popup {
       element = document.createElement('div');
       setLngLat() {
@@ -322,7 +325,9 @@ describe('installOrmPopups', () => {
         return this;
       }
       on() {}
-      remove() {}
+      remove() {
+        removed += 1;
+      }
     }
     const maplibre = {
       LngLat: {
@@ -332,7 +337,7 @@ describe('installOrmPopups', () => {
     };
     installOrmPopups(map as never, maplibre as never, buildFeatureCatalog(), options);
     handlers.click({ point: [0, 0], lngLat: { lng: 8.6, lat: 50.1 } });
-    return opened;
+    return Object.assign(opened, { container, removed: () => removed });
   }
 
   it('opens a popup for railway features whatever their source is called', () => {
@@ -370,10 +375,20 @@ describe('installOrmPopups', () => {
     );
   });
 
+  it('closes a station’s info box when its timetable opens', () => {
+    const opened = clickMap([
+      { source: 'openrailwaymap', sourceLayer: 'standard_railway_text_stations', properties: STATION_PROPERTIES },
+    ]);
+    emitUiPanelOpen(opened.container, 'route');
+    expect(opened.removed()).toBe(0);
+    emitUiPanelOpen(opened.container, 'timetable');
+    expect(opened.removed()).toBe(1);
+  });
+
   it('ignores base map features', () => {
     expect(
       clickMap([{ source: 'openmaptiles', sourceLayer: 'transportation', properties: { class: 'rail' } }]),
-    ).toEqual([]);
+    ).toHaveLength(0);
   });
 });
 
