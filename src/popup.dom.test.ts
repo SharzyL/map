@@ -215,6 +215,7 @@ describe('structured railway line popup', () => {
       start_date: '1846',
       opening_date: '2027-12',
       operator_color: 'hsl(120, 100%, 30%)',
+      line_color: '#ed772d',
     });
     const rows = Object.fromEntries(sections.Line);
     expect(rows.Type).toBe('Main · Double track · Heritage railway · Rack (Abt) · Bridge');

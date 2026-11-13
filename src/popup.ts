@@ -562,8 +562,9 @@ export function buildFeatureCatalog() {
       'gaugeint2',
       'train_protection_rank',
       'train_protection_construction_rank',
-      // Read by the Operator color mode.
+      // Read by the Operator and the default color modes.
       'operator_color',
+      'line_color',
     ],
     properties: {
       // In service is the norm, so the Type row only names other states.
