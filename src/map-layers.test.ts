@@ -8,6 +8,7 @@ import {
   loadMapLayerSettings,
   mapLayerGlobalState,
   normalizeMapLayerSettings,
+  parseCssColor,
   saveMapLayerSettings,
   withBaseMapLabelLanguage,
   withBaseMapSaturation,
@@ -148,6 +149,62 @@ describe('base map saturation', () => {
     expect(rgb(evaluate(water.paint['fill-color'], fillColor, { saturation: 1 }))).toEqual([158, 189, 255]);
     expect(rgb(evaluate(water.paint['fill-color'], fillColor, { saturation: 0 }))).toEqual([187, 187, 187]);
     expect(rgb(evaluate(water.paint['fill-color'], fillColor, { saturation: 0.5 }))).toEqual([173, 188, 221]);
+  });
+
+  it('works literal colors out ahead, leaving a comparison at full saturation', () => {
+    const water = withBaseMapSaturation({ id: 'water', type: 'fill', paint: { 'fill-color': '#9ebdff' } });
+    const text = JSON.stringify(water.paint['fill-color']);
+    expect(text).not.toContain('to-rgba');
+    expect(text).not.toContain('"let"');
+    expect(water.paint['fill-color']).toEqual([
+      'case',
+      ['>=', ['to-number', ['global-state', 'baseSaturation']], 1],
+      ['rgba', 158, 189, 255, 1],
+      expect.anything(),
+    ]);
+  });
+
+  it('desaturates case and match branches one by one, and data driven colors at run time', () => {
+    const branches = withBaseMapSaturation({
+      id: 'landuse',
+      type: 'fill',
+      paint: {
+        'fill-color': [
+          'match',
+          ['get', 'class'],
+          'park',
+          '#00ff00',
+          ['wood', 'forest'],
+          'hsl(120, 100%, 25%)',
+          '#ff0000',
+        ],
+      },
+    });
+    expect(JSON.stringify(branches.paint['fill-color'])).not.toContain('to-rgba');
+    for (const [kind, expected] of [
+      ['park', 150],
+      ['forest', 75],
+      ['other', 76],
+    ] as const) {
+      const color = rgb(evaluate(branches.paint['fill-color'], fillColor, { saturation: 0 }, { class: kind }));
+      expect(color).toEqual([expected, expected, expected]);
+    }
+    const dataDriven = withBaseMapSaturation({ id: 'x', type: 'fill', paint: { 'fill-color': ['get', 'color'] } });
+    expect(JSON.stringify(dataDriven.paint['fill-color'])).toContain('to-rgba');
+    expect(rgb(evaluate(dataDriven.paint['fill-color'], fillColor, { saturation: 0 }, { color: '#ff0000' }))).toEqual([
+      76, 76, 76,
+    ]);
+  });
+
+  it('parses the CSS colors base map styles use', () => {
+    expect(parseCssColor('#fff')).toEqual([255, 255, 255, 1]);
+    expect(parseCssColor('#11223380')).toEqual([17, 34, 51, 128 / 255]);
+    expect(parseCssColor('rgb(158,189,255)')).toEqual([158, 189, 255, 1]);
+    expect(parseCssColor('rgba(255, 255, 255, 0.5)')).toEqual([255, 255, 255, 0.5]);
+    expect(parseCssColor('hsl(0, 100%, 50%)')).toEqual([255, 0, 0, 1]);
+    expect(parseCssColor('hsla(240,100%,50%,0.25)')).toEqual([0, 0, 255, 0.25]);
+    expect(parseCssColor('hsl(0,0%,70%)')?.slice(0, 3).map(Math.round)).toEqual([179, 179, 179]);
+    expect(parseCssColor('red')).toBeNull();
   });
 
   it('desaturates zoom curves and legacy stop functions stop by stop', () => {

@@ -137,8 +137,68 @@ export function withContourVisibility<T extends StyleLayerLike>(layer: T): T {
 
 const SATURATION = ['to-number', ['global-state', SATURATION_STATE]];
 
+// A CSS color as [r, g, b] (0-255) and alpha, for the forms base map styles
+// use (#hex, rgb(a), hsl(a)); null for anything else.
+export function parseCssColor(value: string): [number, number, number, number] | null {
+  const text = value.trim().toLowerCase();
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(text)?.[1];
+  if (hex) {
+    const digits = hex.length <= 4 ? [...hex].map((digit) => digit + digit) : hex.match(/../g);
+    const [r, g, b, a = 255] = digits.map((pair) => parseInt(pair, 16));
+    return [r, g, b, a / 255];
+  }
+  const fn = /^(rgba?|hsla?)\(([^)]*)\)$/.exec(text);
+  if (!fn) return null;
+  const parts = fn[2].split(/[\s,/]+/).filter(Boolean);
+  if (parts.length < 3 || parts.length > 4) return null;
+  const number = (part: string, percentOf: number) =>
+    part.endsWith('%') ? (parseFloat(part) / 100) * percentOf : parseFloat(part.replace(/deg$/, ''));
+  const alpha = parts[3] === undefined ? 1 : number(parts[3], 1);
+  let rgb: number[];
+  if (fn[1].startsWith('rgb')) {
+    rgb = parts.slice(0, 3).map((part) => number(part, 255));
+  } else {
+    const [h, sat, light] = [number(parts[0], 360), number(parts[1], 1), number(parts[2], 1)];
+    const k = (n: number) => (n + h / 30) % 12;
+    const chroma = sat * Math.min(light, 1 - light);
+    rgb = [0, 8, 4].map((n) => 255 * (light - chroma * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
+  }
+  const values = [...rgb, alpha];
+  return values.every(Number.isFinite) ? (values as [number, number, number, number]) : null;
+}
+
 // Mixes a color toward its gray (Rec. 601 luma) by the saturation setting.
-function desaturate(color: unknown, saturation: unknown = SATURATION) {
+// MapLibre re-evaluates expressions that read global state on every style
+// recalculation, which runs on every zoom frame, so colors known when the
+// style is built are worked out here: a literal becomes plain numbers, and
+// with the saturation setting at 1 (its default) only a comparison is left.
+// case and match branches are rewritten one by one; other colors (data driven
+// ones) mix at run time.
+function desaturate(color: unknown, saturation: unknown = SATURATION): unknown {
+  const literal = typeof color === 'string' ? parseCssColor(color) : null;
+  if (literal) {
+    const [r, g, b, a] = literal;
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (typeof saturation === 'number') {
+      const mix = (channel: number) => gray + saturation * (channel - gray);
+      return ['rgba', mix(r), mix(g), mix(b), a];
+    }
+    const mix = (channel: number) => ['+', gray, ['*', saturation, channel - gray]];
+    return ['case', ['>=', saturation, 1], ['rgba', r, g, b, a], ['rgba', mix(r), mix(g), mix(b), a]];
+  }
+  if (Array.isArray(color) && color[0] === 'to-color' && color.length === 2) return desaturate(color[1], saturation);
+  if (Array.isArray(color) && color[0] === 'case') {
+    // ['case', condition, output, ..., fallback]
+    return color.map((item, index) =>
+      index > 0 && (index % 2 === 0 || index === color.length - 1) ? desaturate(item, saturation) : item,
+    );
+  }
+  if (Array.isArray(color) && color[0] === 'match') {
+    // ['match', input, labels, output, ..., fallback]
+    return color.map((item, index) =>
+      index > 2 && (index % 2 === 1 || index === color.length - 1) ? desaturate(item, saturation) : item,
+    );
+  }
   const channel = (index: number) => ['at', index, ['var', 'rgba']];
   const mix = (index: number) => [
     '+',
