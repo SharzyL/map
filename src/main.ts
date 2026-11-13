@@ -24,6 +24,7 @@ import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlig
 import { lineListsNear } from './route-trace.js';
 import { installTimetable, timetableButton } from './timetable.js';
 import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
+import { installLoadStatus } from './load-status.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -725,6 +726,7 @@ async function init() {
     installRouteHighlight(map);
     installTimetable(map);
     installCredits(map);
+    installLoadStatus(map, style.sources || {}, [ORM_SOURCE, HISTORICAL_RAILWAY_SOURCE], ['contourSource']);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }
