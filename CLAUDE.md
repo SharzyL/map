@@ -37,6 +37,13 @@ Test conventions:
 - `*.dom.test.ts` files opt into happy-dom with a `// @vitest-environment happy-dom` header; other unit tests run in Node.
 - `*.mobile.spec.ts` only run in the `mobile-chromium` Playwright project (Pixel 7); other specs run in `chromium`.
 - Playwright's web server starts Vite with `SCREENSHOT_FIXTURES=1` and `CLOUDFLARE_VITE_REMOTE_BINDINGS=0`. Set `PLAYWRIGHT_BASE_URL` to test an already running server instead. `e2e/support/` holds the shared fixtures (map fixture with mocked external services, map interaction helpers, UI invariant audit).
+- Locally (NixOS) Playwright's downloaded browsers do not exist, so run the e2e tests on the system Chromium, which also turns videos off (they need Playwright's ffmpeg):
+
+  ```bash
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(readlink -f $(which chromium)) pnpm test:e2e
+  ```
+
+  Behind an HTTP proxy (`HTTP_PROXY` set, as in Claude Code's sandbox) also set `NO_PROXY=127.0.0.1,localhost`: otherwise the proxy answers Playwright's check of the web server URL, Playwright takes the server as already running and never starts Vite, and every test fails with `ERR_CONNECTION_REFUSED`.
 
 Local dev environment notes:
 

@@ -5,6 +5,10 @@ const env =
 const port = Number(env.PLAYWRIGHT_PORT || 4178);
 const baseURL = env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${port}`;
 const isCi = Boolean(env.CI);
+// A Chromium of the system's instead of Playwright's download (NixOS has no
+// working `playwright install`); videos are off then, since they need
+// Playwright's ffmpeg build.
+const executablePath = env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,7 +29,8 @@ export default defineConfig({
     },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: executablePath ? 'off' : 'retain-on-failure',
+    launchOptions: { executablePath },
   },
   projects: [
     {
