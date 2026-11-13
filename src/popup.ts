@@ -66,6 +66,8 @@ type ListSpec = {
   selectTitle?: string;
   // Shown as a row of this section (catalogs with sections) instead of below them.
   section?: string;
+  // Railway lines rather than transit routes, for the route panel.
+  kind?: 'route' | 'line';
 };
 type FeatureLinks = typeof FEATURE_LINKS;
 type FeaturePropertyDefinition = {
@@ -650,6 +652,7 @@ export function buildFeatureCatalog() {
           properties: ['route_id', 'color', 'label', 'ref'],
           selectTitle: 'Highlight this line on the map',
           section: 'Line',
+          kind: 'line',
         },
       },
       line_routes: {
@@ -1411,7 +1414,18 @@ function renderListItems(ul: HTMLElement, value: unknown, list: ListSpec) {
     const routeId = list.routeIdProperty && group[list.routeIdProperty];
     if (routeId) {
       const selectionLabel = showDetail ? `${label} · ${detail}` : label;
-      makeRouteSelectable(li, { id: routeId, color: groupColor, label: selectionLabel }, list.selectTitle);
+      makeRouteSelectable(
+        li,
+        {
+          id: routeId,
+          color: groupColor,
+          label: selectionLabel,
+          kind: list.kind ?? 'route',
+          name: label,
+          ref: detail || null,
+        },
+        list.selectTitle,
+      );
     }
     if (groupColor) {
       const marker = el('span', 'orm-color-marker', li);

@@ -117,7 +117,7 @@ CLOUDFLARE_VITE_REMOTE_BINDINGS=0 pnpm dev
   GPX/GeoJSON import from `layer-manager.ts` mounted inside), the weather picker, and Locate
   (`cursor-position.ts`: coordinates and elevation under the pointer).
 - `popup.ts` renders info boxes; `route-highlight.ts` and `route-trace.ts` highlight a whole route or
-  railway line picked from one.
+  railway line picked from one, which a panel beside the map then describes.
 - `layer-store.ts` keeps imported layers and annotations in browser memory; they are lost on reload
   unless exported.
 - `scripts/styles/` generates the railway style, `scripts/tiles/` builds the tile archive.

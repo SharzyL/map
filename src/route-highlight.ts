@@ -10,10 +10,11 @@
 // segment. Below z7 no tiles carry these ids, so route-trace.ts collects the
 // geometry from z7 tiles and a GeoJSON overlay draws it.
 import { mapZoomOutputs } from './map-layers.js';
-import { el, stopMapControlPropagation } from './map-panel.js';
+import { createPanelShell, el } from './map-panel.js';
 import { withRailwayOverlayVisibility } from './railway-filter.js';
 import { ROUTE_TRACE_ZOOM, tilesInBounds, traceRoute, type RouteGeometry } from './route-trace.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
+import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 
 export const ROUTE_HIGHLIGHT_ID_STATE = 'highlightedRouteId';
 export const ROUTE_HIGHLIGHT_COLOR_STATE = 'highlightedRouteColor';
@@ -27,7 +28,18 @@ const LINE_SOURCE_LAYER = 'railway_line_high';
 const STATION_SOURCE_LAYER_PREFIX = 'standard_railway_text_stations';
 
 // `at` is where it was picked ([lng, lat]), so the zoomed-out trace can start there.
-export type RouteSelection = { id: string; color: string | null; label: string | null; at?: [number, number] };
+// `kind` says whether it is a transit route or a railway line (route=railway,
+// or in Japan an official line with a jp- id); `name` and `ref` are the list
+// entry's label and number.
+export type RouteSelection = {
+  id: string;
+  color: string | null;
+  label: string | null;
+  at?: [number, number];
+  kind?: 'route' | 'line';
+  name?: string | null;
+  ref?: string | null;
+};
 
 type StyleLayerLike = {
   id?: string;
@@ -49,6 +61,7 @@ type BoundsLike = { getWest(): number; getSouth(): number; getEast(): number; ge
 export type RouteHighlightMap = Parameters<typeof setGlobalStatePropertyWhenReady>[0] & {
   getContainer(): HTMLElement;
   getBounds(): BoundsLike;
+  fitBounds?(bounds: [[number, number], [number, number]], options?: Record<string, unknown>): unknown;
   getSource(id: string): unknown;
   getStyle(): { layers?: StyleLayerLike[]; sources?: Record<string, object> };
 };
@@ -205,41 +218,133 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
   };
 }
 
-// A chip naming the highlighted route, with a button to clear it.
-class RouteHighlightChip {
-  readonly element: HTMLElement;
-  private _marker: HTMLElement;
-  private _label: HTMLElement;
+const OSM_RELATION = 'https://www.openstreetmap.org/relation/';
+const OSM_EDIT = 'https://www.openstreetmap.org/edit?relation=';
 
-  constructor(onClear: () => void) {
-    this.element = el('div', 'route-highlight-chip');
-    this.element.hidden = true;
-    this.element.setAttribute('role', 'status');
-    stopMapControlPropagation(this.element);
-    this._marker = el('span', 'orm-color-marker', this.element);
-    this._label = el('span', 'route-highlight-label', this.element);
-    const clear = el('button', 'route-highlight-clear', this.element);
-    clear.type = 'button';
-    clear.title = 'Clear highlight';
-    clear.setAttribute('aria-label', 'Clear highlight');
-    clear.textContent = 'x';
-    clear.addEventListener('click', onClear);
+// The extent of a traced route, or null before the trace has any of it.
+function geometryBounds(geometry: RouteGeometry): [[number, number], [number, number]] | null {
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  const visit = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    if (typeof value[0] === 'number') {
+      const [lng, lat] = value as number[];
+      west = Math.min(west, lng);
+      east = Math.max(east, lng);
+      south = Math.min(south, lat);
+      north = Math.max(north, lat);
+      return;
+    }
+    value.forEach(visit);
+  };
+  for (const feature of geometry.features) {
+    if ('coordinates' in feature.geometry) visit(feature.geometry.coordinates);
+  }
+  return west <= east
+    ? [
+        [west, south],
+        [east, north],
+      ]
+    : null;
+}
+
+// A panel describing the highlighted route or line, beside the map like the
+// timetable; closing it clears the highlight. Its stations will come from the
+// route API, which knows a relation's stops in order; the tiles only tell
+// which stations in loaded tiles list it, in no order.
+class RoutePanel {
+  readonly panel: HTMLElement;
+  private readonly _container: HTMLElement;
+  private readonly _title: HTMLElement;
+  private readonly _summary: HTMLElement;
+  private readonly _body: HTMLElement;
+  private readonly _onZoom: (bounds: [[number, number], [number, number]]) => void;
+  private _zoom: HTMLButtonElement | null = null;
+  private _bounds: [[number, number], [number, number]] | null = null;
+
+  constructor(
+    container: HTMLElement,
+    onClose: () => void,
+    onZoom: (bounds: [[number, number], [number, number]]) => void,
+  ) {
+    this._container = container;
+    const shell = createPanelShell(container, 'route-info', {
+      title: 'Route',
+      label: 'Highlighted route',
+      closeLabel: 'Clear highlight',
+      onClose,
+    });
+    this.panel = shell.panel;
+    this._title = this.panel.querySelector('.route-info-title');
+    this._summary = shell.summary;
+    this._body = shell.body;
+    this._onZoom = onZoom;
+    this.panel.inert = true;
   }
 
   show(route: RouteSelection | null) {
-    this.element.hidden = !route;
+    this._bounds = null;
+    this.panel.classList.toggle('route-info-panel-visible', Boolean(route));
+    this.panel.setAttribute('aria-hidden', route ? 'false' : 'true');
+    this.panel.inert = !route;
     if (!route) return;
-    this._marker.style.backgroundColor = route.color || FALLBACK_COLOR;
-    this._label.textContent = route.label || `Route ${route.id}`;
-    this.element.title = this._label.textContent;
+    emitUiPanelOpen(this._container, 'route');
+    const line = route.kind === 'line';
+    const official = route.id.startsWith('jp-');
+    this._title.textContent = route.name || route.label || `${line ? 'Line' : 'Route'} ${route.id}`;
+    this._summary.textContent = [line ? 'Railway line' : 'Transit route', route.ref].filter(Boolean).join(' · ');
+
+    const fields = el('dl', 'route-info-fields');
+    const row = (label: string) => {
+      el('dt', undefined, fields).textContent = label;
+      return el('dd', undefined, fields);
+    };
+    if (route.ref) row('Number').textContent = route.ref;
+    if (route.color) {
+      const color = row('Color');
+      el('span', 'route-info-swatch', color).style.background = route.color;
+      color.append(route.color);
+    }
+    if (official) {
+      row('Source').textContent = 'Official line, MLIT railway data (国土数値情報 N02)';
+    } else {
+      const osm = row('OpenStreetMap');
+      const link = (text: string, href: string) => {
+        const a = el('a', undefined, osm);
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = text;
+      };
+      link(`relation ${route.id}`, OSM_RELATION + route.id);
+      osm.append(' · ');
+      link('edit', OSM_EDIT + route.id);
+    }
+    this._zoom = el('button', 'route-info-zoom');
+    this._zoom.type = 'button';
+    this._zoom.textContent = `Show the whole ${line ? 'line' : 'route'}`;
+    this._zoom.disabled = true;
+    this._zoom.addEventListener('click', () => this._bounds && this._onZoom(this._bounds));
+    this._body.replaceChildren(fields, this._zoom);
+  }
+
+  // The traced route's extent, once known, enables zooming to it.
+  setGeometry(geometry: RouteGeometry) {
+    this._bounds = geometryBounds(geometry);
+    if (this._zoom) this._zoom.disabled = !this._bounds;
   }
 }
 
 export function installRouteHighlight(map: RouteHighlightMap) {
   const container = map.getContainer();
   let selected: RouteSelection | null = null;
-  const chip = new RouteHighlightChip(() => select(null));
-  container.appendChild(chip.element);
+  const panel = new RoutePanel(
+    container,
+    () => select(null),
+    (bounds) => map.fitBounds?.(bounds, { padding: { top: 64, right: 72, bottom: 48, left: 380 }, maxZoom: 14 }),
+  );
 
   function markListItems() {
     for (const item of container.querySelectorAll<HTMLElement>('[data-route-id]')) {
@@ -281,7 +386,9 @@ export function installRouteHighlight(map: RouteHighlightMap) {
       },
       signal,
     );
-    if (!signal.aborted) overview()?.setData(geometry);
+    if (signal.aborted) return;
+    overview()?.setData(geometry);
+    panel.setGeometry(geometry);
   }
 
   function select(route: RouteSelection | null) {
@@ -291,7 +398,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     overview()?.setData(EMPTY_GEOMETRY);
     setGlobalStatePropertyWhenReady(map, ROUTE_HIGHLIGHT_COLOR_STATE, route?.color || '');
     setGlobalStatePropertyWhenReady(map, ROUTE_HIGHLIGHT_ID_STATE, route?.id || '');
-    chip.show(route);
+    panel.show(route);
     markListItems();
     if (route) {
       trace = new AbortController();
@@ -309,6 +416,10 @@ export function installRouteHighlight(map: RouteHighlightMap) {
   new MutationObserver((records) => {
     if (selected && records.some((record) => record.addedNodes.length > 0)) markListItems();
   }).observe(container, { childList: true, subtree: true });
+  // Another panel taking the place beside the map ends the highlight.
+  container.addEventListener(UI_PANEL_OPEN_EVENT, (event) => {
+    if (selected && isOtherUiPanelOpen(event, 'route')) select(null);
+  });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && selected && !(event.target instanceof HTMLInputElement)) select(null);
   });

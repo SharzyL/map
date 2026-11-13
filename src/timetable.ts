@@ -173,6 +173,16 @@ class TimetablePanel {
     button.addEventListener('click', () => this._back());
   }
 
+  // A train's facts above its stops, as label and value rows.
+  private _facts(rows: Array<[string, string | null]>) {
+    const facts = el('dl', 'route-info-fields timetable-meta', this._body);
+    for (const [label, value] of rows) {
+      if (!value) continue;
+      el('dt', undefined, facts).textContent = label;
+      el('dd', undefined, facts).textContent = value;
+    }
+  }
+
   private _setHeader(title: string, summary: string, source: Source | null) {
     this._title.textContent = title;
     this._summary.textContent = summary;
@@ -280,6 +290,11 @@ class TimetablePanel {
     this._setHeader(stationName, [train.name, train.line].filter(Boolean).join(' · '), yahooSource(train.source_url));
     this._setBack('Departures');
     this._body.replaceChildren();
+    this._facts([
+      ['Train', train.name],
+      ['Line', train.line],
+      ['Stops', String(train.stops.length)],
+    ]);
     for (const comment of train.comments) el('p', 'timetable-comment', this._body).textContent = comment;
     const list = el('ol', 'timetable-stops', this._body);
     for (const stop of train.stops) {
@@ -399,6 +414,14 @@ class TimetablePanel {
     );
     this._setBack('Trains');
     this._body.replaceChildren();
+    const last = stops[stops.length - 1];
+    this._facts([
+      ['Train', run?.train ?? train],
+      ['Departs', `${crDateLabel(date)} from ${stops[0]?.name ?? '?'}`],
+      ['In service', run ? `${run.service.from} – ${run.service.to ?? 'until further notice'}` : null],
+      ['Distance', last ? `${last.km} km` : null],
+      ['Stops', String(stops.length)],
+    ]);
     if (run && !run.runs)
       el('p', 'timetable-comment', this._body).textContent = `Does not leave its origin on ${date}.`;
     const list = el('ol', 'timetable-stops', this._body);

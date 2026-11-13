@@ -1950,13 +1950,16 @@ body,
 .railway-filter-panel,
 .railway-filter-panel *,
 .timetable-panel,
-.timetable-panel * {
+.timetable-panel *,
+.route-info-panel,
+.route-info-panel * {
   box-sizing: border-box;
 }
 
 .map-layers-panel,
 .railway-filter-panel,
-.timetable-panel {
+.timetable-panel,
+.route-info-panel {
   position: absolute;
   top: 12px;
   right: 52px;
@@ -1980,7 +1983,8 @@ body,
 
 .map-layers-panel-visible,
 .railway-filter-panel-visible,
-.timetable-panel-visible {
+.timetable-panel-visible,
+.route-info-panel-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -1988,7 +1992,8 @@ body,
 
 .map-layers-header,
 .railway-filter-header,
-.timetable-header {
+.timetable-header,
+.route-info-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 30px;
   align-items: center;
@@ -2001,13 +2006,15 @@ body,
 
 .map-layers-title-wrap,
 .railway-filter-title-wrap,
-.timetable-title-wrap {
+.timetable-title-wrap,
+.route-info-title-wrap {
   min-width: 0;
 }
 
 .map-layers-title,
 .railway-filter-title,
-.timetable-title {
+.timetable-title,
+.route-info-title {
   color: #111827;
   font-size: 13px;
   font-weight: 800;
@@ -2016,7 +2023,8 @@ body,
 
 .map-layers-summary,
 .railway-filter-summary,
-.timetable-summary {
+.timetable-summary,
+.route-info-summary {
   margin-top: 2px;
   overflow: hidden;
   color: #64748b;
@@ -2029,7 +2037,8 @@ body,
 
 .map-layers-close,
 .railway-filter-close,
-.timetable-close {
+.timetable-close,
+.route-info-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2049,7 +2058,9 @@ body,
 .railway-filter-close:hover,
 .railway-filter-close:focus,
 .timetable-close:hover,
-.timetable-close:focus {
+.timetable-close:focus,
+.route-info-close:hover,
+.route-info-close:focus {
   background: #f1f5f9;
   color: #0f172a;
   outline: none;
@@ -2057,7 +2068,8 @@ body,
 
 .map-layers-body,
 .railway-filter-body,
-.timetable-body {
+.timetable-body,
+.route-info-body {
   display: grid;
   gap: 10px;
   min-height: 0;
@@ -2071,8 +2083,10 @@ body,
   gap: 10px;
 }
 
-/* Station timetable (src/timetable.ts): left of the map, below the search box */
-.timetable-panel {
+/* Station timetable (src/timetable.ts) and route panel (src/route-highlight.ts):
+   left of the map, below the search box */
+.timetable-panel,
+.route-info-panel {
   top: 64px;
   right: auto;
   left: 12px;
@@ -2080,6 +2094,71 @@ body,
   width: min(340px, calc(100vw - 72px));
   max-height: calc(100vh - 88px);
   transform: translateX(-18px);
+}
+
+/* The route panel has no back row or source link: header and body only. */
+.route-info-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.route-info-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+  vertical-align: -1px;
+}
+
+.route-info-fields {
+  display: grid;
+  grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
+  gap: 3px 10px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.route-info-fields dt {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.route-info-fields dd {
+  margin: 0;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.route-info-fields a,
+.route-info-zoom {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.route-info-fields a:hover {
+  text-decoration: underline;
+}
+
+.route-info-zoom {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.route-info-zoom:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.timetable-meta {
+  margin-bottom: 4px;
 }
 
 /* Rows are placed explicitly, so a hidden back button leaves an empty row. */
@@ -2587,7 +2666,8 @@ body,
 @media (max-width: 640px) {
   .map-layers-panel,
   .railway-filter-panel,
-  .timetable-panel {
+  .timetable-panel,
+  .route-info-panel {
     top: auto;
     right: 0;
     bottom: 0;
@@ -2603,13 +2683,15 @@ body,
 
   .map-layers-panel-visible,
   .railway-filter-panel-visible,
-  .timetable-panel-visible {
+  .timetable-panel-visible,
+  .route-info-panel-visible {
     transform: translateY(0);
   }
 
   .map-layers-body,
   .railway-filter-body,
-  .timetable-body {
+  .timetable-body,
+  .route-info-body {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
@@ -3345,47 +3427,6 @@ body,
   margin-left: 6px;
   color: #64748b;
   font-variant-numeric: tabular-nums;
-}
-
-/* Route highlight: names the highlighted route, with a clear button */
-.route-highlight-chip {
-  position: absolute;
-  bottom: 36px;
-  left: 50%;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  max-width: min(420px, calc(100% - 32px));
-  padding: 4px 4px 4px 10px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
-  font-size: 13px;
-  transform: translateX(-50%);
-}
-.route-highlight-chip[hidden] {
-  display: none;
-}
-.route-highlight-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.route-highlight-clear {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  margin-left: 6px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: #475569;
-  font: inherit;
-  cursor: pointer;
-}
-.route-highlight-clear:hover {
-  background: #f1f5f9;
 }
 
 /* Popup images — full-bleed like upstream */

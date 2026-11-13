@@ -151,6 +151,9 @@ describe('structured railway line popup', () => {
       id: '66615',
       color: '#4a5eaa',
       label: 'U3: Oberursel Hohemark => Südbahnhof',
+      kind: 'route',
+      name: 'U3: Oberursel Hohemark => Südbahnhof',
+      ref: null,
     });
   });
 
@@ -175,7 +178,14 @@ describe('structured railway line popup', () => {
     const selected = vi.fn();
     content.addEventListener(ROUTE_SELECT_EVENT, (event) => selected((event as CustomEvent).detail));
     line.click();
-    expect(selected).toHaveBeenCalledWith({ id: '1924436', color: null, label: 'A-Strecke · A' });
+    expect(selected).toHaveBeenCalledWith({
+      id: '1924436',
+      color: null,
+      label: 'A-Strecke · A',
+      kind: 'line',
+      name: 'A-Strecke',
+      ref: 'A',
+    });
   });
 
   it('tells the highlight where a line was picked', () => {

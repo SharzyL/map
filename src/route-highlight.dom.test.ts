@@ -9,6 +9,7 @@ import {
   type RouteSelection,
 } from './route-highlight.js';
 import { tilesInBounds } from './route-trace.js';
+import { UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 
 const ROUTE: RouteSelection = { id: '900821540', color: '#c3a17f', label: '15号线：顾村公园 -> 紫竹高新区' };
 
@@ -44,22 +45,57 @@ function selectRoute(target: HTMLElement, route: RouteSelection) {
 }
 
 describe('installRouteHighlight', () => {
-  it('highlights the selected route and names it in a clearable chip', () => {
+  it('highlights the selected route and describes it in a panel that clears it', () => {
     const { map, container, state } = createMap();
     installRouteHighlight(map as never);
     const item = routeItem(container, ROUTE.id);
 
     selectRoute(item, ROUTE);
     expect(state).toEqual({ [ROUTE_HIGHLIGHT_ID_STATE]: ROUTE.id, [ROUTE_HIGHLIGHT_COLOR_STATE]: ROUTE.color });
-    const chip = container.querySelector<HTMLElement>('.route-highlight-chip');
-    expect(chip.hidden).toBe(false);
-    expect(chip.textContent).toContain(ROUTE.label);
+    const panel = container.querySelector<HTMLElement>('.route-info-panel');
+    expect(panel.classList.contains('route-info-panel-visible')).toBe(true);
+    expect(panel.querySelector('.route-info-title').textContent).toBe(ROUTE.label);
+    expect(panel.querySelector('.route-info-summary').textContent).toBe('Transit route');
+    const links = [...panel.querySelectorAll<HTMLAnchorElement>('.route-info-fields a')].map((link) => link.href);
+    expect(links).toEqual([
+      `https://www.openstreetmap.org/relation/${ROUTE.id}`,
+      `https://www.openstreetmap.org/edit?relation=${ROUTE.id}`,
+    ]);
     expect(item.getAttribute('aria-pressed')).toBe('true');
 
-    container.querySelector<HTMLButtonElement>('.route-highlight-clear').click();
+    panel.querySelector<HTMLButtonElement>('.route-info-close').click();
     expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('');
-    expect(chip.hidden).toBe(true);
+    expect(panel.classList.contains('route-info-panel-visible')).toBe(false);
     expect(item.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('names a railway line with its number, and an official Japanese line by its source', () => {
+    const { map, container } = createMap();
+    installRouteHighlight(map as never);
+    const panel = () => container.querySelector<HTMLElement>('.route-info-panel');
+
+    selectRoute(container, {
+      id: '3216458',
+      color: null,
+      label: '京广高速铁路 · 京广高铁',
+      kind: 'line',
+      name: '京广高速铁路',
+      ref: '京广高铁',
+    });
+    expect(panel().querySelector('.route-info-title').textContent).toBe('京广高速铁路');
+    expect(panel().querySelector('.route-info-summary').textContent).toBe('Railway line · 京广高铁');
+
+    selectRoute(container, { id: 'jp-0123456789', color: null, label: '山陰本線', kind: 'line', name: '山陰本線' });
+    expect(panel().querySelector('.route-info-fields a')).toBeNull();
+    expect(panel().querySelector('.route-info-fields').textContent).toContain('国土数値情報');
+  });
+
+  it('ends the highlight when another panel opens beside the map', () => {
+    const { map, container, state } = createMap();
+    installRouteHighlight(map as never);
+    selectRoute(container, ROUTE);
+    container.dispatchEvent(new CustomEvent(UI_PANEL_OPEN_EVENT, { detail: { id: 'timetable' } }));
+    expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('');
   });
 
   it('turns the highlight off when the same route is selected again', () => {
@@ -80,7 +116,7 @@ describe('installRouteHighlight', () => {
     selectRoute(item, ROUTE);
     selectRoute(item, { id: '42', color: null, label: null });
     expect(state).toEqual({ [ROUTE_HIGHLIGHT_ID_STATE]: '42', [ROUTE_HIGHLIGHT_COLOR_STATE]: '' });
-    expect(container.querySelector('.route-highlight-chip').textContent).toContain('Route 42');
+    expect(container.querySelector('.route-info-title').textContent).toBe('Route 42');
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('');

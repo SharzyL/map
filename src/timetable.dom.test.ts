@@ -151,6 +151,7 @@ describe('timetable panel', () => {
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('渋谷');
     expect(text(root, '.timetable-stop-time')).toEqual(['07:30', '08:01 – 08:02', '09:50']);
     expect(text(root, '.timetable-comment')).toEqual(['大宮−小山間快速。']);
+    expect(text(root, '.timetable-meta dd')).toEqual(['快速', 'ＪＲ湘南新宿ライン', '3']);
 
     root.querySelector<HTMLButtonElement>('.timetable-back').click();
     await vi.waitFor(() => expect(text(root, '.timetable-time')).toEqual(['07:16', '08:02']));
@@ -222,6 +223,14 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['泰州', '北京西', '哈尔滨西']));
     expect(requests.at(-1)).toBe('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
     expect(root.querySelector('.timetable-summary').textContent).toBe('Z156/Z157 · 泰州 → 哈尔滨西');
+    expect(text(root, '.timetable-meta dt')).toEqual(['Train', 'Departs', 'In service', 'Distance', 'Stops']);
+    expect(text(root, '.timetable-meta dd')).toEqual([
+      'Z156/Z157',
+      '2026-11-15 Sun from 泰州',
+      '2024-04-02 – 2026-11-24',
+      '2400 km',
+      '3',
+    ]);
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('北京西');
     expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
     expect(root.querySelector('.timetable-back').textContent).toBe('← Trains');
