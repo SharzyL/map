@@ -18,9 +18,9 @@ import {
   type RailwayStatus,
   type RailwayTraffic,
 } from './railway-filter.js';
-import { RAILWAY_COLOR_LEGENDS, type RailwayColorMode } from './railway-colors.js';
+import { applyRailwayColorMode, RAILWAY_COLOR_LEGENDS, type RailwayColorMode } from './railway-colors.js';
 import { createPanelButton, createPanelFields, createPanelShell, el } from './map-panel.js';
-import { setGlobalStatePropertyWhenReady } from './style-ready.js';
+import { runWhenStyleInfrastructureReady, setGlobalStatePropertyWhenReady } from './style-ready.js';
 import {
   emitUiPanelOpen,
   isOtherUiPanelOpen,
@@ -42,6 +42,10 @@ export type RailwayFilterMap = Parameters<typeof setGlobalStatePropertyWhenReady
     queryRenderedFeatures?(): RenderedLineFeature[];
     on?(event: 'moveend', listener: () => void): void;
     off?(event: 'moveend', listener: () => void): void;
+    // Used to switch the line colors to another mode; optional for tests.
+    getLayersOrder?(): string[];
+    getLayer?(id: string): { metadata?: unknown } | undefined;
+    setPaintProperty?(layerId: string, name: string, value: unknown): unknown;
   };
 
 const OPERATOR_INPUT_DELAY_MS = 350;
@@ -432,9 +436,18 @@ class RailwayFilterPanel {
 
   _update(mutate: (settings: RailwayFilterSettings) => void) {
     const previous = railwayFilterGlobalState(this._settings);
+    const previousColorBy = this._settings.colorBy;
     mutate(this._settings);
     for (const [name, value] of Object.entries(railwayFilterGlobalState(this._settings))) {
       if (previous[name] !== value) setGlobalStatePropertyWhenReady(this._map, name, value);
+    }
+    // Line colors are built for one mode at a time (railway-colors.ts).
+    const map = this._map;
+    const mode = this._settings.colorBy;
+    if (mode !== previousColorBy && map.getLayersOrder && map.getLayer && map.setPaintProperty) {
+      runWhenStyleInfrastructureReady(map, () =>
+        applyRailwayColorMode(map as Parameters<typeof applyRailwayColorMode>[0], mode),
+      );
     }
     saveRailwayFilterSettings(this._settings);
     this._sync();

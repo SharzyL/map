@@ -341,16 +341,36 @@ LINE_RELATIONS_SQL=",
     WHERE w.way_id = lv.osm_id),
     ${RELATION_LIST_SQL}
   ) as line_relations"
+# A segment's line_color: its line's vote, else, for segments the vote leaves
+# out (unnamed station tracks and connecting curves, lines whose routes have no
+# color), the first color set among its first four routes in line_routes order.
+# The style used to work that fallback out from line_routes itself; as a
+# data-driven expression it went into every tile MapLibre sends from its
+# workers, so it is done here.
+LINE_COLOR_SQL="coalesce(lc.color, rc.color)"
 # Line queries join railway_line_view lv to the fallback operators, the
-# operator colors, the way tags, the line colors and the official lines (the
-# zoomed-out layer names its sections after them).
+# operator colors, the way tags, the line colors, the official lines (the
+# zoomed-out layer names its sections after them) and the first route color
+# (rc, for LINE_COLOR_SQL).
 LINE_JOINS="LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
 LEFT JOIN (SELECT name AS known_operator, color AS known_color FROM railway_operator) oc
   ON oc.known_operator = coalesce(lv.primary_operator, lo.fallback_operator[1])
 LEFT JOIN line_way_tags wt ON wt.way_id = lv.osm_id
 LEFT JOIN line_colors lc
   ON lc.line_name = lv.name AND lc.line_operator = coalesce(lv.primary_operator, lo.fallback_operator[1], '')
-LEFT JOIN line_way_line ll ON ll.way_id = lv.osm_id"
+LEFT JOIN line_way_line ll ON ll.way_id = lv.osm_id
+LEFT JOIN LATERAL (
+  SELECT first_routes.color
+  FROM (
+    SELECT route_item -> 'color' AS color, route_item -> 'route_id' AS route_id
+    FROM unnest(lv.line_routes) AS route_items(route_item)
+    ORDER BY route_item -> 'route_id'
+    LIMIT 4
+  ) first_routes
+  WHERE first_routes.color <> ''
+  ORDER BY first_routes.route_id
+  LIMIT 1
+) rc ON true"
 OPERATOR_SQL="nullif(array_to_string(
     CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
     U&'\001E'), '')"
@@ -474,6 +494,61 @@ psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' stations with Yahoo 
 echo ""
 # Station label layers read railway_text_stations s through these.
 STATION_JOIN="LEFT JOIN station_overrides so ON so.id = s.id LEFT JOIN station_yahoo_codes sy ON sy.id = s.id"
+
+# A station's dot color and kind, which the style draws as a dot in its line's
+# color, a ringed white dot where lines of different colors stop, or a plain or
+# light gray dot. Worked out here rather than by a style expression: MapLibre
+# copies a layer's data-driven expressions into every tile it sends from its
+# workers, and the one comparing a station's route colors came to over half a
+# million nodes per tile, which the browser's main thread had to unpack. Same
+# rules as that expression had: the color is the first set among the station's
+# first 16 routes (ordered as in station_routes), and the station is an
+# interchange when another of those colors differs from it by more than 48 in a
+# channel. Colors parse like MapLibre's to-color (hex and CSS names, anything
+# else black).
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<'SQL'
+SET client_min_messages = warning;
+CREATE OR REPLACE FUNCTION orm_color_rgb(color text) RETURNS int[] LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN c ~ '^#[0-9a-f]{3,4}$' THEN ARRAY[
+      ('x' || repeat(substr(c, 2, 1), 2))::bit(8)::int,
+      ('x' || repeat(substr(c, 3, 1), 2))::bit(8)::int,
+      ('x' || repeat(substr(c, 4, 1), 2))::bit(8)::int]
+    WHEN c ~ '^#([0-9a-f]{6}|[0-9a-f]{8})$' THEN ARRAY[
+      ('x' || substr(c, 2, 2))::bit(8)::int,
+      ('x' || substr(c, 4, 2))::bit(8)::int,
+      ('x' || substr(c, 6, 2))::bit(8)::int]
+    ELSE (SELECT array_agg(v::int ORDER BY i) FROM jsonb_array_elements_text(
+      '{"aliceblue":[240,248,255],"antiquewhite":[250,235,215],"aqua":[0,255,255],"aquamarine":[127,255,212],"azure":[240,255,255],"beige":[245,245,220],"bisque":[255,228,196],"black":[0,0,0],"blanchedalmond":[255,235,205],"blue":[0,0,255],"blueviolet":[138,43,226],"brown":[165,42,42],"burlywood":[222,184,135],"cadetblue":[95,158,160],"chartreuse":[127,255,0],"chocolate":[210,105,30],"coral":[255,127,80],"cornflowerblue":[100,149,237],"cornsilk":[255,248,220],"crimson":[220,20,60],"cyan":[0,255,255],"darkblue":[0,0,139],"darkcyan":[0,139,139],"darkgoldenrod":[184,134,11],"darkgray":[169,169,169],"darkgreen":[0,100,0],"darkgrey":[169,169,169],"darkkhaki":[189,183,107],"darkmagenta":[139,0,139],"darkolivegreen":[85,107,47],"darkorange":[255,140,0],"darkorchid":[153,50,204],"darkred":[139,0,0],"darksalmon":[233,150,122],"darkseagreen":[143,188,143],"darkslateblue":[72,61,139],"darkslategray":[47,79,79],"darkslategrey":[47,79,79],"darkturquoise":[0,206,209],"darkviolet":[148,0,211],"deeppink":[255,20,147],"deepskyblue":[0,191,255],"dimgray":[105,105,105],"dimgrey":[105,105,105],"dodgerblue":[30,144,255],"firebrick":[178,34,34],"floralwhite":[255,250,240],"forestgreen":[34,139,34],"fuchsia":[255,0,255],"gainsboro":[220,220,220],"ghostwhite":[248,248,255],"gold":[255,215,0],"goldenrod":[218,165,32],"gray":[128,128,128],"green":[0,128,0],"greenyellow":[173,255,47],"grey":[128,128,128],"honeydew":[240,255,240],"hotpink":[255,105,180],"indianred":[205,92,92],"indigo":[75,0,130],"ivory":[255,255,240],"khaki":[240,230,140],"lavender":[230,230,250],"lavenderblush":[255,240,245],"lawngreen":[124,252,0],"lemonchiffon":[255,250,205],"lightblue":[173,216,230],"lightcoral":[240,128,128],"lightcyan":[224,255,255],"lightgoldenrodyellow":[250,250,210],"lightgray":[211,211,211],"lightgreen":[144,238,144],"lightgrey":[211,211,211],"lightpink":[255,182,193],"lightsalmon":[255,160,122],"lightseagreen":[32,178,170],"lightskyblue":[135,206,250],"lightslategray":[119,136,153],"lightslategrey":[119,136,153],"lightsteelblue":[176,196,222],"lightyellow":[255,255,224],"lime":[0,255,0],"limegreen":[50,205,50],"linen":[250,240,230],"magenta":[255,0,255],"maroon":[128,0,0],"mediumaquamarine":[102,205,170],"mediumblue":[0,0,205],"mediumorchid":[186,85,211],"mediumpurple":[147,112,219],"mediumseagreen":[60,179,113],"mediumslateblue":[123,104,238],"mediumspringgreen":[0,250,154],"mediumturquoise":[72,209,204],"mediumvioletred":[199,21,133],"midnightblue":[25,25,112],"mintcream":[245,255,250],"mistyrose":[255,228,225],"moccasin":[255,228,181],"navajowhite":[255,222,173],"navy":[0,0,128],"oldlace":[253,245,230],"olive":[128,128,0],"olivedrab":[107,142,35],"orange":[255,165,0],"orangered":[255,69,0],"orchid":[218,112,214],"palegoldenrod":[238,232,170],"palegreen":[152,251,152],"paleturquoise":[175,238,238],"palevioletred":[219,112,147],"papayawhip":[255,239,213],"peachpuff":[255,218,185],"peru":[205,133,63],"pink":[255,192,203],"plum":[221,160,221],"powderblue":[176,224,230],"purple":[128,0,128],"rebeccapurple":[102,51,153],"red":[255,0,0],"rosybrown":[188,143,143],"royalblue":[65,105,225],"saddlebrown":[139,69,19],"salmon":[250,128,114],"sandybrown":[244,164,96],"seagreen":[46,139,87],"seashell":[255,245,238],"sienna":[160,82,45],"silver":[192,192,192],"skyblue":[135,206,235],"slateblue":[106,90,205],"slategray":[112,128,144],"slategrey":[112,128,144],"snow":[255,250,250],"springgreen":[0,255,127],"steelblue":[70,130,180],"tan":[210,180,140],"teal":[0,128,128],"thistle":[216,191,216],"tomato":[255,99,71],"turquoise":[64,224,208],"violet":[238,130,238],"wheat":[245,222,179],"white":[255,255,255],"whitesmoke":[245,245,245],"yellow":[255,255,0],"yellowgreen":[154,205,50]}'::jsonb -> c) WITH ORDINALITY AS e(v, i))
+  END
+  FROM (SELECT lower(trim(color)) AS c) input
+$$;
+CREATE OR REPLACE FUNCTION orm_station_colors(routes text, state text)
+RETURNS TABLE (station_color text, station_kind text) LANGUAGE sql IMMUTABLE AS $$
+  WITH colors AS (
+    SELECT n, lower(split_part(route, U&'\001E', 2)) AS color
+    FROM unnest(string_to_array(routes, U&'\001D')) WITH ORDINALITY AS r(route, n)
+    WHERE n <= 16
+  ), first AS (
+    SELECT color, coalesce(orm_color_rgb(color), ARRAY[0, 0, 0]) AS rgb FROM colors WHERE color <> '' ORDER BY n LIMIT 1
+  )
+  SELECT
+    (SELECT color FROM first),
+    CASE
+      WHEN coalesce(state, 'present') <> 'present' THEN 'inactive'
+      WHEN NOT EXISTS (SELECT 1 FROM first) THEN 'plain'
+      WHEN EXISTS (
+        SELECT 1
+        FROM colors c
+        CROSS JOIN first f
+        CROSS JOIN LATERAL (SELECT coalesce(orm_color_rgb(c.color), ARRAY[0, 0, 0]) AS rgb) o
+        WHERE c.color <> ''
+          AND greatest(abs(o.rgb[1] - f.rgb[1]), abs(o.rgb[2] - f.rgb[2]), abs(o.rgb[3] - f.rgb[3])) > 48
+      ) THEN 'interchange'
+      ELSE 'line'
+    END
+$$;
+SQL
 STATION_SIZE_SQL="coalesce(so.cr_size, s.station_size)"
 STATION_DISCR_ISO_SQL="coalesce(so.cr_discr_iso, s.discr_iso)"
 STATION_IMPORTANCE_SQL="coalesce(so.cr_importance, s.importance)"
@@ -535,7 +610,7 @@ export_railway_line_high() {
   loading_gauge,
   ${OPERATOR_SQL} as operator,
   ${OPERATOR_COLOR_SQL} as operator_color,
-  lc.color as line_color,
+  ${LINE_COLOR_SQL} as line_color,
   primary_operator,
   owner,
   CASE WHEN lv.preserved THEN true END as preserved,
@@ -647,6 +722,10 @@ STATION_ROUTES_SQL="(SELECT nullif(array_to_string(array_agg(
     WHERE member.osm_type = 'N'
   ))"
 
+# A station's routes, looked up once, and the dot color and kind they give.
+STATION_ROUTES_JOIN="CROSS JOIN LATERAL (SELECT ${STATION_ROUTES_SQL} AS station_routes) sr
+CROSS JOIN LATERAL orm_station_colors(sr.station_routes, s.state) sc"
+
 echo ""
 echo "[Standard style layers]"
 
@@ -695,7 +774,7 @@ FROM (
     traffic_mode,
     ${OPERATOR_SQL} as operator,
     ${OPERATOR_COLOR_SQL} as operator_color,
-    lc.color as line_color,
+    ${LINE_COLOR_SQL} as line_color,
     max(rank) as rank,
     (ST_Dump(ST_LineMerge(ST_Collect(way)))).geom AS way
   FROM railway_line_view lv
@@ -706,7 +785,7 @@ FROM (
     AND service IS NULL
   GROUP BY
     feature, state, usage, highspeed, coalesce(ll.line_name, lv.name), maxspeed, electrification_state, voltage,
-    frequency, gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}, lc.color
+    frequency, gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}, ${LINE_COLOR_SQL}
 ) merged
 ORDER BY rank NULLS LAST
 "
@@ -741,11 +820,14 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  ${STATION_ROUTES_SQL} as station_routes,
+  sr.station_routes,
+  sc.station_color,
+  sc.station_kind,
   sy.yahoo_codes,
   ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
 ${STATION_JOIN}
+${STATION_ROUTES_JOIN}
 WHERE name IS NOT NULL
 ORDER BY
   rank DESC NULLS LAST,
@@ -785,11 +867,14 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  ${STATION_ROUTES_SQL} as station_routes,
+  sr.station_routes,
+  sc.station_color,
+  sc.station_kind,
   sy.yahoo_codes,
   ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
 ${STATION_JOIN}
+${STATION_ROUTES_JOIN}
 WHERE feature = 'station' AND state = 'present'
   AND (station IS NULL OR station NOT IN ('light_rail', 'monorail', 'subway'))
   AND 213000 * exp(-0.33 * ${z}) - 18000 < ${STATION_DISCR_ISO_SQL}
@@ -821,11 +906,14 @@ SELECT
   nullif(array_to_string(description, U&'\001E'), '') as description,
   nullif(array_to_string(yard_purpose, U&'\001E'), '') as yard_purpose,
   yard_hump,
-  ${STATION_ROUTES_SQL} as station_routes,
+  sr.station_routes,
+  sc.station_color,
+  sc.station_kind,
   sy.yahoo_codes,
   ${STATION_DISCR_ISO_SQL} as discr_iso
 FROM railway_text_stations s
 ${STATION_JOIN}
+${STATION_ROUTES_JOIN}
 WHERE feature = 'station' AND state = 'present'
   AND (station IS NULL OR station NOT IN ('light_rail', 'monorail', 'subway'))
   AND 213000 * exp(-0.33 * ${z}) - 18000 < ${STATION_DISCR_ISO_SQL}

@@ -5,6 +5,8 @@ import {
   RAILWAY_COLOR_CLASS_EXPRESSIONS,
   RAILWAY_COLOR_LEGENDS,
   RAILWAY_COLOR_STATE,
+  RECOLOR_METADATA,
+  applyRailwayColorMode,
   withRailwayLineColors,
   withRailwayStationColors,
   type RailwayColorMode,
@@ -125,7 +127,7 @@ describe('withRailwayLineColors', () => {
   const colorOf = (id: string, mode: RailwayColorMode, properties: Properties, hover = false) =>
     hex(
       evaluate(
-        withRailwayLineColors(layer(id)).paint['line-color'],
+        withRailwayLineColors(layer(id), mode).paint['line-color'],
         lineColor,
         properties,
         { [RAILWAY_COLOR_STATE]: mode, theme: 'light' },
@@ -134,7 +136,9 @@ describe('withRailwayLineColors', () => {
     );
 
   it('recolors fills and direction arrows of lines in use only', () => {
-    const recolored = layers.filter((candidate) => withRailwayLineColors(candidate) !== candidate).map(({ id }) => id);
+    const recolored = layers
+      .filter((candidate) => withRailwayLineColors(candidate, 'default') !== candidate)
+      .map(({ id }) => id);
     expect(recolored).toContain('railway_line_main_low_fill_present');
     expect(recolored).toContain('railway_line_main_high_bridge_fill_construction');
     expect(recolored).toContain('railway_line_light_rail_tunnel_fill_proposed');
@@ -159,24 +163,12 @@ describe('withRailwayLineColors', () => {
     const id = 'railway_line_light_rail_fill_present';
     const line = { feature: 'subway', usage: 'main', state: 'present' };
     const usage = colorOf(id, 'usage', line);
-    const routes = (...colors: string[]) =>
-      colors.map((color, index) => `${index + 1}\u001e${color}\u001eLine ${index + 1}`).join('\u001d');
-    expect(colorOf(id, 'default', { ...line, line_routes: routes('#178ABB', '#00997A') })).toBe('#178abb');
-    expect(colorOf(id, 'default', { ...line, line_routes: routes('', '', 'red') })).toBe('#ff0000');
+    expect(colorOf(id, 'default', { ...line, line_color: '#178ABB' })).toBe('#178abb');
+    expect(colorOf(id, 'default', { ...line, line_color: 'red' })).toBe('#ff0000');
     expect(colorOf(id, 'default', line)).toBe(usage);
-    expect(colorOf(id, 'default', { ...line, line_routes: routes('', '') })).toBe(usage);
-    expect(colorOf(id, 'default', { ...line, line_routes: routes('', '', '', '', '#178ABB') })).toBe(usage);
-    expect(colorOf(id, 'default', { ...line, line_routes: routes('Line 1 color') })).toBe(usage);
-  });
-
-  it('takes the line color the export set over the first route color, also on zoomed-out lines', () => {
-    const id = 'railway_line_light_rail_fill_present';
-    const line = { feature: 'subway', usage: 'main', state: 'present' };
-    // A through service listed first no longer colors the track.
-    const routes = '1\u001e#01AAAA\u001eThrough service\u001d2\u001e#ED772D\u001eSeibu Ikebukuro Line';
-    expect(colorOf(id, 'default', { ...line, line_routes: routes })).toBe('#01aaaa');
-    expect(colorOf(id, 'default', { ...line, line_routes: routes, line_color: '#ed772d' })).toBe('#ed772d');
-    expect(colorOf(id, 'default', { ...line, line_color: '#ed772d' })).toBe('#ed772d');
+    expect(colorOf(id, 'default', { ...line, line_color: 'Line 1 color' })).toBe(usage);
+    // The export works line_color out, route lists included.
+    expect(colorOf(id, 'default', { ...line, line_routes: '1\u001e#01AAAA\u001eThrough service' })).toBe(usage);
   });
 
   it('draws service tracks without a route color in gray by default', () => {
@@ -184,17 +176,51 @@ describe('withRailwayLineColors', () => {
     const depot = { feature: 'subway', state: 'present', service: 'yard' };
     expect(colorOf(id, 'default', depot)).toBe('#9a9a9a');
     expect(colorOf(id, 'default', depot, true)).toBe('#ff0000');
-    expect(colorOf(id, 'default', { ...depot, line_routes: '1\u001e#178ABB\u001eLine 1' })).toBe('#178abb');
+    expect(colorOf(id, 'default', { ...depot, line_color: '#178ABB' })).toBe('#178abb');
     expect(colorOf(id, 'usage', depot)).toBe(colorOf(id, 'usage', { feature: 'subway', state: 'present' }));
   });
 
   it('hovers red routes in amber', () => {
     const id = 'railway_line_light_rail_fill_present';
     const line = { feature: 'subway', usage: 'main', state: 'present' };
-    const route = (color: string) => ({ ...line, line_routes: `1\u001e${color}\u001eLine 1` });
-    expect(colorOf(id, 'default', route('#c23a30'), true)).toBe('#ffc107');
-    expect(colorOf(id, 'default', route('#178ABB'), true)).toBe('#ff0000');
+    expect(colorOf(id, 'default', { ...line, line_color: '#c23a30' }, true)).toBe('#ffc107');
+    expect(colorOf(id, 'default', { ...line, line_color: '#178ABB' }, true)).toBe('#ff0000');
     expect(colorOf(id, 'default', line, true)).toBe('#ff0000');
+  });
+
+  it('builds one mode at a time and switches through the original color it keeps', () => {
+    const id = 'railway_line_main_high_fill_present';
+    const original = layer(id).paint['line-color'];
+    const built = withRailwayLineColors(layer(id), 'default') as {
+      metadata?: Record<string, unknown>;
+      paint: Record<string, unknown>;
+    };
+    expect(built.metadata?.[RECOLOR_METADATA]).toEqual({ property: 'line-color', original });
+    expect(JSON.stringify(built.paint['line-color'])).not.toContain('railwayColorBy');
+    expect(JSON.stringify(withRailwayLineColors(layer(id), 'usage').paint['line-color'])).toBe(
+      JSON.stringify(original),
+    );
+
+    const painted: Array<[string, string, unknown]> = [];
+    const styleLayers = new Map<string, { metadata?: unknown }>([
+      [id, built],
+      ['background', {}],
+    ]);
+    applyRailwayColorMode(
+      {
+        getLayersOrder: () => [...styleLayers.keys()],
+        getLayer: (layerId) => styleLayers.get(layerId),
+        setPaintProperty: (layerId, name, value) => painted.push([layerId, name, value]),
+      },
+      'speed',
+    );
+    expect(painted).toHaveLength(1);
+    const [layerId, name, value] = painted[0];
+    expect([layerId, name]).toEqual([id, 'line-color']);
+    const line = { feature: 'rail', usage: 'main', state: 'present', maxspeed: 300 };
+    expect(hex(evaluate(value, lineColor, line, { theme: 'light' }, { hover: false }))).toBe(
+      legendColor('speed', '300'),
+    );
   });
 
   it('draws lines in their operator color, gray without an operator', () => {
@@ -240,39 +266,33 @@ describe('withRailwayStationColors', () => {
         name: string;
       }
     ).name;
-  const routes = (...colors: string[]) =>
-    colors.map((color, index) => `${index + 1}\u001e${color}\u001eRoute ${index + 1}`).join('\u001d');
   const stop = { feature: 'station', state: 'present', station_size: 'normal' };
+  const onLine = { ...stop, station_kind: 'line', station_color: '#178abb' };
+  const interchange = { ...stop, station_kind: 'interchange', station_color: '#178abb' };
 
   it('draws a station on one line as a dot in the line color', () => {
-    // Two shades of the same line count as one.
-    const properties = { ...stop, station_routes: routes('#178ABB', '', '#178abb', '#2a90c0') };
-    expect(iconImage('default', properties)).toBe('sdf:general/station-normal');
-    expect(iconColor('default', properties)).toBe('#178abb');
-    expect(haloColor(properties)).toBe('#ffffff');
+    expect(iconImage('default', onLine)).toBe('sdf:general/station-normal');
+    expect(iconColor('default', onLine)).toBe('#178abb');
+    expect(haloColor(onLine)).toBe('#ffffff');
   });
 
   it('draws an interchange between lines of different colors as a ringed white dot', () => {
-    const properties = { ...stop, station_routes: routes('#178ABB', '#178ABB', 'red') };
-    expect(iconImage('default', properties)).toBe('sdf:general/station-normal');
-    expect(iconColor('default', properties)).toBe('#ffffff');
-    expect(haloColor(properties)).toBe('#334155');
-    expect(haloColor(properties, true)).toBe('#ffff00');
+    expect(iconImage('default', interchange)).toBe('sdf:general/station-normal');
+    expect(iconColor('default', interchange)).toBe('#ffffff');
+    expect(haloColor(interchange)).toBe('#334155');
+    expect(haloColor(interchange, true)).toBe('#ffff00');
   });
 
   it('draws other stations as gray dots', () => {
-    const colored = { ...stop, station_routes: routes('#178ABB') };
-    expect(iconColor('usage', colored)).toBe('#3f3f46');
+    expect(iconColor('usage', onLine)).toBe('#3f3f46');
     expect(iconColor('default', stop)).toBe('#3f3f46');
-    expect(iconColor('default', { ...stop, station_routes: routes('', '') })).toBe('#3f3f46');
-    expect(iconColor('default', { ...colored, state: 'construction' })).toBe('#a1a1aa');
+    expect(iconColor('default', { ...stop, station_kind: 'plain' })).toBe('#3f3f46');
+    expect(iconColor('default', { ...stop, station_kind: 'inactive', state: 'construction' })).toBe('#a1a1aa');
     expect(iconImage('usage', { ...stop, station_size: 'small' })).toBe('sdf:general/station-normal');
-    expect(iconImage('default', { ...colored, state: 'construction' })).toBe('sdf:general/station-normal');
   });
 
   it('rings interchanges in every mode', () => {
-    const properties = { ...stop, station_routes: routes('#178ABB', 'red') };
-    expect(iconColor('speed', properties)).toBe('#ffffff');
-    expect(haloColor(properties)).toBe('#334155');
+    expect(iconColor('speed', interchange)).toBe('#ffffff');
+    expect(haloColor(interchange)).toBe('#334155');
   });
 });

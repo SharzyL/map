@@ -2,13 +2,21 @@
 // electrification, gauge or number of tracks instead of the style's usage
 // colors.
 //
-// Like the railway filter, the style is rewritten once at load time: the fill
-// of every active railway line layer and its direction arrows get a `match` on
-// global state that keeps the original color for 'usage'. 'default' draws a
-// line in its route's color and falls back to the usage colors; 'operator'
+// Like the railway filter, the style is rewritten at load time: the fill of
+// every active railway line layer and its direction arrows get the color of
+// the chosen mode, and keep their original color for 'usage'. 'default' draws
+// a line in its route's color and falls back to the usage colors; 'operator'
 // takes each operator's color from the tiles. The other modes first sort a
 // line into a legend class, so the map and the panel legend read the same
 // table.
+//
+// Unlike the other display settings, the mode is not global state the colors
+// switch on: switching it rewrites the line colors (applyRailwayColorMode).
+// MapLibre copies a layer's data-driven expressions into every tile it sends
+// from its workers, where the main thread has to unpack them, so every mode in
+// every line layer made each railway tile several times slower to arrive.
+// Switching reloads the railway tiles either way. Station dots still switch
+// on the mode's global state, which stays set.
 //
 // The palettes were checked for color vision deficiency: speed follows
 // viridis, darkening from yellow to blue with the high-speed purple at 350
@@ -214,67 +222,38 @@ export const RAILWAY_COLOR_CLASS_EXPRESSIONS: Record<RailwayLegendMode, unknown[
 };
 
 const MODE = ['to-string', ['global-state', RAILWAY_COLOR_STATE]];
-const LEGEND_MODES = Object.keys(RAILWAY_COLOR_LEGENDS) as RailwayLegendMode[];
-
-function byMode(valueFor: (mode: RailwayLegendMode) => unknown, fallback: string) {
-  return ['match', MODE, ...LEGEND_MODES.flatMap((mode) => [mode, valueFor(mode)]), fallback];
-}
-
-const COLOR = byMode(
-  (mode) => [
-    'match',
-    RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
-    ...RAILWAY_COLOR_LEGENDS[mode].flatMap(({ key, color }) => [key, color]),
-    NO_DATA,
-  ],
-  NO_DATA,
-);
-
-const HOVER_COLOR = byMode((mode) => {
-  const alternatives = RAILWAY_COLOR_LEGENDS[mode].filter(({ hover }) => hover);
-  if (alternatives.length === 0) return HOVER;
-  return [
-    'match',
-    RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
-    ...alternatives.flatMap(({ key, hover }) => [key, hover]),
-    HOVER,
-  ];
-}, HOVER);
 
 const IS_HOVERED = ['boolean', ['feature-state', 'hover'], false];
 
-export const RAILWAY_ATTRIBUTE_COLOR = ['case', IS_HOVERED, HOVER_COLOR, COLOR];
+// A legend mode's color: its legend class's color, with a hover color that
+// stands out from it.
+function legendModeColor(mode: RailwayLegendMode) {
+  const classes = RAILWAY_COLOR_LEGENDS[mode];
+  const alternatives = classes.filter(({ hover }) => hover);
+  const color = [
+    'match',
+    RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
+    ...classes.flatMap(({ key, color }) => [key, color]),
+    NO_DATA,
+  ];
+  const hover =
+    alternatives.length === 0
+      ? HOVER
+      : [
+          'match',
+          RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
+          ...alternatives.flatMap(({ key, hover }) => [key, hover]),
+          HOVER,
+        ];
+  return ['case', IS_HOVERED, hover, color];
+}
 
 // A line's route color (OSM `colour`) is its `line_color`: the export gives
 // every segment of a line (same name and operator) the color of its routes by
-// length-weighted majority, so parallel tracks of one line look alike. Tiles
-// from before that attribute fall back to the first color set among the
-// segment's first few `line_routes` (groups of `id\x1Ecolor\x1Elabel` joined by
-// `\x1D`, sorted by route id). Lines without either get an empty string.
-const ROUTES_CHECKED = 4;
-const ROUTES = ['var', 'routes'];
-const routeColorAt = (index: number) => ['at', 1, ['split', ['at', index, ROUTES], '\u001e']];
-
-const ROUTE_COLOR = [
-  'case',
-  ['has', 'line_color'],
-  ['to-string', ['get', 'line_color']],
-  ['has', 'line_routes'],
-  [
-    'let',
-    'routes',
-    ['split', ['to-string', ['get', 'line_routes']], '\u001d'],
-    [
-      'case',
-      ...Array.from({ length: ROUTES_CHECKED }, (_, index) => [
-        ['all', ['>', ['length', ROUTES], index], ['!=', routeColorAt(index), '']],
-        routeColorAt(index),
-      ]).flat(),
-      '',
-    ],
-  ],
-  '',
-];
+// length-weighted majority, so parallel tracks of one line look alike, and
+// segments outside such a line the first color set among their first routes.
+// Lines without one get an empty string.
+const ROUTE_COLOR = ['to-string', ['coalesce', ['get', 'line_color'], '']];
 
 const ROUTE_RGBA = ['var', 'routeRgba'];
 
@@ -337,113 +316,62 @@ const RECOLORED_ARROWS = /^railway_line_.*_preferred_direction$/;
 
 type StyleLayerLike = { id?: string; paint?: Record<string, unknown>; [key: string]: unknown };
 
-export function withRailwayLineColors<T extends StyleLayerLike>(layer: T): T {
+// The color of a recolored layer in a mode, from its original color.
+export function railwayLineColor(original: unknown, mode: RailwayColorMode) {
+  return mapZoomOutputs(original, (output) => {
+    if (mode === 'usage') return output;
+    if (mode === 'default') return withRouteColor(output);
+    if (mode === 'operator') return OPERATOR_COLOR;
+    return legendModeColor(mode);
+  });
+}
+
+// Recolored layers keep their original color here, for switching modes.
+export const RECOLOR_METADATA = 'orm:recolor';
+type Recolor = { property: string; original: unknown };
+
+export function withRailwayLineColors<T extends StyleLayerLike>(layer: T, mode: RailwayColorMode): T {
   const id = layer.id || '';
   const property = RECOLORED_FILL.test(id) ? 'line-color' : RECOLORED_ARROWS.test(id) ? 'icon-color' : null;
   if (!property || layer.paint?.[property] === undefined) return layer;
-  const color = mapZoomOutputs(layer.paint[property], (original) => [
-    'match',
-    MODE,
-    'usage',
-    original,
-    'default',
-    withRouteColor(original),
-    'operator',
-    OPERATOR_COLOR,
-    RAILWAY_ATTRIBUTE_COLOR,
-  ]);
-  return { ...layer, paint: { ...layer.paint, [property]: color } };
+  const original = layer.paint[property];
+  const metadata = {
+    ...(layer.metadata as Record<string, unknown> | undefined),
+    [RECOLOR_METADATA]: { property, original },
+  };
+  return { ...layer, metadata, paint: { ...layer.paint, [property]: railwayLineColor(original, mode) } };
+}
+
+type RecolorMap = {
+  getLayersOrder(): string[];
+  getLayer(id: string): { metadata?: unknown } | undefined;
+  setPaintProperty(layerId: string, name: string, value: unknown): unknown;
+};
+
+// Switches the recolored layers to a mode.
+export function applyRailwayColorMode(map: RecolorMap, mode: RailwayColorMode) {
+  for (const id of map.getLayersOrder()) {
+    const recolor = (map.getLayer(id)?.metadata as Record<string, Recolor> | undefined)?.[RECOLOR_METADATA];
+    if (recolor) map.setPaintProperty(id, recolor.property, railwayLineColor(recolor.original, mode));
+  }
 }
 
 // Station icons, after metro maps: a dot for a station on one line, in the
 // line's color in 'default' mode and dark gray otherwise, or a white dot ringed
 // in dark gray where lines of different colors meet. Major stations are a
-// little larger, and stations not in use are light gray dots. The colors come
-// from `station_routes` (the same `id\x1Ecolor\x1Elabel` groups as
-// `line_routes`, sorted by route id); each line usually has a route per
-// direction and service pattern, so a station counts as an interchange when
-// the colors set among its first routes differ by more than a shade (OSM
-// gives the Hibiya Line's through services a different gray, for example).
-// Stations without a colored route are dark gray dots.
-const STATION_ROUTES_CHECKED = 16;
-const SAME_LINE_CHANNEL_DIFFERENCE = 48;
+// little larger, and stations not in use are light gray dots. The export works
+// out each station's `station_kind` ('line', 'interchange', 'plain' or
+// 'inactive') and `station_color` from its routes: a style expression doing
+// that came to over half a million nodes in every tile (see the note at the
+// top). Stations without them (older tiles) are dark gray dots.
 const STATION_ICON_LAYERS = new Set([
   'railway_text_stations_low1',
   'railway_text_stations_low2',
   'railway_text_stations_med',
   'railway_text_stations',
 ]);
-const STATION_COLOR = ['var', 'stationColor'];
-const STATION_KIND = ['var', 'stationKind'];
-const stationRouteColorAt = (index: number) => ['var', `stationRouteColor${index}`];
-const STATION_ROUTE_INDEXES = Array.from({ length: STATION_ROUTES_CHECKED }, (_, index) => index);
-const rgba = (color: unknown) => ['to-rgba', ['to-color', color, '#000000']];
-
-function isOtherLineColor(index: number) {
-  const color = ['var', `stationRouteRgba${index}`];
-  const first = ['var', 'stationRgba'];
-  const channelDifference = (channel: number) => ['abs', ['-', ['at', channel, color], ['at', channel, first]]];
-  return [
-    'all',
-    ['!=', stationRouteColorAt(index), ''],
-    [
-      'let',
-      `stationRouteRgba${index}`,
-      rgba(stationRouteColorAt(index)),
-      ['>', ['max', channelDifference(0), channelDifference(1), channelDifference(2)], SAME_LINE_CHANNEL_DIFFERENCE],
-    ],
-  ];
-}
-
-// Binds stationKind ('line', 'interchange', 'plain' or 'inactive') and
-// stationColor for `body`.
-function withStationKind(body: unknown) {
-  const routes = ['var', 'stationRoutes'];
-  return [
-    'let',
-    'stationRoutes',
-    ['split', ['to-string', ['coalesce', ['get', 'station_routes'], '']], '\u001d'],
-    [
-      'let',
-      ...STATION_ROUTE_INDEXES.flatMap((index) => [
-        `stationRouteColor${index}`,
-        [
-          'case',
-          ['all', ['has', 'station_routes'], ['>', ['length', routes], index]],
-          ['downcase', ['at', 1, ['split', ['at', index, routes], '\u001e']]],
-          '',
-        ],
-      ]),
-      [
-        'let',
-        'stationColor',
-        [
-          'case',
-          ...STATION_ROUTE_INDEXES.flatMap((index) => [
-            ['!=', stationRouteColorAt(index), ''],
-            stationRouteColorAt(index),
-          ]),
-          '',
-        ],
-        [
-          'let',
-          'stationKind',
-          [
-            'case',
-            ['!=', ['coalesce', ['get', 'state'], 'present'], 'present'],
-            'inactive',
-            ['==', STATION_COLOR, ''],
-            'plain',
-            ['let', 'stationRgba', rgba(STATION_COLOR), ['any', ...STATION_ROUTE_INDEXES.map(isOtherLineColor)]],
-            'interchange',
-            'line',
-          ],
-          body,
-        ],
-      ],
-    ],
-  ];
-}
+const STATION_KIND = ['to-string', ['coalesce', ['get', 'station_kind'], 'plain']];
+const STATION_COLOR = ['to-string', ['coalesce', ['get', 'station_color'], '']];
 
 const IS_LIGHT_THEME = ['==', ['global-state', 'theme'], 'light'];
 const INTERCHANGE_RING = ['case', IS_LIGHT_THEME, '#334155', '#cbd5e1'];
@@ -455,7 +383,7 @@ export function withRailwayStationColors<T extends StyleLayerLike>(layer: T): T 
   if (!STATION_ICON_LAYERS.has(layer.id || '')) return layer;
   const paint = { ...layer.paint };
   const layout = { ...(layer.layout as Record<string, unknown>) };
-  paint['icon-color'] = withStationKind([
+  paint['icon-color'] = [
     'match',
     STATION_KIND,
     'line',
@@ -465,16 +393,14 @@ export function withRailwayStationColors<T extends StyleLayerLike>(layer: T): T 
     'inactive',
     INACTIVE_STATION,
     PLAIN_STATION,
-  ]);
+  ];
   if (paint['icon-halo-color'] !== undefined) {
-    paint['icon-halo-color'] = mapZoomOutputs(paint['icon-halo-color'], (original) =>
-      withStationKind([
-        'case',
-        ['all', ['==', STATION_KIND, 'interchange'], ['!', IS_HOVERED]],
-        INTERCHANGE_RING,
-        original,
-      ]),
-    );
+    paint['icon-halo-color'] = mapZoomOutputs(paint['icon-halo-color'], (original) => [
+      'case',
+      ['all', ['==', STATION_KIND, 'interchange'], ['!', IS_HOVERED]],
+      INTERCHANGE_RING,
+      original,
+    ]);
   }
   layout['icon-image'] = 'sdf:general/station-normal';
   const size = layout['icon-size'] ?? 1;

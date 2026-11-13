@@ -417,7 +417,7 @@ export function applyRailwayFilterToStyle<T extends StyleLike>(
     const withVisibility = withRailwayOverlayVisibility(layer);
     const sourceLayer = layer['source-layer'] || '';
     if (lineSourceLayers.has(sourceLayer)) {
-      return withFilter(withRailwayLineColors(withVisibility), RAILWAY_LINE_FILTER);
+      return withFilter(withRailwayLineColors(withVisibility, settings.colorBy), RAILWAY_LINE_FILTER);
     }
     if (stationSourceLayers.has(sourceLayer)) {
       return withFilter(withRailwayStationColors(withVisibility), RAILWAY_STATION_FILTER);
