@@ -1,9 +1,10 @@
-// Highlights one OSM relation on the map: a route (e.g. a metro line in one
-// direction) or a railway line (route=railway, e.g. 京沪线). Line segments carry
-// the routes and lines they belong to as `line_routes` / `line_relations`, and
-// stations their routes as `station_routes`: groups of `id\x1Ecolor\x1Elabel`
-// (lines add `\x1Eref`) joined by `\x1D`. Both are relation ids, so one
-// selected id matches in either list. The highlight layers sit on the same
+// Highlights one route or line on the map: a route (e.g. a metro line in one
+// direction) or a railway line (route=railway, e.g. 京沪线; in Japan an official
+// line, id jp-…). Line segments carry the routes and lines they belong to as
+// `line_routes` / `line_relations`, and stations their routes as
+// `station_routes`: groups of `id\x1Ecolor\x1Elabel` (lines add `\x1Eref`)
+// joined by `\x1D`. No id is in both lists, so one selected id matches in
+// either. The highlight layers sit on the same
 // railway sources and keep only features whose lists contain the selected id,
 // so the whole route or line shows wherever tiles load, not just the clicked
 // segment. Below z7 no tiles carry these ids, so route-trace.ts collects the

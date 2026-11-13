@@ -1,11 +1,13 @@
 // Hovering a railway line lights up the whole line, not just the way under the
 // pointer. The line is
 //
-// - the hovered segment's railway line (a `line_relations` id, preferring one
+// - the hovered segment's railway line (a `line_relations` id: a route=railway
+//   relation, or in Japan its official line, listed first; preferring one
 //   named like the segment), else its first transit route (`line_routes`, so
 //   a metro track lights its metro line): segments listing that id belong;
 // - its name: segments without relation lists belong by name. The zoomed-out
-//   layer carries no lists, so there the line is the segments of that name.
+//   layer carries no lists, so there the line is the segments of that name
+//   (in Japan the official line's name, which that layer takes).
 //
 // The pointer handler (popup.ts) sets the line layers' `hover` feature state
 // on the line's features in the loaded tiles. Feature state only updates the

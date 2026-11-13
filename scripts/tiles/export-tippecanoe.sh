@@ -14,6 +14,8 @@
 #                   each update becomes a log line in CI)
 #   LINE_RELATIONS_OPL - optional OPL file of route=railway relations (see
 #                   line-relations.py); adds line_relations to railway_line_high
+#   LINE_GROUPS_DIR - optional output of line-groups.sh: Japan's official lines,
+#                   which replace the line relations of the ways on them
 #   CR_STATION_TRAINS - China Railway trains per day by OSM station (default:
 #                   data/cr-station-trains.csv, see cr-station-trains.py); sizes
 #                   those stations by timetable instead of mapped routes
@@ -31,6 +33,7 @@ BBOX="${BBOX:-}"
 LAYERS="${LAYERS:-standard}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 LINE_RELATIONS_OPL="${LINE_RELATIONS_OPL:-}"
+LINE_GROUPS_DIR="${LINE_GROUPS_DIR:-}"
 CR_STATION_TRAINS="${CR_STATION_TRAINS:-$(dirname "$0")/../../data/cr-station-trains.csv}"
 JP_STATION_CODES="${JP_STATION_CODES:-$(dirname "$0")/../../data/jp-station-codes.csv}"
 FGB_DIR="${OUTPUT_DIR}/fgb"
@@ -125,7 +128,7 @@ rm -f "${FGB_DIR}"/.failed-*
 # DB 6100 or 京沪线) list every way of a line, bridges and tunnels included.
 # The import database leaves them out, so they come from a separate planet
 # extract and are joined to segments through the way id.
-LINE_RELATIONS_SQL=""
+RELATION_LIST_SQL="NULL"
 if [ -n "${LINE_RELATIONS_OPL}" ]; then
   echo "--- Loading line relations from ${LINE_RELATIONS_OPL} ---"
   python3 -I "$(dirname "$0")/line-relations.py" "${LINE_RELATIONS_OPL}" "${OUTPUT_DIR}/line-relations"
@@ -140,8 +143,7 @@ CREATE INDEX ON line_relation_members (way_id);
 ANALYZE line_relations, line_relation_members;
 SQL
   # Same id/color/label layout as line_routes, plus the line's ref.
-  LINE_RELATIONS_SQL=",
-  (SELECT nullif(array_to_string(array_agg(
+  RELATION_LIST_SQL="(SELECT nullif(array_to_string(array_agg(
     r.osm_id::text || U&'\001E' ||
     coalesce(r.color, '') || U&'\001E' ||
     coalesce(r.name, r.ref, '') || U&'\001E' ||
@@ -150,9 +152,40 @@ SQL
   ), U&'\001D'), '')
   FROM line_relation_members m
   JOIN line_relations r ON r.osm_id = m.relation_id
-  WHERE m.way_id = lv.osm_id) as line_relations"
+  WHERE m.way_id = lv.osm_id)"
   echo ""
 fi
+
+# Japan's official lines (line-groups.sh). OSM has no route=railway relation
+# for about a quarter of Japan's mainline track (外房線, 武蔵野線, 京成本線…)
+# and names ways inconsistently (JR外房線 and 外房線, JR山陰線 for 山陰本線),
+# so there a way's line is the official line of MLIT's railway data (N02) it
+# follows, named from OSM. A way on shared track is on several (rank 0 is the
+# one it follows). Only N02 lines are kept: the script's other groups are what
+# relations and names already give. Empty without LINE_GROUPS_DIR.
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS line_group_ways, line_groups;
+CREATE TABLE line_groups (
+  group_id int PRIMARY KEY, line_id text, source text, operator text, legal_name text, name text, aliases text
+);
+CREATE TABLE line_group_ways (group_id int NOT NULL, way_id int8 NOT NULL, rank int NOT NULL);
+SQL
+if [ -n "${LINE_GROUPS_DIR}" ]; then
+  echo "--- Loading official lines from ${LINE_GROUPS_DIR} ---"
+  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q \
+    -c "\\copy line_groups FROM '${LINE_GROUPS_DIR}/line_groups.csv' WITH (FORMAT csv, HEADER true)" \
+    -c "\\copy line_group_ways FROM '${LINE_GROUPS_DIR}/line_group_ways.csv' WITH (FORMAT csv, HEADER true)"
+fi
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
+SET client_min_messages = warning;
+DELETE FROM line_group_ways w USING line_groups g WHERE g.group_id = w.group_id AND g.source <> 'n02';
+DELETE FROM line_groups WHERE source <> 'n02';
+CREATE INDEX ON line_group_ways (way_id);
+ANALYZE line_groups, line_group_ways;
+SQL
+psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' official lines' FROM line_groups"
+echo ""
 
 # Number of tracks and opening dates of railway ways (tracks, start_date,
 # opening_date), which the import database does not keep either; same planet
@@ -246,17 +279,78 @@ FROM (
 ORDER BY name, operator, weight DESC, segments DESC, color;
 CREATE UNIQUE INDEX ON line_colors (line_name, line_operator);
 ANALYZE line_colors;
+
+-- Official lines vote the same way, over the track each one follows itself
+-- (rank 0: not 北総線's routes for 京成成田空港線, which runs on its track).
+-- That color is only the line's in its info box list: segments keep the color
+-- of their name, since an official line can hold services of different
+-- colors (東海道本線 holds 京浜東北線 and 横須賀線 track, and the 山手線
+-- trains' track east of the loop is officially 東北本線 and 東海道本線).
+-- A color needs routes along a quarter of the line: 外房線's routes have none,
+-- and the few metres of 総武緩行線 track at 千葉 must not color it.
+DROP TABLE IF EXISTS line_way_line, line_group_colors;
+CREATE TABLE line_group_colors AS
+WITH group_ways AS (
+  SELECT w.group_id, lv.osm_id, coalesce(lv.way_length, 0) AS way_length
+  FROM line_group_ways w
+  JOIN railway_line_view lv ON lv.osm_id = w.way_id
+  WHERE w.rank = 0 AND lv.state = 'present'
+), segment_colors AS (
+  SELECT DISTINCT gw.group_id, gw.osm_id, gw.way_length, lower(trim(r.color)) AS color
+  FROM group_ways gw
+  JOIN route_line rl ON rl.line_id = gw.osm_id
+  JOIN routes r ON r.osm_id = rl.route_id
+  WHERE nullif(trim(r.color), '') IS NOT NULL
+)
+SELECT DISTINCT ON (votes.group_id) votes.group_id, color
+FROM (
+  SELECT group_id, color, sum(way_length) AS weight, count(*) AS segments
+  FROM segment_colors
+  GROUP BY group_id, color
+) votes
+JOIN (SELECT group_id, sum(way_length) AS length FROM group_ways GROUP BY group_id) totals
+  ON totals.group_id = votes.group_id
+WHERE votes.weight >= totals.length / 4
+ORDER BY votes.group_id, weight DESC, segments DESC, color;
+CREATE UNIQUE INDEX ON line_group_colors (group_id);
+
+-- Each way's official line, the one it follows.
+CREATE TABLE line_way_line AS
+SELECT w.way_id, g.line_id, g.name AS line_name
+FROM line_group_ways w
+JOIN line_groups g ON g.group_id = w.group_id
+WHERE w.rank = 0;
+CREATE UNIQUE INDEX ON line_way_line (way_id);
+ANALYZE line_group_colors, line_way_line;
 SQL
 psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' lines colored by their routes' FROM line_colors"
+psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' official lines colored by their routes' FROM line_group_colors"
 echo ""
+
+# A segment's line_relations: its official lines (same layout as relations,
+# ids jp-…, colored by their routes), else its line relations.
+LINE_RELATIONS_SQL=",
+  coalesce(
+    (SELECT array_to_string(array_agg(
+      g.line_id || U&'\001E' || coalesce(gc.color, '') || U&'\001E' || g.name || U&'\001E'
+      ORDER BY w.rank, g.line_id
+    ), U&'\001D')
+    FROM line_group_ways w
+    JOIN line_groups g ON g.group_id = w.group_id
+    LEFT JOIN line_group_colors gc ON gc.group_id = w.group_id
+    WHERE w.way_id = lv.osm_id),
+    ${RELATION_LIST_SQL}
+  ) as line_relations"
 # Line queries join railway_line_view lv to the fallback operators, the
-# operator colors, the way tags and the line colors.
+# operator colors, the way tags, the line colors and the official lines (the
+# zoomed-out layer names its sections after them).
 LINE_JOINS="LEFT JOIN line_operators lo ON lo.way_id = lv.osm_id
 LEFT JOIN (SELECT name AS known_operator, color AS known_color FROM railway_operator) oc
   ON oc.known_operator = coalesce(lv.primary_operator, lo.fallback_operator[1])
 LEFT JOIN line_way_tags wt ON wt.way_id = lv.osm_id
 LEFT JOIN line_colors lc
-  ON lc.line_name = lv.name AND lc.line_operator = coalesce(lv.primary_operator, lo.fallback_operator[1], '')"
+  ON lc.line_name = lv.name AND lc.line_operator = coalesce(lv.primary_operator, lo.fallback_operator[1], '')
+LEFT JOIN line_way_line ll ON ll.way_id = lv.osm_id"
 OPERATOR_SQL="nullif(array_to_string(
     CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
     U&'\001E'), '')"
@@ -591,7 +685,7 @@ FROM (
     state,
     usage,
     highspeed,
-    name,
+    coalesce(ll.line_name, lv.name) as name,
     maxspeed,
     electrification_state,
     voltage,
@@ -611,8 +705,8 @@ FROM (
     AND usage = 'main'
     AND service IS NULL
   GROUP BY
-    feature, state, usage, highspeed, name, maxspeed, electrification_state, voltage, frequency,
-    gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}, lc.color
+    feature, state, usage, highspeed, coalesce(ll.line_name, lv.name), maxspeed, electrification_state, voltage,
+    frequency, gaugeint0, gaugeint1, traffic_mode, ${OPERATOR_SQL}, ${OPERATOR_COLOR_SQL}, lc.color
 ) merged
 ORDER BY rank NULLS LAST
 "

@@ -48,7 +48,11 @@ until it exists, every tile request fails. The archive (several GB, worldwide, z
    md5, so later runs against the same weekly planet skip it and only apply the diffs. The manual
    "Fetch line relations" workflow runs that pass alone and uploads the result, a self-contained
    railway extract (`lines.osm.pbf`: railway lines, transit routes, stop areas, every railway way, stations, and the nodes they use), as an artifact for local
-   work (`gh run download <run id> -n line-relations -D output/line-relations`):
+   work (`gh run download <run id> -n line-relations -D output/line-relations`). In Japan, where
+   OSM lacks line relations for much of the track, the export then matches the extract's ways to
+   the official lines of MLIT's railway data (国土数値情報 N02, `scripts/tiles/line-groups.sh`), and
+   uploads a review of the result (`line-groups-review`: each line's coverage, and track no line
+   took):
 
    ```bash
    REPO=<owner>/<repo>

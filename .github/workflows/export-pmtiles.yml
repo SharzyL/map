@@ -111,6 +111,26 @@ jobs:
         with:
           pbf: ${{ github.event.inputs.line_relations_pbf || 'https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf' }}
 
+      # OSM lacks line relations for much of Japan and names its ways
+      # inconsistently, so Japan's lines are its official lines (MLIT's railway
+      # data), matched to the extract's ways; see the script.
+      - name: Japan's official lines
+        run: |
+          if [ -e line-relations/lines.osm.pbf ]; then
+            ./scripts/tiles/line-groups.sh line-relations/lines.osm.pbf line-groups
+          fi
+
+      # How well each official line is covered, and the track no line took.
+      - name: Upload the official lines review
+        if: hashFiles('line-groups/review.csv') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-groups-review
+          path: |
+            line-groups/review.csv
+            line-groups/unmatched.csv
+          retention-days: 30
+
       - name: Export layers and generate PMTiles
         env:
           DATABASE_URL: postgresql://postgres@localhost:5432/gis
@@ -122,6 +142,9 @@ jobs:
         run: |
           if [ -e line-relations/lines.opl ]; then
             export LINE_RELATIONS_OPL=./line-relations/lines.opl
+          fi
+          if [ -e line-groups/line_groups.csv ]; then
+            export LINE_GROUPS_DIR=./line-groups
           fi
           ./scripts/tiles/export-tippecanoe.sh
 

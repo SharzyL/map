@@ -51,6 +51,12 @@ const TILE_ARCHIVE = new URLSearchParams(window.location.search).get('tileset') 
 const TILE_URL = `${window.location.origin}/tiles/${TILE_ARCHIVE}/{z}/{x}/{y}.mvt?v=${TILE_VERSION}`;
 // The single vector source every railway layer draws from.
 const ORM_SOURCE = 'openrailwaymap';
+// Japan's railway lines in the tiles are MLIT's official lines (国土数値情報
+// N02, CC BY 4.0, matched to OSM by scripts/tiles/line-groups.py), which ask
+// for this credit.
+const N02_ATTRIBUTION =
+  '<a href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener">' +
+  '国土数値情報（鉄道データ）</a>（国土交通省）を加工して作成';
 // Source code link at the start of the attribution line, bottom right.
 const GITHUB_ATTRIBUTION =
   '<a class="attribution-github" href="https://github.com/SharzyL/map" target="_blank" rel="noopener">' +
@@ -221,7 +227,12 @@ function rewriteOrmStyle(style: StyleLike): StyleLike {
   const attribution = Object.values(style.sources || {}).find(isRailwaySource)?.attribution;
   style.sources = {
     ...Object.fromEntries(Object.entries(style.sources || {}).filter(([name]) => !railwaySourceNames.has(name))),
-    [ORM_SOURCE]: { type: 'vector', tiles: [TILE_URL], attribution, maxzoom: 15 },
+    [ORM_SOURCE]: {
+      type: 'vector',
+      tiles: [TILE_URL],
+      attribution: [attribution, N02_ATTRIBUTION].filter(Boolean).join(' '),
+      maxzoom: 15,
+    },
   };
   style.layers = style.layers?.map((layer) =>
     railwaySourceNames.has(layer.source as string) ? { ...layer, source: ORM_SOURCE } : layer,

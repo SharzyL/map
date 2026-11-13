@@ -16,13 +16,19 @@ name comes from OSM, which keeps 本線 and company prefixes (山陰本線,
 aliases. Ways outside N02 are grouped by their route=railway relation, else
 by name and operator along connected track.
 Writes:
-  line_groups.csv      group_id,source,operator,legal_name,name,aliases
-  line_group_ways.csv  group_id,way_id (a way can be in several groups)
+  line_groups.csv      group_id,line_id,source,operator,legal_name,name,aliases
+  line_group_ways.csv  group_id,way_id,rank (a way on shared track is in several
+                       groups; rank 0 is the line it follows, then the lines
+                       drawn on the same track)
+
+line_id is stable across runs for N02 lines (a hash of the operator and the
+official name) and empty for the other groups.
   review.csv           one row per N02 line, with lengths and checks
   unmatched.csv        named ways in Japan that no N02 line took, by name
 """
 
 import csv
+import hashlib
 import json
 import math
 import re
@@ -182,6 +188,11 @@ def name_prefix(name, legal):
     return None
 
 
+def line_id_of(operator, official):
+    """A line id that stays the same across runs: jp- and a hash of the operator and the official name."""
+    return 'jp-' + hashlib.sha1(f'{operator}/{official}'.encode()).hexdigest()[:10]
+
+
 def operator_key(operator):
     return re.sub(r'\s*\(.*\)$', '', operator or '').strip()
 
@@ -293,6 +304,7 @@ def match_ways(ways, keys, n02):
 
     in_japan = set()
     matched = {}
+    shared = []  # (way, another line drawn on its track)
     for way_id, (tags, _, points, _) in ways.items():
         x, y = points[0]
         if (math.floor(x / JAPAN_CELL_DEG), math.floor(y / JAPAN_CELL_DEG)) not in japan:
@@ -325,13 +337,31 @@ def match_ways(ways, keys, n02):
         first = max(hits, key=score)
         if hits[first] / len(taken) < (0.3 if first in named else 0.6):
             continue
-        lines = [first]
+        matched[way_id] = [first]
         for other, count in hits.items():
             if other != first and count >= 0.8 * len(taken):
                 same = sum(1 for best in nearest if first in best and coincide(segments, grid, best[first][1], other))
                 if same >= 0.8 * len(taken):
-                    lines.append(other)
-        matched[way_id] = lines
+                    shared.append((way_id, other))
+
+    # N02 draws lines a few metres apart in the same place, so it can't tell
+    # shared track (京成成田空港線 on 北総線's) from parallel lines
+    # (東海道新幹線 beside 東海道本線). OSM can: a line with track of its own
+    # alongside the way doesn't share it.
+    own = Grid()
+    for way_id, (first,) in matched.items():
+        points = ways[way_id][2]
+        for (x1, y1), (x2, y2) in zip(points, points[1:]):
+            own.add((first, x1, y1, x2, y2), x1, y1, x2, y2, pad)
+    for way_id, other in shared:
+        taken = samples(ways[way_id][2])
+        alongside = sum(
+            1
+            for x, y, _ in taken
+            if any(line == other and point_segment_m(x, y, *seg) <= MATCH_RADIUS_M for line, *seg in own.near(x, y))
+        )
+        if alongside < len(taken) / 2:
+            matched[way_id].append(other)
     return matched, in_japan
 
 
@@ -529,15 +559,19 @@ def main(opl_path, sections_path, stations_path, out_dir):
 
     with open(out / 'line_groups.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(['group_id', 'source', 'operator', 'legal_name', 'name', 'aliases'])
+        writer.writerow(['group_id', 'line_id', 'source', 'operator', 'legal_name', 'name', 'aliases'])
         for group_id, g in enumerate(groups):
-            writer.writerow([group_id, g['source'], g['operator'], g['legal_name'], g['name'], '|'.join(g['aliases'])])
+            line_id = line_id_of(g['operator'], g['legal_name']) if g['source'] == 'n02' else ''
+            aliases = '|'.join(g['aliases'])
+            writer.writerow([group_id, line_id, g['source'], g['operator'], g['legal_name'], g['name'], aliases])
     with open(out / 'line_group_ways.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(['group_id', 'way_id'])
+        writer.writerow(['group_id', 'way_id', 'rank'])
         for group_id in range(len(groups)):
+            n02_line = groups[group_id]['source'] == 'n02'
             for way_id in sorted(group_ways[group_id]):
-                writer.writerow([group_id, way_id])
+                # N02 groups come first, in the order of keys, so their group id is the line's index.
+                writer.writerow([group_id, way_id, matched[way_id].index(group_id) if n02_line else 0])
 
     pad = MATCH_RADIUS_M / M_PER_DEG / math.cos(math.radians(46))
     with open(out / 'review.csv', 'w', newline='', encoding='utf-8') as f:
