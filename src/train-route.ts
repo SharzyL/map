@@ -11,9 +11,11 @@ import {
   NO_TRAIN_WAYS,
   setStationHover,
   stopFeatures,
+  stopKeys,
   TRAIN_ROUTE_SOURCE,
   TRAIN_ROUTE_STATE,
   TRAIN_ROUTE_WAY_LAYER,
+  TRAIN_STOPS_STATE,
 } from './route-highlight.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
 
@@ -67,6 +69,7 @@ export function installTrainRoute(map: TrainRouteMap) {
       route ? trainRouteFeatures(route, here) : EMPTY,
     );
     if (shown !== Boolean(route)) setGlobalStatePropertyWhenReady(map, TRAIN_ROUTE_STATE, Boolean(route));
+    if (route || shown) setGlobalStatePropertyWhenReady(map, TRAIN_STOPS_STATE, route ? stopKeys(route.stops) : []);
     shown = Boolean(route);
   };
 

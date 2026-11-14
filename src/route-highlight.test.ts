@@ -11,7 +11,10 @@ import {
   addRouteHighlightToStyle,
   ROUTE_HIGHLIGHT_COLOR_STATE,
   ROUTE_HIGHLIGHT_ID_STATE,
+  ROUTE_STOPS_STATE,
   routeListFilter,
+  stopKeys,
+  TRAIN_STOPS_STATE,
 } from './route-highlight.js';
 
 // Two Shanghai Metro line 11 routes on one segment (OpenRailwayMap tiles).
@@ -123,14 +126,20 @@ describe('addRouteHighlightToStyle', () => {
     expect(styled.layers.slice(-onTop.length).map((layer) => layer.id)).toEqual(onTop);
   });
 
-  function opacity(layerId: string, property: string, routeId: string, properties: Record<string, unknown> = {}) {
+  function opacity(
+    layerId: string,
+    property: string,
+    routeId: string,
+    properties: Record<string, unknown> = {},
+    state: Record<string, unknown> = {},
+  ) {
     const layer = styled.layers.find((candidate) => candidate.id === layerId);
     const value = (layer.paint as Record<string, unknown>)[property];
     const spec = latest[`paint_${layer.type}`][property];
     const expression = createExpression(value, spec);
     if (expression.result !== 'success') throw new Error(JSON.stringify(expression.value));
     return expression.value.evaluate(
-      { zoom: 12, globalState: { [ROUTE_HIGHLIGHT_ID_STATE]: routeId } } as never,
+      { zoom: 12, globalState: { [ROUTE_HIGHLIGHT_ID_STATE]: routeId, ...state } } as never,
       { type: 'Point', properties } as never,
     );
   }
@@ -152,6 +161,34 @@ describe('addRouteHighlightToStyle', () => {
     expect(opacity(station.id, 'text-opacity', '5611108', onRoute)).toBe(1);
     expect(opacity(station.id, 'text-opacity', '42', onRoute)).toBeCloseTo(0.6);
     expect(opacity(station.id, 'text-opacity', '', {})).toBe(1);
+  });
+
+  it('hides the names of stations the route or train labels as stops, but not their icons', () => {
+    const stations = styled.layers.filter(
+      (layer) =>
+        layer.type === 'symbol' &&
+        'source' in layer &&
+        layer['source-layer']?.startsWith('standard_railway_text_stations'),
+    );
+    expect(stations.length).toBeGreaterThan(2);
+    const keys = stopKeys([
+      { name: '湖州东', elements: ['N123'] },
+      { name: '麻城北', elements: null },
+    ]);
+    expect(keys).toEqual(['湖州东', 'N123', '麻城北']);
+    for (const station of stations) {
+      for (const state of [ROUTE_STOPS_STATE, TRAIN_STOPS_STATE]) {
+        const shown = { [state]: keys };
+        expect(opacity(station.id, 'text-opacity', '', { name: '湖州东' }, shown)).toBe(0);
+        expect(opacity(station.id, 'text-opacity', '', { name: 'Huzhou East', localized_name: '麻城北' }, shown)).toBe(
+          0,
+        );
+        expect(opacity(station.id, 'text-opacity', '', { name: '湖州', osm_type: 'N', osm_id: '123' }, shown)).toBe(0);
+        expect(opacity(station.id, 'text-opacity', '', { name: '湖州', osm_type: 'N', osm_id: '12' }, shown)).toBe(1);
+        expect(opacity(station.id, 'icon-opacity', '', { name: '湖州东' }, shown)).toBe(1);
+      }
+      expect(opacity(station.id, 'text-opacity', '', { name: '湖州东' })).toBe(1);
+    }
   });
 
   it('fades other labels a little while a route is highlighted', () => {

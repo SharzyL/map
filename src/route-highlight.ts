@@ -28,6 +28,11 @@ export const TRAIN_ROUTE_STATE = 'trainRouteShown';
 export const TRAIN_ROUTE_SOURCE = 'train_route';
 export const TRAIN_ROUTE_WAY_LAYER = /^train_route_(casing|line)_\d+$/;
 export const NO_TRAIN_WAYS = ['==', ['get', 'osm_id'], -1];
+// The stops a highlighted route and a shown train label, by their names and
+// OSM elements (N1, stopKeys): the tiles' own label of such a station hides,
+// so the stop is not named twice.
+export const ROUTE_STOPS_STATE = 'highlightedRouteStops';
+export const TRAIN_STOPS_STATE = 'trainRouteStops';
 const TRAIN_COLOR = '#2563eb';
 // Dispatched (bubbling) by popup route list items; detail is a RouteSelection.
 export const ROUTE_SELECT_EVENT = 'orm:routeselect';
@@ -86,6 +91,21 @@ const DIMMING = ['any', ['!=', SELECTED_ID, ''], ['to-boolean', ['global-state',
 // Line segment attributes listing the relations a segment belongs to.
 export const LINE_LIST_PROPERTIES = ['line_routes', 'line_relations'] as const;
 const ROUTE_COLOR = ['to-color', ['global-state', ROUTE_HIGHLIGHT_COLOR_STATE], FALLBACK_COLOR];
+
+function isLabeledStop(state: string) {
+  const keys = ['global-state', state];
+  return [
+    'any',
+    ['in', ['get', 'name'], keys],
+    ['in', ['get', 'localized_name'], keys],
+    ['in', ['concat', ['get', 'osm_type'], ['get', 'osm_id']], keys],
+  ];
+}
+const LABELED_STOP = ['any', isLabeledStop(ROUTE_STOPS_STATE), isLabeledStop(TRAIN_STOPS_STATE)];
+
+export function stopKeys(stops: Array<{ name: string; elements?: string[] | null }>) {
+  return [...new Set(stops.flatMap((stop) => [stop.name, ...(stop.elements ?? [])]))];
+}
 
 export function routeListFilter(property: string) {
   return [
@@ -340,9 +360,13 @@ function withRouteDimming(layer: StyleLayerLike, railway = true): StyleLayerLike
   const properties = OPACITY_PROPERTIES[layer.type || ''];
   if (!properties) return layer;
   const factor = dimmedOpacity(layer, railway);
+  // A station's name gives way to the stop label naming it; its icon stays.
+  const station = railway && !!layer['source-layer']?.startsWith(STATION_SOURCE_LAYER_PREFIX);
+  const textFactor = station ? ['case', LABELED_STOP, 0, factor] : factor;
   const paint = { ...((layer.paint as Record<string, unknown>) || {}) };
   for (const property of properties) {
-    paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, factor]);
+    const by = property === 'text-opacity' ? textFactor : factor;
+    paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, by]);
   }
   return { ...layer, paint };
 }
@@ -380,6 +404,8 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
     [ROUTE_HIGHLIGHT_ID_STATE]: { default: '' },
     [ROUTE_HIGHLIGHT_COLOR_STATE]: { default: '' },
     [TRAIN_ROUTE_STATE]: { default: false },
+    [ROUTE_STOPS_STATE]: { default: [] as string[] },
+    [TRAIN_STOPS_STATE]: { default: [] as string[] },
   };
   const sources = { ...((style.sources as Record<string, unknown>) || {}) };
   sources[OVERVIEW_SOURCE] = { type: 'geojson', data: EMPTY_GEOMETRY };
@@ -755,6 +781,15 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     if (signal.aborted) return;
     panel.fill(details);
     overview()?.setData(overviewGeometry(details.overview, details.stops ?? []));
+    setStopKeys(stopKeys(details.stops ?? []));
+  }
+
+  // Set only on a change: each one reloads the railway tiles.
+  let labeledStops: string[] = [];
+  function setStopKeys(keys: string[]) {
+    if (keys.length === 0 && labeledStops.length === 0) return;
+    labeledStops = keys;
+    setGlobalStatePropertyWhenReady(map, ROUTE_STOPS_STATE, keys);
   }
 
   function select(route: RouteSelection | null) {
@@ -762,6 +797,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     trace?.abort();
     trace = null;
     overview()?.setData(EMPTY_GEOMETRY);
+    setStopKeys([]);
     setGlobalStatePropertyWhenReady(map, ROUTE_HIGHLIGHT_COLOR_STATE, route?.color || '');
     setGlobalStatePropertyWhenReady(map, ROUTE_HIGHLIGHT_ID_STATE, route?.id || '');
     panel.show(route);
