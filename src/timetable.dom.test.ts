@@ -2,7 +2,13 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CrTrainSchedule, CrTrainset, TrainRoute } from './norikae.js';
-import { installTimetable, timetableButton, TIMETABLE_OPEN_EVENT, timetableRequestFor } from './timetable.js';
+import {
+  crLinesBetweenStops,
+  installTimetable,
+  timetableButton,
+  TIMETABLE_OPEN_EVENT,
+  timetableRequestFor,
+} from './timetable.js';
 
 const crPath = (path: string) => '/v1/' + path.split('/').map(encodeURIComponent).join('/');
 const CR_STATION = {
@@ -216,6 +222,7 @@ const text = (root: HTMLElement, selector: string) =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  localStorage.clear();
   document.body.replaceChildren();
 });
 
@@ -295,6 +302,44 @@ describe('timetable panel', () => {
   });
 });
 
+describe('crLinesBetweenStops', () => {
+  // Z157 from 北京丰台 (km 1298) to 山海关 (km 1629): on 京沪线 to 北京 (km 1314), then on 京哈线.
+  const lines = [
+    {
+      name: '京沪线',
+      stations: [
+        { name: '上海', km: 0 },
+        { name: '北京丰台', km: 1298 },
+        { name: '北京', km: 1314 },
+      ],
+    },
+    {
+      name: '京哈线',
+      stations: [
+        { name: '北京', km: 1314 },
+        { name: '天津', km: 1451 },
+        { name: '山海关', km: 1629 },
+      ],
+    },
+  ];
+
+  it('gives the lines between each stop and the next, with the junctions where it changes line', () => {
+    const stops = [{ km: 0 }, { km: 1298 }, { km: 1451 }, { km: 1629 }];
+    expect(crLinesBetweenStops(stops, lines)).toEqual([
+      [{ name: '京沪线', from: null }],
+      [
+        { name: '京沪线', from: null },
+        { name: '京哈线', from: '北京' },
+      ],
+      [{ name: '京哈线', from: null }],
+    ]);
+  });
+
+  it('gives no lines when the schedule has none', () => {
+    expect(crLinesBetweenStops([{ km: 0 }, { km: 10 }], [])).toEqual([[]]);
+  });
+});
+
 describe('China Railway timetable', () => {
   it('lists a station’s trains by date and opens a train’s stops', async () => {
     const { container, panel, requests, route } = setup();
@@ -342,7 +387,6 @@ describe('China Railway timetable', () => {
       'In service',
       'Distance',
       'Stops',
-      'Lines',
       'Rolling stock',
     ]);
     expect(text(root, '.timetable-meta dd')).toEqual([
@@ -351,7 +395,6 @@ describe('China Railway timetable', () => {
       '2024-04-02 – 2026-11-24',
       '2400 km',
       '3',
-      '京沪线 (0–1200 km) → 京哈线 (1200–2400 km)',
       '25T · 上局南京段',
     ]);
     expect(text(root, '.timetable-comment')).toEqual(['25T型，DC600V供电']);
@@ -359,6 +402,20 @@ describe('China Railway timetable', () => {
     expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
     expect(text(root, '.timetable-cr-stops .timetable-platform')).toEqual(['', '10', '']);
     expect(root.querySelector('.timetable-back').textContent).toBe('← Trains');
+
+    // Lines and distances are folded in by a switch the browser remembers.
+    const stopList = root.querySelector('.timetable-cr-stops');
+    const toggle = root.querySelector<HTMLInputElement>('.timetable-toggle input');
+    expect(root.querySelector('.timetable-toggle').textContent).toBe('Lines and distances');
+    expect(toggle.checked).toBe(false);
+    expect(stopList.classList.contains('timetable-show-lines')).toBe(false);
+    expect(text(root, '.timetable-stop-km')).toEqual(['0 km', '1200 km', '2400 km']);
+    expect(text(root, '.timetable-stop-lines')).toEqual(['京沪线', '京哈线']);
+    toggle.click();
+    expect(stopList.classList.contains('timetable-show-lines')).toBe(true);
+    expect(localStorage.getItem('atlas-realm:timetable-lines')).toBe('true');
+    toggle.click();
+    expect(localStorage.getItem('atlas-realm:timetable-lines')).toBe('false');
 
     // A stop opens that station's trains on the day the train is there.
     root.querySelector<HTMLButtonElement>('.timetable-stop-name').click();
@@ -382,7 +439,6 @@ describe('China Railway timetable', () => {
     // It replaces the rolling stock the timetable plans, which named another model.
     expect(rows['Rolling stock']).toBeUndefined();
     expect(text(root, '.timetable-comment')).not.toContain('CR400AF型重联');
-    expect(rows.Lines).toBeUndefined();
     expect(text(root, '.timetable-coach-details dt')).toEqual(['餐车', '静音车厢']);
     expect(text(root, '.timetable-coach-details dd')).toEqual(['09车', '✓']);
     expect(text(root, '.timetable-coach-list li')).toEqual(['01车 一等/商务 32/5', '02车 二等 93']);

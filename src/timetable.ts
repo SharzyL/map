@@ -41,10 +41,12 @@ import {
   type TimetableDay,
 } from './norikae.js';
 import { hoverStopOnMap } from './route-highlight.js';
+import { readStoredSettings, writeStoredSettings } from './stored-settings.js';
 import type { TrainRouteDrawer } from './train-route.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 
 export const TIMETABLE_OPEN_EVENT = 'orm:timetable';
+export const TIMETABLE_LINES_STORAGE_KEY = 'atlas-realm:timetable-lines';
 // Yahoo station codes, or China Railway stations to try in turn (OSM elements
 // "N1,W2", then the name).
 type YahooRequest = { name: string; codes: string[] };
@@ -101,16 +103,21 @@ export function rollingStockLabel(stock: CrRollingStock | null | undefined) {
   return [sets, stock.depot].filter(Boolean).join(' · ') || null;
 }
 
-// The lines a train runs over, in order, with the km it runs them between.
-export function crLinesLabel(lines: CrLine[] | undefined) {
-  if (!lines?.length) return null;
-  return lines
-    .map(({ name, stations }) => {
+// The lines a train runs on between each stop and the next, in order, each
+// after the first with the junction it begins at. The lines' km are on the
+// stops' scale, which only grows along the run, so a line belongs between two
+// stops when its span overlaps theirs.
+export type LineSegment = { name: string; from: string | null };
+export function crLinesBetweenStops(stops: Array<{ km: number }>, lines: CrLine[]): LineSegment[][] {
+  return stops.slice(1).map((stop, index) => {
+    const start = stops[index].km;
+    const overlapping = lines.filter(({ stations }) => {
       const first = stations[0];
       const last = stations[stations.length - 1];
-      return first && last ? `${name} (${first.km}–${last.km} km)` : name;
-    })
-    .join(' → ');
+      return first && last && first.km < stop.km && last.km > start;
+    });
+    return overlapping.map(({ name, stations }, position) => ({ name, from: position ? stations[0].name : null }));
+  });
 }
 
 // The trainset 12306 assigns: "CR400BF-A-5053 · 复兴号 · 16 cars · 1193 seats · 350 km/h".
@@ -573,7 +580,6 @@ class TimetablePanel {
       ['In service', run ? `${run.service.from} – ${run.service.to ?? 'until further notice'}` : null],
       ['Distance', last ? `${last.km} km` : null],
       ['Stops', String(stops.length)],
-      ['Lines', crLinesLabel(run?.lines)],
       ['Rolling stock', rollingStockLabel(run?.rolling_stock)],
     ]);
     // The description, unless it only names the model.
@@ -588,8 +594,34 @@ class TimetablePanel {
     this._trainset(facts, run?.train ?? train, date, planned);
     if (run && !run.runs)
       el('p', 'timetable-comment', this._body).textContent = `Does not leave its origin on ${date}.`;
+    // Lines and distances, folded into the stops by a switch the viewer's
+    // browser remembers: each stop's km from the origin, and between two
+    // stops the lines the train runs on there.
+    const segments = crLinesBetweenStops(stops, run?.lines ?? []);
+    // It stays at the top of the panel while the stops scroll under it.
+    const toggle = el('label', 'timetable-toggle', el('div', 'timetable-toggle-bar', this._body));
+    const input = el('input', undefined, toggle);
+    input.type = 'checkbox';
+    input.checked = readStoredSettings(TIMETABLE_LINES_STORAGE_KEY, (value) => value === true);
+    el('span', undefined, toggle).textContent = segments.some((lines) => lines.length)
+      ? 'Lines and distances'
+      : 'Distances';
     const list = el('ol', 'timetable-stops timetable-cr-stops', this._body);
-    for (const stop of stops) {
+    list.classList.toggle('timetable-show-lines', input.checked);
+    input.addEventListener('change', () => {
+      list.classList.toggle('timetable-show-lines', input.checked);
+      writeStoredSettings(TIMETABLE_LINES_STORAGE_KEY, input.checked);
+    });
+    stops.forEach((stop, index) => {
+      const lines = index > 0 ? segments[index - 1] : [];
+      if (lines.length) {
+        const row = el('li', 'timetable-stop-lines', list);
+        lines.forEach(({ name, from }, position) => {
+          if (position) row.append(' → ');
+          el('span', 'timetable-segment-line', row).textContent = name;
+          if (from) el('span', 'timetable-segment-junction', row).textContent = ` from ${from}`;
+        });
+      }
       const item = el('li', 'timetable-stop', list);
       if (stop.name === stationName) item.classList.add('timetable-stop-here');
       const name = el('button', 'timetable-stop-name', item);
@@ -609,11 +641,12 @@ class TimetablePanel {
         day.textContent = `+${stop.day - 1}`;
         day.title = `${stop.day - 1} day${stop.day > 2 ? 's' : ''} after leaving its origin`;
       }
+      el('span', 'timetable-stop-km', item).textContent = `${stop.km} km`;
       const platform = el('span', 'timetable-platform', item);
       platform.textContent = stop.platform ?? '';
       if (stop.platform) platform.title = `Platform or gate ${stop.platform}`;
       this._locate(item, stop.name, stop.position);
-    }
+    });
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
     this._drawRoute(crTrainRoute(run?.train ?? train, date, this._signal), stationName);
   }
