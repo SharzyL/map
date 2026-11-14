@@ -171,8 +171,36 @@ const API: Record<string, unknown> = {
     direction: '新宿・高崎・宇都宮',
     day: 'weekday',
     departures: [
-      { time: '07:16', train_id: '33461', kind: '普通', destination: '小金井', extra: false },
-      { time: '08:02', train_id: '33471', kind: '快速', destination: '宇都宮', extra: true },
+      {
+        time: '07:16',
+        train_id: '33461',
+        kind: '普通',
+        destination: '小金井',
+        extra: false,
+        name: '普通',
+        kind_mark: null,
+        destination_mark: '金',
+        track: '3',
+        cars: 15,
+        train_number: '2520Y',
+        starts_here: true,
+        green_car: true,
+      },
+      {
+        time: '08:02',
+        train_id: '33471',
+        kind: '快速',
+        destination: '宇都宮',
+        extra: true,
+        name: '快速',
+        kind_mark: '快',
+        destination_mark: '宇',
+        track: '3',
+        cars: 15,
+        train_number: '2824Y',
+        starts_here: false,
+        green_car: true,
+      },
     ],
   },
   '/v1/stations/22715/timetables/1051/trains/33471': {
@@ -252,7 +280,16 @@ describe('timetable panel', () => {
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('渋谷');
     expect(text(root, '.timetable-stop-time')).toEqual(['07:30', '08:01 – 08:02', '09:50']);
     expect(text(root, '.timetable-comment')).toEqual(['大宮−小山間快速。']);
-    expect(text(root, '.timetable-meta dd')).toEqual(['快速', 'ＪＲ湘南新宿ライン', '3']);
+    // The departure it was opened from knows its number, cars and track here.
+    expect(text(root, '.timetable-meta dt')).toEqual(['Train', 'Number', 'Line', 'Cars', 'Track', 'Stops']);
+    expect(text(root, '.timetable-meta dd')).toEqual([
+      '快速',
+      '2824Y',
+      'ＪＲ湘南新宿ライン',
+      '15 cars · Green Car',
+      '3 at 渋谷',
+      '3',
+    ]);
     // The train's route goes on the map, and stops the API placed get a button to fly there.
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '渋谷', expect.anything()));
     const locate = root.querySelectorAll<HTMLButtonElement>('button.timetable-stop-locate');
@@ -273,6 +310,47 @@ describe('timetable panel', () => {
     root.querySelector<HTMLButtonElement>('.timetable-back').click();
     await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
     expect(root.querySelector('.timetable-back')).toBeNull();
+  });
+
+  it('shows each departure’s name, badges, cars and track, or lays them out as a printed timetable', async () => {
+    const { container, panel } = setup();
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+    const root = panel.panel;
+    await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
+    root.querySelector<HTMLButtonElement>('.timetable-direction').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-time')).toEqual(['07:16', '08:02']));
+
+    const rows = root.querySelectorAll('.timetable-jp-departures .timetable-departure-button');
+    expect(text(root, '.timetable-jp-departures .timetable-kind')).toEqual(['普通', '快速']);
+    // A type other than the line's usual one has a mark, and stands out.
+    expect(rows[1].querySelector('.timetable-kind').classList).toContain('timetable-kind-special');
+    expect(rows[0].querySelector('.timetable-kind').classList).not.toContain('timetable-kind-special');
+    expect(text(root, '.timetable-train-info')).toEqual(['始G15両', 'G15両']);
+    expect(text(root, '.timetable-jp-departures .timetable-platform')).toEqual(['3', '3']);
+    expect((rows[0] as HTMLElement).title).toBe('Train 2520Y · Starts here · Green Car · Track 3');
+
+    // The printed layout, by a switch the browser remembers.
+    const printed = root.querySelector<HTMLElement>('.timetable-printed');
+    const list = root.querySelector<HTMLElement>('.timetable-jp-departures');
+    expect(printed.hidden).toBe(true);
+    root.querySelector<HTMLInputElement>('.timetable-layout-toggle input').click();
+    expect(printed.hidden).toBe(false);
+    expect(list.hidden).toBe(true);
+    expect(localStorage.getItem('atlas-realm:timetable-printed')).toBe('true');
+    expect(text(root, '.timetable-grid-hour')).toEqual(['7', '8']);
+    expect(text(root, '.timetable-grid-time')).toEqual(['16', '02']);
+    expect(text(root, '.timetable-grid-marks')).toEqual(['●金', '宇[快]◆']);
+    expect(text(root, '.timetable-legend li')).toEqual([
+      '[快] 快速',
+      '金 for 小金井',
+      '宇 for 宇都宮',
+      '● Starts here',
+      '◆ Runs on specific days only',
+      'No mark 普通',
+    ]);
+    expect(root.querySelectorAll('.timetable-grid-minute')[1].classList).toContain('timetable-kind-special');
+    root.querySelectorAll<HTMLButtonElement>('.timetable-grid-minute')[1].click();
+    await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['大船', '渋谷', '宇都宮']));
   });
 
   it('switches day types and looks stations up by name without codes', async () => {

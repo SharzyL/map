@@ -47,6 +47,7 @@ import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-p
 
 export const TIMETABLE_OPEN_EVENT = 'orm:timetable';
 export const TIMETABLE_LINES_STORAGE_KEY = 'atlas-realm:timetable-lines';
+export const TIMETABLE_PRINTED_STORAGE_KEY = 'atlas-realm:timetable-printed';
 // Yahoo station codes, or China Railway stations to try in turn (OSM elements
 // "N1,W2", then the name).
 type YahooRequest = { name: string; codes: string[] };
@@ -126,6 +127,46 @@ export function trainsetLabel(trainset: NonNullable<CrTrainset['trainset']>) {
   return [id, brand, cars && `${cars} cars`, capacity && `${capacity} seats`, speed && `${speed} km/h`]
     .filter(Boolean)
     .join(' · ');
+}
+
+// What a departure's row says on hover: the railway's train number and what
+// its badges and marks stand for.
+function departureTitle(departure: Departure) {
+  return [
+    departure.train_number && `Train ${departure.train_number}`,
+    departure.starts_here && 'Starts here',
+    departure.green_car && 'Green Car',
+    departure.track && `Track ${departure.track}`,
+    departure.extra && 'Runs on specific days only',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+// What a printed timetable's marks stand for on this table: each kind and
+// destination mark, and the line's usual type and destination, which carry
+// none (the most frequent among the unmarked departures).
+function departureLegend(departures: Departure[]) {
+  const kinds = new Map<string, string>();
+  const destinations = new Map<string, string>();
+  const usualCounts = { kind: new Map<string, number>(), destination: new Map<string, number>() };
+  for (const departure of departures) {
+    if (departure.kind_mark && departure.kind) kinds.set(departure.kind_mark, departure.kind);
+    else if (departure.kind) usualCounts.kind.set(departure.kind, (usualCounts.kind.get(departure.kind) ?? 0) + 1);
+    if (departure.destination_mark && departure.destination)
+      destinations.set(departure.destination_mark, departure.destination);
+    else if (departure.destination) {
+      const counts = usualCounts.destination;
+      counts.set(departure.destination, (counts.get(departure.destination) ?? 0) + 1);
+    }
+  }
+  const mostFrequent = (counts: Map<string, number>) => [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return {
+    kinds: [...kinds],
+    destinations: [...destinations],
+    usualKind: mostFrequent(usualCounts.kind),
+    usualDestination: mostFrequent(usualCounts.destination),
+  };
 }
 
 // Why a train's track is not on the map, from the route request's error.
@@ -413,8 +454,19 @@ class TimetablePanel {
       el('div', 'timetable-status', this._body).textContent = 'No departures.';
       return;
     }
-    const list = el('ol', 'timetable-departures', this._body);
     const next = nextDepartureIndex(table);
+    const open = (departure: Departure) =>
+      this._show(() => this._renderTrain(code, gid, departure.train_id, stationName, departure));
+
+    // A list, or the printed timetable's layout, by a switch the browser remembers.
+    const toggle = el('label', 'timetable-toggle timetable-layout-toggle', days);
+    const input = el('input', undefined, toggle);
+    input.type = 'checkbox';
+    input.checked = readStoredSettings(TIMETABLE_PRINTED_STORAGE_KEY, (value) => value === true);
+    el('span', undefined, toggle).textContent = 'Printed';
+    toggle.title = 'Lay the departures out as a printed timetable';
+
+    const list = el('ol', 'timetable-departures timetable-jp-departures', this._body);
     let hour = '';
     table.departures.forEach((departure: Departure, index) => {
       const departureHour = departure.time.slice(0, 2);
@@ -427,27 +479,104 @@ class TimetablePanel {
       button.type = 'button';
       if (index === next) item.classList.add('timetable-next');
       el('span', 'timetable-time', button).textContent = departure.time;
-      el('span', 'timetable-kind', button).textContent = departure.kind ?? '';
+      const kind = el('span', 'timetable-kind', button);
+      kind.textContent = departure.name ?? departure.kind ?? '';
+      // A type other than the line's usual one carries a mark, and stands out.
+      if (departure.kind_mark) kind.classList.add('timetable-kind-special');
       el('span', 'timetable-destination', button).textContent =
         `${departure.destination ?? ''}${departure.extra ? ' ◆' : ''}`;
-      if (departure.extra) button.title = 'Runs on specific days only';
-      button.addEventListener('click', () =>
-        this._show(() => this._renderTrain(code, gid, departure.train_id, stationName)),
-      );
+      const info = el('span', 'timetable-train-info', button);
+      if (departure.starts_here) el('span', 'timetable-badge timetable-badge-start', info).textContent = '始';
+      if (departure.green_car) el('span', 'timetable-badge timetable-badge-green', info).textContent = 'G';
+      if (departure.cars) el('span', 'timetable-cars', info).textContent = `${departure.cars}両`;
+      el('span', 'timetable-platform', button).textContent = departure.track ?? '';
+      button.title = departureTitle(departure);
+      button.addEventListener('click', () => open(departure));
     });
-    if (next >= 0) list.querySelector('.timetable-next')?.scrollIntoView?.({ block: 'center' });
+
+    const printed = el('div', 'timetable-printed', this._body);
+    const grid = el('div', 'timetable-grid', printed);
+    let row: HTMLElement | null = null;
+    hour = '';
+    table.departures.forEach((departure: Departure, index) => {
+      const departureHour = departure.time.slice(0, 2);
+      if (departureHour !== hour) {
+        hour = departureHour;
+        el('div', 'timetable-grid-hour', grid).textContent = String(Number(hour));
+        row = el('div', 'timetable-grid-minutes', grid);
+      }
+      const button = el('button', 'timetable-grid-minute', row);
+      button.type = 'button';
+      if (index === next) button.classList.add('timetable-next');
+      if (departure.kind_mark) button.classList.add('timetable-kind-special');
+      // As Yahoo writes them: the destination's mark, then the type's in brackets (上[特]).
+      const marks = [
+        departure.starts_here ? '●' : '',
+        departure.destination_mark ?? '',
+        departure.kind_mark ? `[${departure.kind_mark}]` : '',
+        departure.extra ? '◆' : '',
+      ].join('');
+      el('span', 'timetable-grid-marks', button).textContent = marks || '\u00A0';
+      el('span', 'timetable-grid-time', button).textContent = departure.time.slice(3);
+      button.title = [
+        `${departure.time} ${departure.name ?? departure.kind ?? ''} → ${departure.destination ?? '?'}`,
+        departureTitle(departure),
+      ]
+        .filter(Boolean)
+        .join('\n');
+      button.addEventListener('click', () => open(departure));
+    });
+    const legend = departureLegend(table.departures);
+    // Each mark kept on one line with what it stands for.
+    const key = el('ul', 'timetable-legend', printed);
+    const entry = (mark: string, meaning: string) => {
+      const item = el('li', undefined, key);
+      el('b', undefined, item).textContent = mark;
+      item.append(` ${meaning}`);
+    };
+    for (const [mark, kindName] of legend.kinds) entry(`[${mark}]`, kindName);
+    for (const [mark, destination] of legend.destinations) entry(mark, `for ${destination}`);
+    if (table.departures.some((departure) => departure.starts_here)) entry('●', 'Starts here');
+    if (table.departures.some((departure) => departure.extra)) entry('◆', 'Runs on specific days only');
+    const usual = [legend.usualKind, legend.usualDestination && `for ${legend.usualDestination}`].filter(Boolean);
+    if (usual.length) entry('No mark', usual.join(' '));
+
+    const layout = () => {
+      list.hidden = input.checked;
+      printed.hidden = !input.checked;
+      const current = (input.checked ? grid : list).querySelector('.timetable-next');
+      current?.scrollIntoView?.({ block: 'center' });
+    };
+    input.addEventListener('change', () => {
+      writeStoredSettings(TIMETABLE_PRINTED_STORAGE_KEY, input.checked);
+      layout();
+    });
+    layout();
   }
 
-  private async _renderTrain(code: string, gid: string, trainId: string, stationName: string) {
+  // `departure` is the timetable's row the train was opened from, which knows
+  // its number, cars and track here; a train opened otherwise goes without.
+  private async _renderTrain(
+    code: string,
+    gid: string,
+    trainId: string,
+    stationName: string,
+    departure: Departure | null = null,
+  ) {
     const signal = this._signal;
     const train = await trainStops(code, gid, trainId, signal);
     if (signal.aborted) return;
-    this._setHeader(stationName, [train.name, train.line].filter(Boolean).join(' · '), yahooSource(train.source_url));
+    const name = departure?.name ?? train.name;
+    this._setHeader(stationName, [name, train.line].filter(Boolean).join(' · '), yahooSource(train.source_url));
     this._setBack('Departures');
     this._body.replaceChildren();
+    const cars = [departure?.cars && `${departure.cars} cars`, departure?.green_car && 'Green Car'].filter(Boolean);
     this._facts([
-      ['Train', train.name],
+      ['Train', name],
+      ['Number', departure?.train_number ?? null],
       ['Line', train.line],
+      ['Cars', cars.join(' · ') || null],
+      ['Track', departure?.track ? `${departure.track} at ${stationName}` : null],
       ['Stops', String(train.stops.length)],
     ]);
     for (const comment of train.comments) el('p', 'timetable-comment', this._body).textContent = comment;

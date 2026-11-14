@@ -31,6 +31,19 @@ export type Departure = {
   kind: string | null;
   destination: string | null;
   extra: boolean;
+  // The type, or service and number for named trains (特急わかしお1号).
+  name?: string | null;
+  // A printed timetable's one-character marks over the minute; null for the
+  // line's usual type and destination.
+  kind_mark?: string | null;
+  destination_mark?: string | null;
+  // As the station names it (3, 京葉1).
+  track?: string | null;
+  cars?: number | null;
+  // The railway's own number (1803Y), not Yahoo's train_id.
+  train_number?: string | null;
+  starts_here?: boolean;
+  green_car?: boolean;
 };
 export type DepartureTable = {
   source_url: string;

@@ -2583,6 +2583,153 @@ button.timetable-stop-locate:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* Japan: the train's name (red for a type other than the line's usual one),
+   badges for trains starting here and with a Green Car, cars, and the track */
+.timetable-jp-departures .timetable-departure-button {
+  grid-template-columns: 44px auto minmax(0, 1fr) auto 24px;
+}
+
+.timetable-jp-departures .timetable-platform {
+  align-self: center;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.timetable-kind-special,
+.timetable-jp-departures .timetable-kind-special {
+  color: #b91c1c;
+}
+
+.timetable-train-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.timetable-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.timetable-badge-start {
+  box-shadow: inset 0 0 0 1px #475569;
+  color: #475569;
+}
+
+.timetable-badge-green {
+  background: #15803d;
+  color: #fff;
+}
+
+.timetable-cars {
+  color: #64748b;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timetable-layout-toggle {
+  margin-left: auto;
+}
+
+.timetable-printed[hidden],
+.timetable-jp-departures[hidden] {
+  display: none;
+}
+
+/* The printed timetable: an hour a row, its minutes with their marks above */
+.timetable-grid {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  border-top: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.timetable-grid-hour,
+.timetable-grid-minutes {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.timetable-grid-hour {
+  padding: 4px 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.timetable-grid-minutes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2px;
+  padding: 1px 4px;
+}
+
+.timetable-grid-minute {
+  display: grid;
+  justify-items: center;
+  min-width: 26px;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #0f172a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.timetable-grid-minute:hover,
+.timetable-grid-minute:focus-visible {
+  background: #eff6ff;
+  outline: none;
+}
+
+.timetable-grid-minute.timetable-kind-special {
+  color: #b91c1c;
+}
+
+.timetable-grid-minute.timetable-next {
+  background: #fef3c7;
+}
+
+.timetable-grid-marks {
+  font-size: 9.5px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.timetable-grid-time {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.timetable-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  color: #475569;
+  font-size: 11px;
+  list-style: none;
+}
+
+.timetable-legend li {
+  white-space: nowrap;
+}
+
+.timetable-legend b {
+  color: #0f172a;
+  font-weight: 800;
+}
+
 .timetable-cr-trains .timetable-departure-button {
   grid-template-columns: 40px minmax(52px, auto) minmax(0, 1fr) auto;
 }
