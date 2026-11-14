@@ -9,6 +9,7 @@
  *   installOrmPopups(map, featuresCatalog);
  */
 
+import { installSheetCollapse, isSheetLayout } from './bottom-sheet.js';
 import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter, type HoveredLine } from './line-hover.js';
 import { renderMarkdown } from './markdown.js';
 import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
@@ -218,90 +219,32 @@ function keepPopupInView(map: MapLike, popup: PopupBuilderLike) {
   });
 }
 
-// On phones the info box is a sheet along the bottom of the map (style.css,
-// `.orm-info-popup` under max-width 640px) instead of a box at its point. A
-// grabber drags or taps it down to its title, and back up; the sheet's own
-// close button stays put while its content scrolls. On wider screens both are
-// hidden and the box stays a MapLibre popup at its point.
-const SHEET_MEDIA_QUERY = '(max-width: 640px)';
-const SHEET_DRAG_THRESHOLD = 24;
-
-function isSheetLayout() {
-  return window.matchMedia?.(SHEET_MEDIA_QUERY).matches ?? false;
-}
-
+// On phones the info box is a bottom sheet (bottom-sheet.ts; style.css,
+// `.orm-info-popup` under max-width 640px) instead of a box at its point, with
+// a close button of its own that stays put while its content scrolls. On wider
+// screens the grabber and that button are hidden and the box stays a MapLibre
+// popup at its point.
 function installInfoSheet(map: MapLike, popup: PopupBuilderLike) {
   const element = popup.getElement();
-  const grabber = el('button', 'orm-sheet-grabber');
-  grabber.type = 'button';
-  grabber.setAttribute('aria-label', 'Collapse info box');
+  const grabber = el('button');
   const closeButton = el('button', 'orm-sheet-close');
   closeButton.type = 'button';
   closeButton.setAttribute('aria-label', 'Close info box');
-  closeButton.innerText = '×';
+  closeButton.innerText = '\u00D7';
   closeButton.addEventListener('click', () => popup.remove());
   element.insertBefore(closeButton, element.firstChild);
   element.insertBefore(grabber, closeButton);
 
-  const content = () => element.querySelector<HTMLElement>('.maplibregl-popup-content');
-  // How much of the sheet shows when collapsed: down to its name.
-  const peek = () => {
-    const scroller = content();
-    if (scroller) scroller.scrollTop = 0;
-    const head = element.querySelector('.orm-popup-label') || element.querySelector('.orm-popup-title');
-    const top = element.getBoundingClientRect().top;
-    return head ? Math.ceil(head.getBoundingClientRect().bottom - top + 12) : 64;
-  };
-  const collapsedOffset = () => {
-    const inset = parseFloat(getComputedStyle(element).paddingBottom) || 0;
-    return Math.max(0, element.getBoundingClientRect().height - peek() - inset);
-  };
-  const setCollapsed = (collapsed: boolean) => {
-    if (collapsed) element.style.setProperty('--orm-sheet-peek', `${peek()}px`);
-    element.classList.toggle('orm-sheet-collapsed', collapsed);
-    grabber.setAttribute('aria-label', collapsed ? 'Expand info box' : 'Collapse info box');
-  };
-  const isCollapsed = () => element.classList.contains('orm-sheet-collapsed');
-
-  // A tap toggles (as a click, so keys work too); a drag goes the way it
-  // moved, or to the nearer end when it moved only a little.
-  let drag: { pointerId: number; startY: number; from: number; max: number; offset: number } | null = null;
-  let dragged = false;
-  grabber.addEventListener('pointerdown', (event) => {
-    const max = collapsedOffset();
-    const from = isCollapsed() ? max : 0;
-    drag = { pointerId: event.pointerId, startY: event.clientY, from, max, offset: from };
-    dragged = false;
-    grabber.setPointerCapture?.(event.pointerId);
-  });
-  grabber.addEventListener('pointermove', (event) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    if (Math.abs(event.clientY - drag.startY) > 4) dragged = true;
-    if (!dragged) return;
-    drag.offset = Math.min(drag.max, Math.max(0, drag.from + event.clientY - drag.startY));
-    element.classList.add('orm-sheet-dragging');
-    element.style.setProperty('--orm-sheet-drag', `${drag.offset}px`);
-  });
-  const endDrag = (event: PointerEvent) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const { from, max, offset } = drag;
-    drag = null;
-    element.classList.remove('orm-sheet-dragging');
-    if (!dragged) return;
-    const moved = offset - from;
-    setCollapsed(Math.abs(moved) >= SHEET_DRAG_THRESHOLD ? moved > 0 : offset > max / 2);
-  };
-  grabber.addEventListener('pointerup', endDrag);
-  grabber.addEventListener('pointercancel', endDrag);
-  grabber.addEventListener('click', () => {
-    if (dragged) dragged = false;
-    else setCollapsed(!isCollapsed());
-  });
-  // A collapsed sheet opens again when its title is tapped.
-  element.addEventListener('click', (event) => {
-    if (!isCollapsed() || event.target === grabber || event.target === closeButton) return;
-    if ((event.target as Element).closest?.('a, button, [role="button"]')) return;
-    setCollapsed(false);
+  installSheetCollapse(element, grabber, {
+    label: 'info box',
+    // Down to its name, with the content scrolled back to the top.
+    peek: () => {
+      const scroller = element.querySelector('.maplibregl-popup-content');
+      if (scroller) scroller.scrollTop = 0;
+      const head = element.querySelector('.orm-popup-label') || element.querySelector('.orm-popup-title');
+      const top = element.getBoundingClientRect().top;
+      return head ? Math.ceil(head.getBoundingClientRect().bottom - top + 12) : 64;
+    },
   });
 
   // Move the clicked point up out from under the sheet.

@@ -2941,8 +2941,58 @@ a.credits-name:hover {
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     border-radius: 10px 10px 0 0;
     transform: translateY(100%);
+    transition:
+      opacity 160ms ease,
+      transform 180ms ease,
+      translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* The grabber sits over the header's top, out of the panel's grid; the
+     header drags the sheet too. */
+  .map-layers-panel > .sheet-grabber,
+  .railway-filter-panel > .sheet-grabber,
+  .timetable-panel > .sheet-grabber,
+  .route-info-panel > .sheet-grabber,
+  .credits-panel > .sheet-grabber {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    height: 16px;
+  }
+
+  .map-layers-panel > .sheet-grabber::before,
+  .railway-filter-panel > .sheet-grabber::before,
+  .timetable-panel > .sheet-grabber::before,
+  .route-info-panel > .sheet-grabber::before,
+  .credits-panel > .sheet-grabber::before {
+    margin-top: 6px;
+  }
+
+  .map-layers-header,
+  .railway-filter-header,
+  .timetable-header,
+  .route-info-header,
+  .credits-header {
+    padding-top: 16px;
+    touch-action: none;
+  }
+
+  /* Collapsed, all but the header fades out. */
+  .map-layers-panel > :not(.sheet-grabber, .map-layers-header),
+  .railway-filter-panel > :not(.sheet-grabber, .railway-filter-header),
+  .timetable-panel > :not(.sheet-grabber, .timetable-header),
+  .route-info-panel > :not(.sheet-grabber, .route-info-header),
+  .credits-panel > :not(.sheet-grabber, .credits-header) {
+    transition: opacity 0.2s;
+  }
+
+  :is(.map-layers-panel, .railway-filter-panel, .timetable-panel, .route-info-panel, .credits-panel).sheet-collapsed
+    > :not(.sheet-grabber, [class$='-header']) {
+    opacity: 0;
   }
 
   .map-layers-panel-visible,
@@ -2958,7 +3008,7 @@ a.credits-name:hover {
   .timetable-body,
   .route-info-body,
   .credits-body {
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    padding-bottom: 12px;
   }
 
   .map-layers-check,
@@ -3709,11 +3759,10 @@ a.credits-name:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* On phones the info box is a sheet along the bottom of the map that drags or
-   taps down to its title (installInfoSheet in popup.ts). MapLibre keeps placing
-   the popup at its point with an inline transform, which the sheet overrides;
-   collapsing and dragging move it with `translate` instead. */
-.orm-sheet-grabber,
+/* Bottom sheets on phones (src/bottom-sheet.ts): the info box and the map
+   panels. A grabber along the top taps or drags a sheet down to its head;
+   collapsing and dragging move it with `translate`, on top of its transform. */
+.sheet-grabber,
 .orm-sheet-close {
   display: none;
 }
@@ -3725,6 +3774,39 @@ a.credits-name:hover {
 }
 
 @media (max-width: 640px) {
+  .sheet-collapsed {
+    translate: 0 calc(100% - var(--sheet-peek, 64px) - env(safe-area-inset-bottom, 0px));
+  }
+
+  .sheet-dragging {
+    translate: 0 var(--sheet-drag, 0px);
+    transition: none;
+  }
+
+  .sheet-grabber {
+    display: block;
+    flex: none;
+    width: 100%;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .sheet-grabber::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 5px;
+    margin: 8px auto 0;
+    border-radius: 3px;
+    background: #cbd5e1;
+  }
+
+  /* The info box: MapLibre keeps placing the popup at its point with an
+     inline transform, which the sheet overrides. */
   #map .maplibregl-popup.orm-info-popup {
     top: auto;
     right: 0;
@@ -3740,17 +3822,11 @@ a.credits-name:hover {
     box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.18);
     pointer-events: auto;
     transform: none !important;
-    translate: 0 0;
     transition: translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
     animation: orm-sheet-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
-  #map .maplibregl-popup.orm-info-popup.orm-sheet-collapsed {
-    translate: 0 calc(100% - var(--orm-sheet-peek, 64px) - env(safe-area-inset-bottom, 0px));
-  }
-
-  #map .maplibregl-popup.orm-info-popup.orm-sheet-dragging {
-    translate: 0 var(--orm-sheet-drag, 0px);
+  #map .maplibregl-popup.orm-info-popup.sheet-dragging {
     transition: none;
   }
 
@@ -3770,7 +3846,7 @@ a.credits-name:hover {
     box-shadow: none;
   }
 
-  .orm-info-popup.orm-sheet-collapsed .maplibregl-popup-content {
+  .orm-info-popup.sheet-collapsed .maplibregl-popup-content {
     overflow: hidden;
   }
 
@@ -3778,7 +3854,7 @@ a.credits-name:hover {
     transition: opacity 0.2s;
   }
 
-  .orm-info-popup.orm-sheet-collapsed .orm-popup > :not(.orm-popup-title, .orm-popup-label) {
+  .orm-info-popup.sheet-collapsed .orm-popup > :not(.orm-popup-title, .orm-popup-label) {
     opacity: 0;
   }
 
@@ -3795,28 +3871,6 @@ a.credits-name:hover {
 
   .orm-info-popup .orm-popup h6.orm-popup-label {
     font-size: 14px;
-  }
-
-  .orm-sheet-grabber {
-    display: block;
-    flex: none;
-    width: 100%;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    cursor: grab;
-    touch-action: none;
-  }
-
-  .orm-sheet-grabber::before {
-    content: '';
-    display: block;
-    width: 36px;
-    height: 5px;
-    margin: 8px auto 0;
-    border-radius: 3px;
-    background: #cbd5e1;
   }
 
   .orm-sheet-close {

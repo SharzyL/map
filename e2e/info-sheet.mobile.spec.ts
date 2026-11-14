@@ -39,11 +39,11 @@ test.describe('info box on a phone', () => {
     expect(Math.round(expanded.y + expanded.height)).toBe(viewport.height);
 
     await page.getByRole('button', { name: 'Collapse info box' }).click();
-    await expect(sheet).toHaveClass(/orm-sheet-collapsed/);
+    await expect(sheet).toHaveClass(/sheet-collapsed/);
     await expect.poll(async () => viewport.height - (await sheet.boundingBox()).y).toBeLessThan(120);
 
     await page.getByRole('button', { name: 'Expand info box' }).click();
-    await expect(sheet).not.toHaveClass(/orm-sheet-collapsed/);
+    await expect(sheet).not.toHaveClass(/sheet-collapsed/);
     await expect.poll(async () => (await sheet.boundingBox()).y).toBeCloseTo(expanded.y, 0);
 
     await page.getByRole('button', { name: 'Close info box' }).click();

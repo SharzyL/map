@@ -12,6 +12,15 @@ test.describe('mobile map shell', () => {
     await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'false');
     await expect(page.locator('#map')).toHaveAttribute('data-map-layers-panel-open', 'true');
 
+    // It collapses to its header from the grabber, and back.
+    const panel = page.locator('.map-layers-panel');
+    const viewport = page.viewportSize();
+    await page.getByRole('button', { name: 'Collapse layers' }).click();
+    await expect(panel).toHaveClass(/sheet-collapsed/);
+    await expect.poll(async () => viewport.height - (await panel.boundingBox()).y).toBeLessThan(80);
+    await page.getByRole('button', { name: 'Expand layers' }).click();
+    await expect(panel).not.toHaveClass(/sheet-collapsed/);
+
     await page.getByRole('button', { name: 'Close layers' }).click();
     await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'true');
     await expect(page.locator('#map')).toHaveAttribute('data-map-layers-panel-open', 'false');

@@ -387,15 +387,15 @@ describe('installOrmPopups', () => {
       { source: 'openrailwaymap', sourceLayer: 'standard_railway_text_stations', properties: STATION_PROPERTIES },
     ]);
     const sheet = opened.element();
-    const grabber = sheet.querySelector<HTMLButtonElement>('.orm-sheet-grabber');
+    const grabber = sheet.querySelector<HTMLButtonElement>('.sheet-grabber');
     grabber.click();
-    expect(sheet.classList.contains('orm-sheet-collapsed')).toBe(true);
+    expect(sheet.classList.contains('sheet-collapsed')).toBe(true);
     expect(grabber.getAttribute('aria-label')).toBe('Expand info box');
     grabber.click();
-    expect(sheet.classList.contains('orm-sheet-collapsed')).toBe(false);
+    expect(sheet.classList.contains('sheet-collapsed')).toBe(false);
     grabber.click();
     (opened[0] as HTMLElement).querySelector<HTMLElement>('.orm-popup-title').click();
-    expect(sheet.classList.contains('orm-sheet-collapsed')).toBe(false);
+    expect(sheet.classList.contains('sheet-collapsed')).toBe(false);
     sheet.querySelector<HTMLButtonElement>('.orm-sheet-close').click();
     expect(opened.removed()).toBe(1);
   });
