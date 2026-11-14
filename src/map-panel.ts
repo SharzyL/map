@@ -3,7 +3,7 @@
 // `railway-filter-panel`, `railway-filter-check`, ...; style.css styles the
 // prefixes together.
 import createIconElement from 'lucide/dist/esm/createElement.mjs';
-import { installSheetCollapse } from './bottom-sheet.js';
+import { installSheetCollapse, sheetClosed, sheetOpened } from './bottom-sheet.js';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
@@ -59,7 +59,8 @@ export function createPanelShell(
   const body = el('div', `${prefix}-body`, panel);
 
   // On phones the panel is a bottom sheet that collapses to its header
-  // (bottom-sheet.ts), and opens expanded again each time it is shown.
+  // (bottom-sheet.ts), opens expanded again each time it is shown, and
+  // covers the sheets opened before it.
   const grabber = el('button');
   panel.insertBefore(grabber, header);
   const sheet = installSheetCollapse(panel, grabber, {
@@ -68,8 +69,14 @@ export function createPanelShell(
     handles: [header],
     expandZone: header,
   });
+  // It goes on the stack of open sheets when shown, and off when hidden.
   new MutationObserver(() => {
-    if (panel.getAttribute('aria-hidden') === 'true' && sheet.isCollapsed()) sheet.setCollapsed(false);
+    if (panel.getAttribute('aria-hidden') === 'false') {
+      sheetOpened(panel);
+      return;
+    }
+    sheetClosed(panel);
+    if (sheet.isCollapsed()) sheet.setCollapsed(false);
   }).observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
 
   return { panel, summary, body };

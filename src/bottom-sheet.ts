@@ -99,3 +99,28 @@ export function installSheetCollapse(sheet: HTMLElement, grabber: HTMLButtonElem
 
   return { setCollapsed, isCollapsed };
 }
+
+// The sheets open on a phone, oldest first. Only the latest shows: those
+// under it slide away (`sheet-covered`, style.css) until it closes, as a card
+// pushed onto Apple Maps' stack covers the one it was opened from; then the
+// one below comes back as it was left, collapsed or not.
+const openSheets: HTMLElement[] = [];
+
+function uncoverTop() {
+  openSheets.forEach((sheet, index) => sheet.classList.toggle('sheet-covered', index < openSheets.length - 1));
+}
+
+export function sheetOpened(sheet: HTMLElement) {
+  const index = openSheets.indexOf(sheet);
+  if (index >= 0) openSheets.splice(index, 1);
+  openSheets.push(sheet);
+  uncoverTop();
+}
+
+export function sheetClosed(sheet: HTMLElement) {
+  const index = openSheets.indexOf(sheet);
+  if (index < 0) return;
+  openSheets.splice(index, 1);
+  sheet.classList.remove('sheet-covered');
+  uncoverTop();
+}

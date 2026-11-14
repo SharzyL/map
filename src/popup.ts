@@ -9,7 +9,7 @@
  *   installOrmPopups(map, featuresCatalog);
  */
 
-import { installSheetCollapse, isSheetLayout } from './bottom-sheet.js';
+import { installSheetCollapse, isSheetLayout, sheetClosed, sheetOpened } from './bottom-sheet.js';
 import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter, type HoveredLine } from './line-hover.js';
 import { renderMarkdown } from './markdown.js';
 import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
@@ -246,6 +246,10 @@ function installInfoSheet(map: MapLike, popup: PopupBuilderLike) {
       return head ? Math.ceil(head.getBoundingClientRect().bottom - top + 12) : 64;
     },
   });
+
+  // It covers the sheets opened before it, such as a timetable, until it closes.
+  sheetOpened(element);
+  popup.on('close', () => sheetClosed(element));
 
   // Move the clicked point up out from under the sheet.
   if (isSheetLayout() && map.panBy) {

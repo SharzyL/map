@@ -4129,6 +4129,18 @@ a.credits-name:hover {
     transition: none;
   }
 
+  /* A sheet under a later one slides away, and out of reach once it has,
+     until the later one closes (bottom-sheet.ts). */
+  .sheet-covered,
+  #map .maplibregl-popup.orm-info-popup.sheet-covered {
+    translate: 0 calc(100% + 24px);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+      visibility 0s 0.25s;
+  }
+
   .orm-info-popup .maplibregl-popup-tip,
   .orm-info-popup .maplibregl-popup-close-button {
     display: none;
