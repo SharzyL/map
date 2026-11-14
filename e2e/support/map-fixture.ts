@@ -362,7 +362,6 @@ async function routeExternalMapResources(page: Page, options: ExternalRouteOptio
   await page.route(/https:\/\/tiles\.mapterhorn\.com\/\d+\/\d+\/\d+\.webp.*/, fulfillPng);
   await page.route(/https:\/\/mt1\.google\.com\/vt\/.*/, fulfillPng);
   await page.route(/\/tiles\/openrailwaymap\/.*/, fulfillVectorTile);
-  await page.route(/https:\/\/vtiles\.openhistoricalmap\.org\/.*/, fulfillVectorTile);
   await page.route(/https:\/\/s3\.amazonaws\.com\/elevation-tiles-prod\/.*/, fulfillPng);
   await page.route(/https:\/\/nominatim\.openstreetmap\.org\/.*/, (route) =>
     options.nominatim === 'success' ? fulfillJson(route, nominatimFixture) : fulfillText(route, 503),

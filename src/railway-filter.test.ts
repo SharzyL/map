@@ -11,8 +11,6 @@ import ormStyleText from '../public/orm/style/standard.json?raw';
 import {
   applyRailwayFilterToStyle,
   countActiveRailwayFilters,
-  HISTORICAL_RAILWAY_SOURCE,
-  railwayDateState,
   defaultRailwayFilterSettings,
   loadRailwayFilterSettings,
   normalizeRailwayFilterSettings,
@@ -282,48 +280,24 @@ describe('applyRailwayFilterToStyle', () => {
     expect(stationLayers).toBeGreaterThan(5);
   });
 
-  it('shows OpenHistoricalMap railways of an earlier year instead of today’s, under the overlay switch', () => {
-    const styled = applyRailwayFilterToStyle(
-      ormStyle,
-      [...railwaySources, HISTORICAL_RAILWAY_SOURCE],
-      defaultRailwayFilterSettings(),
-    );
+  it('draws today’s railways at the style’s own date, which nothing sets', () => {
+    const styled = applyRailwayFilterToStyle(ormStyle, railwaySources, defaultRailwayFilterSettings());
     expect(validateStyleMin(styled)).toEqual([]);
-    const present = Number(styled.state.date.default);
-    const layer = (id: string) => styled.layers.find((it) => it.id === id) as LineLayerSpecification;
-    const visibility = (id: string, date: number, overlay = true) => {
-      const parsed = createExpression(layer(id).layout.visibility, latest.layout_line.visibility as never, {
-        date,
-        openHistoricalMap: true,
-        allDates: false,
-        railwayOverlay: overlay,
-        showConstructionInfrastructure: true,
-        showProposedInfrastructure: true,
-        showAbandonedInfrastructure: false,
-        showRazedInfrastructure: false,
-      });
-      expect(parsed.result).toBe('success');
-      return (parsed.value as { evaluate(globals: object): unknown }).evaluate({ zoom: 12 });
-    };
-    const historical = 'railway_line_historical_main_fill_historical';
-    const today = 'railway_line_main_high_fill_present';
-    expect(visibility(today, present)).toBe('visible');
-    expect(visibility(historical, present)).toBe('none');
-    expect(visibility(today, railwayDateState(1900, present))).toBe('none');
-    expect(visibility(historical, railwayDateState(1900, present))).toBe('visible');
-    expect(visibility(historical, railwayDateState(1900, present), false)).toBe('none');
-
-    // A line built in 1880 and closed in 1950 runs in 1900 but not in 1960.
-    const runs = (year: number) =>
-      featureFilter(layer(historical).filter as never, { date: railwayDateState(year, present) }).filter({ zoom: 12 }, {
-        type: 2,
-        properties: { class: 'railway', type: 'rail', usage: 'main', start_decdate: 1880.4, end_decdate: 1950.6 },
-      } as never);
-    expect(runs(1900)).toBe(true);
-    expect(runs(1960)).toBe(false);
+    expect(styled.sources).not.toHaveProperty('openhistoricalmap');
+    const layer = styled.layers.find((it) => it.id === 'railway_line_main_high_fill_present') as LineLayerSpecification;
+    const parsed = createExpression(layer.layout.visibility, latest.layout_line.visibility as never, {
+      date: Number(styled.state.date.default),
+      railwayOverlay: true,
+      showConstructionInfrastructure: true,
+      showProposedInfrastructure: true,
+      showAbandonedInfrastructure: false,
+      showRazedInfrastructure: false,
+    });
+    expect(parsed.result).toBe('success');
+    expect((parsed.value as { evaluate(globals: object): unknown }).evaluate({ zoom: 12 })).toBe('visible');
   });
 
-  it('switches the tunnel and bridge marks of current and historical lines only', () => {
+  it('switches the tunnel and bridge marks only', () => {
     const styled = applyRailwayFilterToStyle(ormStyle, railwaySources, defaultRailwayFilterSettings());
     const switched = styled.layers.filter((layer) =>
       JSON.stringify('layout' in layer ? layer.layout?.visibility : null).includes('railwayTunnelsAndBridges'),
@@ -332,9 +306,8 @@ describe('applyRailwayFilterToStyle', () => {
     expect(ids.every((id) => /_(tunnel_cover|bridge_railing)$/.test(id))).toBe(true);
     expect(ids).toContain('railway_line_light_rail_tunnel_cover');
     expect(ids).toContain('railway_line_main_high_bridge_railing');
-    expect(ids).toContain('railway_line_historical_light_rail_tunnel_cover');
     expect(ids).not.toContain('railway_line_main_high_bridge_casing');
-    expect(ids.length).toBeGreaterThan(60);
+    expect(ids.length).toBeGreaterThan(30);
 
     const cover = switched.find(({ id }) => id === 'railway_line_light_rail_tunnel_cover');
     const visibility = (shown: boolean) => {

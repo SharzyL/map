@@ -40,11 +40,6 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
         use: "Japan's official railway lines",
         note: '出典：国土数値情報（鉄道データ）（国土交通省）を加工して作成 · CC BY 4.0',
       },
-      {
-        name: 'OpenHistoricalMap',
-        href: 'https://www.openhistoricalmap.org/',
-        use: 'Railways of past years (the year slider)',
-      },
     ],
   },
   {

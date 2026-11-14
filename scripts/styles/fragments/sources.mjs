@@ -113,7 +113,6 @@ const {
   trackClassFillColor,
   searchResults,
   railwayLine,
-  historicalRailwayLine,
   railwayKmText,
   preferredDirectionLayer,
   imageLayerWithOutline,
@@ -222,11 +221,6 @@ export const sources = {
   openrailwaymap_operator: {
     type: 'vector',
     url: '/operator_railway_symbols',
-  },
-  openhistoricalmap: {
-    type: 'vector',
-    tiles: ['https://vtiles.openhistoricalmap.org/maps/osm/{z}/{x}/{y}.pbf'],
-    attribution: '<a target="_blank" href="https://www.openhistoricalmap.org/">OpenHistoricalMap</a>',
   },
   dem: {
     type: 'raster-dem',

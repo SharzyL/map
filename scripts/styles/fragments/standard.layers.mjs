@@ -1,8 +1,3 @@
-import {
-  standardHistoricalLanduseLayers,
-  standardHistoricalRailwayLineLayers,
-  standardHistoricalStationsLayer,
-} from './standard.historical.mjs'
 import { standardRailwayLineLayers, standardTurntableLayers } from './standard.lines.mjs'
 import {
   standardStationAreaLayers,
@@ -21,9 +16,7 @@ import { hillshade, route, routeText, routeStops, searchResults } from '../share
 // Later layers render on top of earlier layers.
 export const standardLayers = [
   hillshade,
-  ...standardHistoricalLanduseLayers,
   ...standardStationAreaLayers,
-  ...standardHistoricalRailwayLineLayers,
   ...standardPlatformGeometryLayers,
   ...standardRailwayLineLayers,
   route,
@@ -35,7 +28,6 @@ export const standardLayers = [
   ...standardPlatformTextLayers,
   ...standardSymbolTrackLayers,
   ...standardStationTextHighLayers,
-  ...standardHistoricalStationsLayer,
   routeStops,
   searchResults,
 ]

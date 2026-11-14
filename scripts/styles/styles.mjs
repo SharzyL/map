@@ -78,9 +78,6 @@ const makeStyle = (selectedStyle) => ({
     date: {
       default: defaultDate,
     },
-    allDates: {
-      default: false,
-    },
     theme: {
       default: 'light',
     },
@@ -98,9 +95,6 @@ const makeStyle = (selectedStyle) => ({
     },
     showRazedInfrastructure: {
       default: false,
-    },
-    openHistoricalMap: {
-      default: true,
     },
     hillshade: {
       default: false,

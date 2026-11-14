@@ -7,12 +7,12 @@ const SOURCES = {
   openmaptiles: { type: 'vector' },
   satellite: { type: 'raster' },
   openrailwaymap: { type: 'vector' },
-  openhistoricalmap: { type: 'vector' },
+  other_railways: { type: 'vector' },
   route_highlight_overview: { type: 'geojson' },
   hillshadeSource: { type: 'raster-dem' },
   contourSource: { type: 'vector' },
 };
-const RAILWAYS = ['openrailwaymap', 'openhistoricalmap'];
+const RAILWAYS = ['openrailwaymap', 'other_railways'];
 
 type Listener = (event: object) => void;
 
@@ -28,13 +28,13 @@ function createMap({ tileManagers = false } = {}) {
     openmaptiles: {},
     satellite: {},
     openrailwaymap: {},
-    openhistoricalmap: {},
+    other_railways: {},
   };
   const sources: Record<string, object> = {
     openmaptiles: { url: 'https://tiles.example/planet', setUrl: () => reloaded.push('openmaptiles') },
     satellite: {},
     openrailwaymap: { tiles: ['/tiles/{z}/{x}/{y}'], setTiles: () => reloaded.push('openrailwaymap') },
-    openhistoricalmap: {},
+    other_railways: {},
   };
   const managers = Object.fromEntries(
     Object.keys(tileStates).map((id) => [
@@ -80,7 +80,7 @@ afterEach(() => {
 describe('loadGroups', () => {
   it('splits tiled sources into railways and the base map, leaving local data and elevation out', () => {
     expect(loadGroups(SOURCES, RAILWAYS, ['contourSource'])).toEqual({
-      railways: ['openrailwaymap', 'openhistoricalmap'],
+      railways: ['openrailwaymap', 'other_railways'],
       map: ['openmaptiles', 'satellite'],
     });
   });

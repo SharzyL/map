@@ -3102,66 +3102,28 @@ button.timetable-stop-locate:focus-visible {
   color: #64748b;
 }
 
-.map-layers-range-field,
-.railway-filter-range-field {
+.map-layers-range-field {
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
-.map-layers-range-header,
-.railway-filter-range-header {
+.map-layers-range-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
 
-.map-layers-range-value,
-.railway-filter-range-value {
+.map-layers-range-value {
   color: #64748b;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-.railway-filter-range-value {
-  margin-left: auto;
-  color: #0f172a;
-  font-weight: 700;
-}
-
-.map-layers-range,
-.railway-filter-range {
+.map-layers-range {
   width: 100%;
   margin: 0;
   accent-color: #b45309;
-}
-
-/* The railway panel's year slider (railway-filter-panel.ts) */
-.railway-filter-today {
-  padding: 0 8px;
-  border: none;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #334155;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.6;
-  cursor: pointer;
-}
-
-.railway-filter-today:hover,
-.railway-filter-today:focus-visible {
-  background: #e2e8f0;
-  color: #0f172a;
-  outline: none;
-}
-
-.railway-filter-date-note {
-  margin: 2px 6px 4px;
-  color: #64748b;
-  font-size: 11px;
-  line-height: 1.4;
 }
 
 .map-layers-select:focus,

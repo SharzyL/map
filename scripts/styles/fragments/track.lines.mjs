@@ -113,7 +113,6 @@ const {
   trackClassFillColor,
   searchResults,
   railwayLine,
-  historicalRailwayLine,
   railwayKmText,
   preferredDirectionLayer,
   imageLayerWithOutline,
