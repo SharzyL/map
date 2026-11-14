@@ -3709,52 +3709,139 @@ a.credits-name:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* Popup images — full-bleed like upstream */
-.orm-popup-image-link {
-  position: relative;
-  display: block;
-}
-.orm-popup-image {
-  margin: 0 -10px;
-  width: calc(100% + 20px);
-  height: auto;
-}
-
-/* Image attribution overlay */
-.orm-img-attribution {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  margin: 0 -10px;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  padding-left: 5px;
-  padding-right: 5px;
-  font-size: 0.7rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
-.orm-img-attribution:hover {
-  background: black;
-}
-.orm-img-copyright {
-  padding-right: 3px;
-  padding-left: 3px;
-  margin-right: -3px;
-  margin-left: -3px;
-  font-weight: bold;
-  font-size: 1rem;
-  cursor: pointer;
-}
-.orm-img-attribution a {
-  color: white;
-}
-.orm-img-attribution.collapsed .orm-hide-collapsed {
+/* On phones the info box is a sheet along the bottom of the map that drags or
+   taps down to its title (installInfoSheet in popup.ts). MapLibre keeps placing
+   the popup at its point with an inline transform, which the sheet overrides;
+   collapsing and dragging move it with `translate` instead. */
+.orm-sheet-grabber,
+.orm-sheet-close {
   display: none;
 }
 
-/* Image container */
-.orm-popup-images {
-  margin: 6px 0;
+@keyframes orm-sheet-in {
+  from {
+    translate: 0 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  #map .maplibregl-popup.orm-info-popup {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    flex-direction: column;
+    max-width: none !important;
+    max-height: min(55vh, 520px);
+    max-height: min(55dvh, 520px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-radius: 14px 14px 0 0;
+    background: #fff;
+    box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.18);
+    pointer-events: auto;
+    transform: none !important;
+    translate: 0 0;
+    transition: translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: orm-sheet-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  #map .maplibregl-popup.orm-info-popup.orm-sheet-collapsed {
+    translate: 0 calc(100% - var(--orm-sheet-peek, 64px) - env(safe-area-inset-bottom, 0px));
+  }
+
+  #map .maplibregl-popup.orm-info-popup.orm-sheet-dragging {
+    translate: 0 var(--orm-sheet-drag, 0px);
+    transition: none;
+  }
+
+  .orm-info-popup .maplibregl-popup-tip,
+  .orm-info-popup .maplibregl-popup-close-button {
+    display: none;
+  }
+
+  .orm-info-popup .maplibregl-popup-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px 16px 12px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .orm-info-popup.orm-sheet-collapsed .maplibregl-popup-content {
+    overflow: hidden;
+  }
+
+  .orm-info-popup .orm-popup > :not(.orm-popup-title, .orm-popup-label) {
+    transition: opacity 0.2s;
+  }
+
+  .orm-info-popup.orm-sheet-collapsed .orm-popup > :not(.orm-popup-title, .orm-popup-label) {
+    opacity: 0;
+  }
+
+  .orm-info-popup .orm-popup:has(.orm-popup-sections) {
+    width: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .orm-info-popup .orm-popup h5.orm-popup-title {
+    padding-right: 36px;
+    font-size: 16px;
+  }
+
+  .orm-info-popup .orm-popup h6.orm-popup-label {
+    font-size: 14px;
+  }
+
+  .orm-sheet-grabber {
+    display: block;
+    flex: none;
+    width: 100%;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .orm-sheet-grabber::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 5px;
+    margin: 8px auto 0;
+    border-radius: 3px;
+    background: #cbd5e1;
+  }
+
+  .orm-sheet-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+}
+
+@media (max-width: 640px) and (prefers-reduced-motion: reduce) {
+  #map .maplibregl-popup.orm-info-popup {
+    transition: none;
+    animation: none;
+  }
 }

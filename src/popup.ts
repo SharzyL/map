@@ -118,15 +118,6 @@ type PopupPropertyValue = {
   link?: string;
   tooltip?: string;
 };
-type CommonsImageData = {
-  file_name: string;
-  thumbnail_url: string;
-  view_url: string;
-  description: string;
-  attribution: string;
-  license: string;
-  license_url: string;
-};
 type LngLatLike = {
   distanceTo(other: LngLatLike): number;
   toArray(): Coordinates;
@@ -187,12 +178,13 @@ type MapLike = {
   on(type: 'move' | 'resize', listener: () => void): void;
   off(type: 'move' | 'resize', listener: () => void): void;
   project(lngLat: unknown): { y: number };
+  panBy?(offset: [number, number]): void;
 };
 
 // MapLibre puts a box above its point when it fits there and below otherwise,
 // judging by the box's height when it opens or the map moves. A box taller than
-// the room on both sides ran off the map with its end out of reach, and photos
-// or line lists arriving later grew it past where it was placed. So the box is
+// the room on both sides ran off the map with its end out of reach, and line
+// lists arriving later grew it past where it was placed. So the box is
 // capped at the room on the roomier side of its point (CSS
 // --orm-popup-room, kept current as the map moves), and placed again whenever
 // its size changes.
@@ -226,26 +218,104 @@ function keepPopupInView(map: MapLike, popup: PopupBuilderLike) {
   });
 }
 
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+// On phones the info box is a sheet along the bottom of the map (style.css,
+// `.orm-info-popup` under max-width 640px) instead of a box at its point. A
+// grabber drags or taps it down to its title, and back up; the sheet's own
+// close button stays put while its content scrolls. On wider screens both are
+// hidden and the box stays a MapLibre popup at its point.
+const SHEET_MEDIA_QUERY = '(max-width: 640px)';
+const SHEET_DRAG_THRESHOLD = 24;
+
+function isSheetLayout() {
+  return window.matchMedia?.(SHEET_MEDIA_QUERY).matches ?? false;
+}
+
+function installInfoSheet(map: MapLike, popup: PopupBuilderLike) {
+  const element = popup.getElement();
+  const grabber = el('button', 'orm-sheet-grabber');
+  grabber.type = 'button';
+  grabber.setAttribute('aria-label', 'Collapse info box');
+  const closeButton = el('button', 'orm-sheet-close');
+  closeButton.type = 'button';
+  closeButton.setAttribute('aria-label', 'Close info box');
+  closeButton.innerText = '×';
+  closeButton.addEventListener('click', () => popup.remove());
+  element.insertBefore(closeButton, element.firstChild);
+  element.insertBefore(grabber, closeButton);
+
+  const content = () => element.querySelector<HTMLElement>('.maplibregl-popup-content');
+  // How much of the sheet shows when collapsed: down to its name.
+  const peek = () => {
+    const scroller = content();
+    if (scroller) scroller.scrollTop = 0;
+    const head = element.querySelector('.orm-popup-label') || element.querySelector('.orm-popup-title');
+    const top = element.getBoundingClientRect().top;
+    return head ? Math.ceil(head.getBoundingClientRect().bottom - top + 12) : 64;
+  };
+  const collapsedOffset = () => {
+    const inset = parseFloat(getComputedStyle(element).paddingBottom) || 0;
+    return Math.max(0, element.getBoundingClientRect().height - peek() - inset);
+  };
+  const setCollapsed = (collapsed: boolean) => {
+    if (collapsed) element.style.setProperty('--orm-sheet-peek', `${peek()}px`);
+    element.classList.toggle('orm-sheet-collapsed', collapsed);
+    grabber.setAttribute('aria-label', collapsed ? 'Expand info box' : 'Collapse info box');
+  };
+  const isCollapsed = () => element.classList.contains('orm-sheet-collapsed');
+
+  // A tap toggles (as a click, so keys work too); a drag goes the way it
+  // moved, or to the nearer end when it moved only a little.
+  let drag: { pointerId: number; startY: number; from: number; max: number; offset: number } | null = null;
+  let dragged = false;
+  grabber.addEventListener('pointerdown', (event) => {
+    const max = collapsedOffset();
+    const from = isCollapsed() ? max : 0;
+    drag = { pointerId: event.pointerId, startY: event.clientY, from, max, offset: from };
+    dragged = false;
+    grabber.setPointerCapture?.(event.pointerId);
+  });
+  grabber.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (Math.abs(event.clientY - drag.startY) > 4) dragged = true;
+    if (!dragged) return;
+    drag.offset = Math.min(drag.max, Math.max(0, drag.from + event.clientY - drag.startY));
+    element.classList.add('orm-sheet-dragging');
+    element.style.setProperty('--orm-sheet-drag', `${drag.offset}px`);
+  });
+  const endDrag = (event: PointerEvent) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const { from, max, offset } = drag;
+    drag = null;
+    element.classList.remove('orm-sheet-dragging');
+    if (!dragged) return;
+    const moved = offset - from;
+    setCollapsed(Math.abs(moved) >= SHEET_DRAG_THRESHOLD ? moved > 0 : offset > max / 2);
+  };
+  grabber.addEventListener('pointerup', endDrag);
+  grabber.addEventListener('pointercancel', endDrag);
+  grabber.addEventListener('click', () => {
+    if (dragged) dragged = false;
+    else setCollapsed(!isCollapsed());
+  });
+  // A collapsed sheet opens again when its title is tapped.
+  element.addEventListener('click', (event) => {
+    if (!isCollapsed() || event.target === grabber || event.target === closeButton) return;
+    if ((event.target as Element).closest?.('a, button, [role="button"]')) return;
+    setCollapsed(false);
+  });
+
+  // Move the clicked point up out from under the sheet.
+  if (isSheetLayout() && map.panBy) {
+    const height = map.getContainer().clientHeight;
+    const visible = height - element.getBoundingClientRect().height;
+    const y = map.project(popup.getLngLat()).y;
+    if (visible > 80 && y > visible - 24) map.panBy([0, y - visible / 2]);
+  }
 }
 
 function stringValue(value: unknown): string {
   if (value === undefined || value === null) return '';
   return typeof value === 'string' ? value : String(value);
-}
-
-function firstRecord(value: unknown): JsonRecord | null {
-  return Array.isArray(value) && isRecord(value[0]) ? value[0] : null;
-}
-
-function stripHtml(value: unknown): string {
-  return stringValue(value).replace(/<[^>]*>/g, '');
-}
-
-function metadataValue(metadata: JsonRecord, key: string): string {
-  const item = metadata[key];
-  return isRecord(item) ? stringValue(item.value) : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,132 +1130,9 @@ export function buildFeatureCatalog() {
 // Main popup content builder — mirrors ORM popupContent()
 // Builds DOM (not innerHTML) to avoid XSS, exactly like upstream.
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Client-side Wikidata / Wikimedia Commons image fetching
-// (replaces ORM backend proxy endpoints /api/wikidata/ and /api/wikimedia/)
-// ---------------------------------------------------------------------------
-
-function renderImageData(linkEl: HTMLAnchorElement, data: CommonsImageData, _abortController: AbortController) {
-  const img = el('img', 'orm-popup-image', linkEl);
-  img.style.display = 'none';
-  img.onload = () => (img.style.display = 'block');
-
-  const desc = `Image ${data.file_name}${data.description ? `: ${data.description}` : ''}`;
-  img.src = data.thumbnail_url;
-  img.title = desc;
-  img.alt = desc;
-  linkEl.href = data.view_url;
-  linkEl.title = desc;
-
-  if (data.license || data.attribution) {
-    const attr = el('span', 'orm-img-attribution collapsed', linkEl);
-    const copy = el('span', 'orm-img-copyright', attr);
-    copy.innerText = '\u00A9';
-    copy.onclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      attr.classList.toggle('collapsed');
-    };
-    if (data.license) {
-      if (data.license_url) {
-        const licEl = el('a', 'orm-hide-collapsed', attr);
-        licEl.href = data.license_url;
-        licEl.target = '_blank';
-        licEl.innerText = data.license;
-      } else {
-        const licEl = el('span', 'orm-hide-collapsed', attr);
-        licEl.innerText = data.license;
-      }
-    }
-    if (data.attribution) {
-      const attrEl = el('span', 'orm-hide-collapsed', attr);
-      attrEl.innerText = data.attribution;
-    }
-  }
-}
-
-function fetchCommonsImageData(fileName: string, signal: AbortSignal): Promise<CommonsImageData | null> {
-  const url =
-    'https://commons.wikimedia.org/w/api.php?action=query' +
-    `&titles=File:${encodeURIComponent(fileName)}` +
-    '&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=330&format=json&origin=*';
-  return fetch(url, { signal })
-    .then((r) => r.json())
-    .then((json: unknown) => {
-      const pages = isRecord(json) && isRecord(json.query) && isRecord(json.query.pages) ? json.query.pages : null;
-      if (!pages) return null;
-      const page = Object.values(pages).find(isRecord);
-      const info = firstRecord(page?.imageinfo);
-      if (!info) return null;
-      const meta = isRecord(info.extmetadata) ? info.extmetadata : {};
-      const artist = stripHtml(metadataValue(meta, 'Artist'));
-      const license = metadataValue(meta, 'LicenseShortName');
-      const licenseUrl = metadataValue(meta, 'LicenseUrl');
-      const description = stripHtml(metadataValue(meta, 'ImageDescription')).slice(0, 200);
-      const thumbnailUrl = stringValue(info.thumburl || info.url);
-      if (!thumbnailUrl) return null;
-      return {
-        file_name: fileName,
-        thumbnail_url: thumbnailUrl,
-        view_url:
-          stringValue(info.descriptionurl) || `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(fileName)}`,
-        description,
-        attribution: artist,
-        license,
-        license_url: licenseUrl,
-      };
-    });
-}
-
-function fetchWikidataImage(linkEl: HTMLAnchorElement, wikidataId: string, abortController: AbortController) {
-  const url =
-    'https://www.wikidata.org/w/api.php?action=wbgetclaims' +
-    `&entity=${encodeURIComponent(wikidataId)}` +
-    '&property=P18&format=json&origin=*';
-  fetch(url, { signal: abortController.signal })
-    .then((r) => r.json())
-    .then((json: unknown) => {
-      const claims = isRecord(json) && isRecord(json.claims) && Array.isArray(json.claims.P18) ? json.claims.P18 : null;
-      const claim = firstRecord(claims);
-      const mainsnak = isRecord(claim?.mainsnak) ? claim.mainsnak : null;
-      const datavalue = isRecord(mainsnak?.datavalue) ? mainsnak.datavalue : null;
-      const fileName = stringValue(datavalue?.value);
-      if (!fileName) return null;
-      return fetchCommonsImageData(fileName, abortController.signal);
-    })
-    .then((data) => {
-      if (data) {
-        data.view_url = `https://www.wikidata.org/wiki/${wikidataId}#/media/File:${encodeURIComponent(data.file_name)}`;
-        renderImageData(linkEl, data, abortController);
-      }
-    })
-    .catch((err) => {
-      if (!abortController.signal.aborted) {
-        console.error('Error fetching Wikidata image', err);
-      }
-    });
-}
-
-function fetchCommonsImage(linkEl: HTMLAnchorElement, commonsFile: string, abortController: AbortController) {
-  fetchCommonsImageData(commonsFile, abortController.signal)
-    .then((data) => {
-      if (data) renderImageData(linkEl, data, abortController);
-    })
-    .catch((err) => {
-      if (!abortController.signal.aborted) {
-        console.error('Error fetching Commons image', err);
-      }
-    });
-}
-
 // `anchor` is the clicked [lng, lat]; routes and lines picked from the box
 // carry it so their highlight knows where to start.
-export function popupContent(
-  feature: RenderedFeatureLike,
-  featuresCatalog: FeaturesCatalog,
-  abortController: AbortController,
-  anchor?: Coordinates,
-) {
+export function popupContent(feature: RenderedFeatureLike, featuresCatalog: FeaturesCatalog, anchor?: Coordinates) {
   const properties = feature.properties || {};
   const layerSource = feature.sourceLayer || '';
 
@@ -1262,34 +1209,6 @@ export function popupContent(
         const labelSpan = el('span', undefined, popupLabel);
         labelSpan.innerText = labels.map(stringValue).join(' \u2022 ');
       }
-    }
-  }
-
-  // Wikidata / Wikimedia Commons / direct image
-  if (properties.wikidata || properties.wikimedia_commons_file || properties.image) {
-    const imgContainer = el('p', 'orm-popup-images', popupContainer);
-
-    if (properties.wikidata) {
-      const link = el('a', 'orm-popup-image-link', imgContainer);
-      link.target = '_blank';
-      fetchWikidataImage(link, stringValue(properties.wikidata), abortController);
-    }
-    if (properties.wikimedia_commons_file) {
-      const link = el('a', 'orm-popup-image-link', imgContainer);
-      link.target = '_blank';
-      fetchCommonsImage(link, stringValue(properties.wikimedia_commons_file), abortController);
-    }
-    if (properties.image) {
-      const link = el('a', undefined, imgContainer);
-      const imageUrl = stringValue(properties.image);
-      link.href = imageUrl;
-      link.target = '_blank';
-      link.title = `Image: ${imageUrl}`;
-      const img = el('img', 'orm-popup-image', link);
-      img.src = imageUrl;
-      img.alt = `Image: ${imageUrl}`;
-      img.style.display = 'none';
-      img.onload = () => (img.style.display = 'block');
     }
   }
 
@@ -2025,16 +1944,21 @@ export function installOrmPopups(
       ? osrmPopupContent(feature)
       : isAnnotationPopup
         ? annotationPopupContent(feature)
-        : popupContent(feature, featuresCatalog, abortController, clicked);
+        : popupContent(feature, featuresCatalog, clicked);
     if (!content) return;
     if (!isOsrmPopup && !isAnnotationPopup) options.extendContent?.(feature, content);
 
-    const shown = new maplibregl.Popup({ offset: popupOffsets, maxWidth: 'min(400px, calc(100vw - 24px))' })
+    const shown = new maplibregl.Popup({
+      offset: popupOffsets,
+      maxWidth: 'min(400px, calc(100vw - 24px))',
+      className: 'orm-info-popup',
+    })
       .setLngLat(coordinates)
       .setDOMContent(content)
       .addTo(map);
     popup = shown;
     keepPopupInView(map, shown);
+    installInfoSheet(map, shown);
 
     shown.on('close', () => {
       abortController.abort('Popup closed');
@@ -2055,7 +1979,7 @@ export function installOrmPopups(
           if (abortController.signal.aborted || popup !== shown) return;
           if (!lists.line_relations && !lists.line_routes) return;
           const properties = { ...feature.properties, ...lists };
-          const redrawn = popupContent({ ...feature, properties }, featuresCatalog, abortController, clicked);
+          const redrawn = popupContent({ ...feature, properties }, featuresCatalog, clicked);
           options.extendContent?.({ ...feature, properties }, redrawn);
           shown.setDOMContent(redrawn);
         })

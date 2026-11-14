@@ -57,11 +57,7 @@ const STATION_PROPERTIES = {
 };
 
 function render(source: string, sourceLayer: string, properties: Record<string, unknown>) {
-  const content = popupContent(
-    { source, sourceLayer, properties, geometry: { type: 'Point' } },
-    buildFeatureCatalog(),
-    new AbortController(),
-  );
+  const content = popupContent({ source, sourceLayer, properties, geometry: { type: 'Point' } }, buildFeatureCatalog());
   const sections: Record<string, Array<[string, string]>> = {};
   for (const section of content.querySelectorAll('.orm-popup-section')) {
     const title = section.querySelector('.orm-popup-section-title').textContent;
@@ -198,7 +194,6 @@ describe('structured railway line popup', () => {
         geometry: { type: 'Point' },
       },
       buildFeatureCatalog(),
-      new AbortController(),
       [8.68, 50.11],
     );
     const selected = vi.fn();
@@ -306,8 +301,9 @@ describe('installOrmPopups', () => {
     };
     const opened: Node[] = [];
     let removed = 0;
+    let element: HTMLElement = null;
     class Popup {
-      element = document.createElement('div');
+      element = (element = document.createElement('div'));
       setLngLat() {
         return this;
       }
@@ -319,6 +315,7 @@ describe('installOrmPopups', () => {
       }
       setDOMContent(node: Node) {
         opened.push(node);
+        this.element.replaceChildren(node);
         return this;
       }
       addTo() {
@@ -337,7 +334,7 @@ describe('installOrmPopups', () => {
     };
     installOrmPopups(map as never, maplibre as never, buildFeatureCatalog(), options);
     handlers.click({ point: [0, 0], lngLat: { lng: 8.6, lat: 50.1 } });
-    return Object.assign(opened, { container, removed: () => removed });
+    return Object.assign(opened, { container, removed: () => removed, element: () => element });
   }
 
   it('opens a popup for railway features whatever their source is called', () => {
@@ -382,6 +379,24 @@ describe('installOrmPopups', () => {
     emitUiPanelOpen(opened.container, 'route');
     expect(opened.removed()).toBe(0);
     emitUiPanelOpen(opened.container, 'timetable');
+    expect(opened.removed()).toBe(1);
+  });
+
+  it('collapses the info box to its title and closes it from its sheet buttons', () => {
+    const opened = clickMap([
+      { source: 'openrailwaymap', sourceLayer: 'standard_railway_text_stations', properties: STATION_PROPERTIES },
+    ]);
+    const sheet = opened.element();
+    const grabber = sheet.querySelector<HTMLButtonElement>('.orm-sheet-grabber');
+    grabber.click();
+    expect(sheet.classList.contains('orm-sheet-collapsed')).toBe(true);
+    expect(grabber.getAttribute('aria-label')).toBe('Expand info box');
+    grabber.click();
+    expect(sheet.classList.contains('orm-sheet-collapsed')).toBe(false);
+    grabber.click();
+    (opened[0] as HTMLElement).querySelector<HTMLElement>('.orm-popup-title').click();
+    expect(sheet.classList.contains('orm-sheet-collapsed')).toBe(false);
+    sheet.querySelector<HTMLButtonElement>('.orm-sheet-close').click();
     expect(opened.removed()).toBe(1);
   });
 
