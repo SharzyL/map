@@ -284,6 +284,30 @@ class TimetablePanel {
     button.addEventListener('click', () => this._back());
   }
 
+  // A view's day or date buttons, in the back button's row, which stays in
+  // view however far the view below it scrolls; they show that row even
+  // without a back button.
+  private _navGroup(label: string) {
+    const group = el('div', 'timetable-days', this._nav);
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+    this._nav.hidden = false;
+    return group;
+  }
+
+  // A switch the browser remembers, in the back button's row as well.
+  private _navToggle(label: string, storageKey: string, title?: string) {
+    const toggle = el('label', 'timetable-toggle', this._nav);
+    const input = el('input', undefined, toggle);
+    input.type = 'checkbox';
+    input.checked = readStoredSettings(storageKey, (value) => value === true);
+    el('span', undefined, toggle).textContent = label;
+    if (title) toggle.title = title;
+    input.addEventListener('change', () => writeStoredSettings(storageKey, input.checked));
+    this._nav.hidden = false;
+    return input;
+  }
+
   // Draws a train's route once the API has it, unless the view changed meanwhile;
   // for a route the API cannot give (an error, a train not routed yet) a note
   // above the stops says why it is not on the map.
@@ -434,9 +458,7 @@ class TimetablePanel {
     this._setBack('Lines');
     this._body.replaceChildren();
 
-    const days = el('div', 'timetable-days', this._body);
-    days.setAttribute('role', 'group');
-    days.setAttribute('aria-label', 'Day');
+    const days = this._navGroup('Day');
     for (const [value, label] of Object.entries(DAY_LABELS) as Array<[TimetableDay, string]>) {
       const button = el('button', 'timetable-day', days);
       button.type = 'button';
@@ -458,13 +480,12 @@ class TimetablePanel {
     const open = (departure: Departure) =>
       this._show(() => this._renderTrain(code, gid, departure.train_id, stationName, departure));
 
-    // A list, or the printed timetable's layout, by a switch the browser remembers.
-    const toggle = el('label', 'timetable-toggle timetable-layout-toggle', days);
-    const input = el('input', undefined, toggle);
-    input.type = 'checkbox';
-    input.checked = readStoredSettings(TIMETABLE_PRINTED_STORAGE_KEY, (value) => value === true);
-    el('span', undefined, toggle).textContent = 'Printed';
-    toggle.title = 'Lay the departures out as a printed timetable';
+    // A list, or the printed timetable's layout.
+    const input = this._navToggle(
+      'Printed',
+      TIMETABLE_PRINTED_STORAGE_KEY,
+      'Lay the departures out as a printed timetable',
+    );
 
     const list = el('ol', 'timetable-departures timetable-jp-departures', this._body);
     let hour = '';
@@ -547,10 +568,7 @@ class TimetablePanel {
       const current = (input.checked ? grid : list).querySelector('.timetable-next');
       current?.scrollIntoView?.({ block: 'center' });
     };
-    input.addEventListener('change', () => {
-      writeStoredSettings(TIMETABLE_PRINTED_STORAGE_KEY, input.checked);
-      layout();
-    });
+    input.addEventListener('change', layout);
     layout();
   }
 
@@ -631,23 +649,27 @@ class TimetablePanel {
     this._setHeader(station, `${crDateLabel(table.date)} · ${trainCount}`, crSource(table.data_version));
 
     const today = chinaNow().date;
-    const days = el('div', 'timetable-days', this._body);
-    days.setAttribute('role', 'group');
-    days.setAttribute('aria-label', 'Date');
-    const dayButton = (label: string, title: string, target: string) => {
-      const button = el('button', 'timetable-day', days);
+    const days = this._navGroup('Date');
+    // The steps are drawn chevrons, centred in their circle as a text ‹ › never is.
+    const dayButton = (label: string, title: string, target: string, icon?: string) => {
+      const button = el('button', icon ? 'timetable-day timetable-day-step' : 'timetable-day', days);
       button.type = 'button';
-      button.textContent = label;
       button.title = title;
+      if (icon) {
+        button.innerHTML = icon;
+        button.setAttribute('aria-label', title);
+      } else {
+        button.textContent = label;
+      }
       button.addEventListener('click', () => {
         // Replace this view rather than stacking date switches on the back button.
         this._history.pop();
         this._show(() => this._renderCrStation([station], station, target));
       });
     };
-    dayButton('‹', 'Previous day', addDays(table.date, -1));
+    dayButton('‹', 'Previous day', addDays(table.date, -1), CHEVRON_LEFT);
     el('span', 'timetable-date', days).textContent = crDateLabel(table.date);
-    dayButton('›', 'Next day', addDays(table.date, 1));
+    dayButton('›', 'Next day', addDays(table.date, 1), CHEVRON_RIGHT);
     if (table.date !== today) dayButton('Today', 'Today in China', today);
 
     if (table.trains.length === 0) {
@@ -723,24 +745,16 @@ class TimetablePanel {
     this._trainset(facts, run?.train ?? train, date, planned);
     if (run && !run.runs)
       el('p', 'timetable-comment', this._body).textContent = `Does not leave its origin on ${date}.`;
-    // Lines and distances, folded into the stops by a switch the viewer's
-    // browser remembers: each stop's km from the origin, and between two
-    // stops the lines the train runs on there.
+    // Lines and distances, folded into the stops: each stop's km from the
+    // origin, and between two stops the lines the train runs on there.
     const segments = crLinesBetweenStops(stops, run?.lines ?? []);
-    // It stays at the top of the panel while the stops scroll under it.
-    const toggle = el('label', 'timetable-toggle', el('div', 'timetable-toggle-bar', this._body));
-    const input = el('input', undefined, toggle);
-    input.type = 'checkbox';
-    input.checked = readStoredSettings(TIMETABLE_LINES_STORAGE_KEY, (value) => value === true);
-    el('span', undefined, toggle).textContent = segments.some((lines) => lines.length)
-      ? 'Lines and distances'
-      : 'Distances';
+    const input = this._navToggle(
+      segments.some((lines) => lines.length) ? 'Lines and distances' : 'Distances',
+      TIMETABLE_LINES_STORAGE_KEY,
+    );
     const list = el('ol', 'timetable-stops timetable-cr-stops', this._body);
     list.classList.toggle('timetable-show-lines', input.checked);
-    input.addEventListener('change', () => {
-      list.classList.toggle('timetable-show-lines', input.checked);
-      writeStoredSettings(TIMETABLE_LINES_STORAGE_KEY, input.checked);
-    });
+    input.addEventListener('change', () => list.classList.toggle('timetable-show-lines', input.checked));
     stops.forEach((stop, index) => {
       const lines = index > 0 ? segments[index - 1] : [];
       if (lines.length) {
@@ -828,6 +842,11 @@ export function timetableRequestFor(feature: StationFeatureLike): TimetableReque
   const cr = [osmElements(properties).join(','), name.replace(/站$/, '')].filter(Boolean);
   return { name, cr };
 }
+
+const chevron = (path: string) =>
+  `<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+const CHEVRON_LEFT = chevron('M6 2 3 5l3 3');
+const CHEVRON_RIGHT = chevron('M4 2l3 3-3 3');
 
 const LOCATE_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke-linecap="round"/></svg>';

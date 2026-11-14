@@ -2392,10 +2392,25 @@ button.timetable-stop-locate:focus-visible {
 }
 
 /* Rows are placed explicitly, so a hidden back button leaves an empty row. */
+/* One size and one 20px line for every control in the row, each 20px tall,
+   so their boxes share a centre and their text a baseline. */
 .timetable-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 20px;
   grid-row: 2;
+  min-height: 30px;
   padding: 4px 12px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* A view's day buttons follow the back button, and its switches sit at the
+   right of the row, which wraps on a narrow panel. */
+.timetable-nav .timetable-toggle {
+  margin-left: auto;
 }
 
 .timetable-nav[hidden] {
@@ -2432,7 +2447,7 @@ button.timetable-stop-locate:focus-visible {
 
 .timetable-back {
   justify-self: start;
-  padding: 2px 0;
+  padding: 0;
   color: #2563eb;
   font-weight: 650;
 }
@@ -2474,11 +2489,25 @@ button.timetable-stop-locate:focus-visible {
 }
 
 .timetable-day {
-  padding: 3px 8px;
+  box-sizing: border-box;
+  height: 20px;
+  padding: 0 8px;
   border: 1px solid rgba(148, 163, 184, 0.55);
   border-radius: 999px;
   color: #475569;
-  font-size: 11.5px;
+  /* The row's 20px line, less the borders: the text sits on the row's baseline. */
+  line-height: 18px;
+}
+
+.timetable-day-step {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  padding: 0;
+}
+
+.timetable-day-step svg {
+  display: block;
 }
 
 .timetable-day[aria-pressed='true'] {
@@ -2578,7 +2607,6 @@ button.timetable-stop-locate:focus-visible {
   align-self: center;
   padding: 0 4px;
   color: #0f172a;
-  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -2631,10 +2659,6 @@ button.timetable-stop-locate:focus-visible {
   color: #64748b;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-}
-
-.timetable-layout-toggle {
-  margin-left: auto;
 }
 
 .timetable-printed[hidden],
@@ -2780,19 +2804,9 @@ button.timetable-stop-locate:focus-visible {
   white-space: nowrap;
 }
 
-/* Lines and distances, shown when the switch above the stops is on: each
+/* Lines and distances, shown when the switch by the back button is on: each
    stop's km after its times, and the lines between two stops on a row of
    their own along a rule, as a route diagram would. */
-/* Pinned to the top of the scrolling body (whose padding is 10px), over
-   the stops scrolling under it. */
-.timetable-toggle-bar {
-  position: sticky;
-  top: -10px;
-  z-index: 1;
-  padding: 4px 0;
-  background: #fff;
-}
-
 .timetable-toggle {
   display: flex;
   align-items: center;
@@ -2804,6 +2818,8 @@ button.timetable-stop-locate:focus-visible {
 }
 
 .timetable-toggle input {
+  width: 13px;
+  height: 13px;
   margin: 0;
 }
 

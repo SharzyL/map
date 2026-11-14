@@ -269,6 +269,8 @@ describe('timetable panel', () => {
     expect(text(root, '.timetable-hour')).toEqual(['7時', '8時']);
     expect(root.querySelector('.timetable-summary').textContent).toBe('ＪＲ湘南新宿ライン → 新宿・高崎・宇都宮');
     expect(root.querySelector('.timetable-day[aria-pressed="true"]').textContent).toBe('Weekday');
+    // The day buttons stay in view in the back button's row.
+    expect(root.querySelector('.timetable-nav .timetable-day[aria-pressed="true"]').textContent).toBe('Weekday');
     expect(root.querySelector<HTMLAnchorElement>('.timetable-source').href).toContain('/timetable/22715/1051');
 
     // The back button stays outside the scrolling list.
@@ -333,7 +335,9 @@ describe('timetable panel', () => {
     const printed = root.querySelector<HTMLElement>('.timetable-printed');
     const list = root.querySelector<HTMLElement>('.timetable-jp-departures');
     expect(printed.hidden).toBe(true);
-    root.querySelector<HTMLInputElement>('.timetable-layout-toggle input').click();
+    // It stays in view in the back button's row, which the list scrolls below.
+    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('Printed');
+    root.querySelector<HTMLInputElement>('.timetable-nav .timetable-toggle input').click();
     expect(printed.hidden).toBe(false);
     expect(list.hidden).toBe(true);
     expect(localStorage.getItem('atlas-realm:timetable-printed')).toBe('true');
@@ -441,9 +445,12 @@ describe('China Railway timetable', () => {
     expect(source.textContent).toBe('lltskb 20261114');
     expect(source.hasAttribute('href')).toBe(false);
 
+    // The date steps stay in view in the row a back button would take.
+    expect(root.querySelector<HTMLElement>('.timetable-nav').hidden).toBe(false);
+    expect(root.querySelector('.timetable-nav .timetable-date').textContent).toBe('2026-11-16 Mon');
     // Date steps replace the view instead of stacking on the back button.
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
-      .find((button) => button.textContent === '›')
+      .find((button) => button.title === 'Next day')
       .click();
     await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
@@ -483,8 +490,8 @@ describe('China Railway timetable', () => {
 
     // Lines and distances are folded in by a switch the browser remembers.
     const stopList = root.querySelector('.timetable-cr-stops');
-    const toggle = root.querySelector<HTMLInputElement>('.timetable-toggle input');
-    expect(root.querySelector('.timetable-toggle').textContent).toBe('Lines and distances');
+    const toggle = root.querySelector<HTMLInputElement>('.timetable-nav .timetable-toggle input');
+    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('Lines and distances');
     expect(toggle.checked).toBe(false);
     expect(stopList.classList.contains('timetable-show-lines')).toBe(false);
     expect(text(root, '.timetable-stop-km')).toEqual(['0 km', '1200 km', '2400 km']);
