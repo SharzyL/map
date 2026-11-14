@@ -368,6 +368,12 @@ function dimmedOpacity(layer: StyleLayerLike, railway: boolean) {
 // a transparent one would.
 const UNNAMED_STATION = ['all', DIMMING, ['any', LABELED_STOP, ['!', routeListFilter('station_routes')]]];
 
+// The stations a highlight rings (route_highlight_station_*, at the station)
+// or a train marks as stops (train_route_stops, where its track meets the
+// station, often off the station's own point): their icon gives way to the
+// empty ring, which it would otherwise sit in off centre.
+const RINGED_STATION = ['any', LABELED_STOP, routeListFilter('station_routes')];
+
 function withoutUnnamedStations(textField: unknown) {
   return mapZoomOutputs(textField, (output) =>
     Array.isArray(output) ? ['case', UNNAMED_STATION, '', output] : output,
@@ -379,10 +385,12 @@ function withRouteDimming(layer: StyleLayerLike, railway = true): StyleLayerLike
   if (!properties) return layer;
   const factor = dimmedOpacity(layer, railway);
   const paint = { ...((layer.paint as Record<string, unknown>) || {}) };
-  for (const property of properties) {
-    paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, factor]);
-  }
   const station = railway && !!layer['source-layer']?.startsWith(STATION_SOURCE_LAYER_PREFIX);
+  const iconFactor = station ? ['case', RINGED_STATION, 0, factor] : factor;
+  for (const property of properties) {
+    const by = property === 'icon-opacity' ? iconFactor : factor;
+    paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, by]);
+  }
   const layout = layer.layout as Record<string, unknown> | undefined;
   if (station && layout?.['text-field'] !== undefined) {
     return { ...layer, paint, layout: { ...layout, 'text-field': withoutUnnamedStations(layout['text-field']) } };

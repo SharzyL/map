@@ -213,8 +213,14 @@ describe('addRouteHighlightToStyle', () => {
       const train = { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys };
       expect(stationLabel(id, { name: 'Huzhou East', localized_name: '麻城北' }, train)).toBe('');
       expect(stationLabel(id, other, train)).toBe('');
-      // Their icons stay, faded as before.
+      // Their icons stay, faded as before; the route's and train's own give
+      // way to the rings marking them.
       expect(opacity(id, 'icon-opacity', '5611108', other)).toBeCloseTo(0.6);
+      expect(opacity(id, 'icon-opacity', '5611108', huzhou)).toBe(0);
+      expect(opacity(id, 'icon-opacity', '', stop, { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys })).toBe(0);
+      expect(
+        opacity(id, 'icon-opacity', '', other, { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys }),
+      ).toBeCloseTo(0.6);
     }
   });
 
