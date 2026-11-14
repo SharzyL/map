@@ -2424,6 +2424,34 @@ button.timetable-stop-locate:focus-visible {
   font-size: 12.5px;
 }
 
+/* Retry after a failed request's message (map-panel.ts retryButton): a pill
+   on the message's baseline, in the message's font and line, whatever its
+   size, so it sits in the sentence rather than beside it. Its outline is an
+   inset ring, not a border, so the pill is exactly one line tall and never
+   pushes its line's baseline down from the text beside it. */
+.panel-retry {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.55);
+  background: #fff;
+  color: #1d4ed8;
+  font: inherit;
+  font-weight: 650;
+  line-height: inherit;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+
+.panel-retry:hover,
+.panel-retry:focus-visible {
+  box-shadow: inset 0 0 0 1px #2563eb;
+  background: #eff6ff;
+  outline: none;
+}
+
 .timetable-status {
   color: #64748b;
 }

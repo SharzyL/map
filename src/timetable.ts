@@ -15,7 +15,7 @@
 // A train's view draws its route on the map (train-route.ts) and gives each
 // stop the API placed on OSM a button that flies the map there; pointing at a
 // stop marks it on the map.
-import { createPanelShell, el } from './map-panel.js';
+import { createPanelShell, el, retryButton } from './map-panel.js';
 import {
   addDays,
   chinaNow,
@@ -25,6 +25,7 @@ import {
   crTrainset,
   departures,
   findStationsByName,
+  isRetryable,
   japanNow,
   minutesOf,
   NorikaeError,
@@ -172,8 +173,13 @@ function departureLegend(departures: Departure[]) {
 // Why a train's track is not on the map, from the route request's error.
 function routeMissingText(error: unknown) {
   if (error instanceof NorikaeError && error.status === 404) return 'Its track is not available yet.';
-  if (error instanceof NorikaeError && error.status === 503) return 'Its track could not be loaded; try again later.';
-  return `Its track could not be loaded${error instanceof Error ? `: ${error.message}` : '.'}`;
+  return 'Its track could not be loaded.';
+}
+
+// What went wrong as the API or the browser put it, for a failure message's
+// tooltip; the message itself stays plain and names no data source.
+function errorDetail(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 class TimetablePanel {
@@ -266,7 +272,10 @@ class TimetablePanel {
       this._setBack();
       this._body.replaceChildren();
       const status = el('div', 'timetable-status timetable-error', this._body);
-      status.textContent = `Could not load the timetable: ${error instanceof Error ? error.message : String(error)}`;
+      const message = el('span', 'timetable-error-message', status);
+      message.textContent = 'Could not load the timetable.';
+      message.title = errorDetail(error);
+      if (isRetryable(error)) retryButton(status, () => this._run(view));
     });
   }
 
@@ -311,10 +320,10 @@ class TimetablePanel {
   // Draws a train's route once the API has it, unless the view changed meanwhile;
   // for a route the API cannot give (an error, a train not routed yet) a note
   // above the stops says why it is not on the map.
-  private _drawRoute(load: Promise<TrainRoute>, here: string | null) {
+  private _drawRoute(load: () => Promise<TrainRoute>, here: string | null) {
     const signal = this._signal;
     if (!this._route) return;
-    load
+    load()
       .then((route) => {
         if (signal.aborted) return;
         // Clear of the panel: beside it on a wide screen, above the bottom sheet on a phone.
@@ -330,7 +339,14 @@ class TimetablePanel {
       .catch((error: unknown) => {
         if (signal.aborted) return;
         const note = el('p', 'timetable-comment timetable-route-missing');
-        note.textContent = routeMissingText(error);
+        const message = el('span', undefined, note);
+        message.textContent = routeMissingText(error);
+        message.title = errorDetail(error);
+        if (isRetryable(error))
+          retryButton(note, () => {
+            note.remove();
+            this._drawRoute(load, here);
+          });
         this._body.insertBefore(note, this._body.querySelector('.timetable-stops'));
       });
   }
@@ -344,34 +360,43 @@ class TimetablePanel {
     const term = el('dt', undefined, facts);
     term.textContent = 'Trainset';
     const value = el('dd', 'timetable-trainset', facts);
-    value.textContent = 'Asking 12306…';
-    crTrainset(train, date, signal)
-      .then(({ trainset }) => {
-        if (signal.aborted) return;
-        if (!trainset) {
-          term.remove();
-          value.remove();
-          return;
-        }
-        for (const element of planned) element.remove();
-        value.textContent = trainsetLabel(trainset);
-        value.title = 'The trainset 12306 assigns for this day';
-        if (!trainset.details.length && !trainset.coaches.length) return;
-        const more = el('details', 'timetable-coaches', value);
-        el('summary', undefined, more).textContent = 'Coaches';
-        const details = el('dl', 'timetable-coach-details', more);
-        for (const { name, value: text } of trainset.details) {
-          el('dt', undefined, details).textContent = name;
-          el('dd', undefined, details).textContent = text ?? '✓';
-        }
-        const coaches = el('ol', 'timetable-coach-list', more);
-        for (const coach of trainset.coaches) el('li', undefined, coaches).textContent = coach;
-      })
-      .catch(() => {
-        if (signal.aborted) return;
-        value.textContent = '12306 did not answer';
-        value.classList.add('timetable-unavailable');
-      });
+    const ask = () => {
+      value.classList.remove('timetable-unavailable');
+      value.textContent = 'Loading…';
+      crTrainset(train, date, signal)
+        .then(({ trainset }) => answer(trainset))
+        .catch((error: unknown) => {
+          if (signal.aborted) return;
+          value.replaceChildren();
+          value.classList.add('timetable-unavailable');
+          const message = el('span', undefined, value);
+          message.textContent = 'Could not load the trainset';
+          message.title = errorDetail(error);
+          if (isRetryable(error)) retryButton(value, ask);
+        });
+    };
+    const answer = (trainset: CrTrainset['trainset']) => {
+      if (signal.aborted) return;
+      if (!trainset) {
+        term.remove();
+        value.remove();
+        return;
+      }
+      for (const element of planned) element.remove();
+      value.textContent = trainsetLabel(trainset);
+      value.title = 'The trainset 12306 assigns for this day';
+      if (!trainset.details.length && !trainset.coaches.length) return;
+      const more = el('details', 'timetable-coaches', value);
+      el('summary', undefined, more).textContent = 'Coaches';
+      const details = el('dl', 'timetable-coach-details', more);
+      for (const { name, value: text } of trainset.details) {
+        el('dt', undefined, details).textContent = name;
+        el('dd', undefined, details).textContent = text ?? '✓';
+      }
+      const coaches = el('ol', 'timetable-coach-list', more);
+      for (const coach of trainset.coaches) el('li', undefined, coaches).textContent = coach;
+    };
+    ask();
   }
 
   // A button that flies the map to a stop, or an empty cell keeping the column;
@@ -621,7 +646,7 @@ class TimetablePanel {
     }
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
     const here = train.stops.find((stop) => stop.code === code)?.name ?? null;
-    this._drawRoute(trainRoute(code, gid, trainId, this._signal), here);
+    this._drawRoute(() => trainRoute(code, gid, trainId, this._signal), here);
   }
 
   private async _renderCrStation(candidates: string[], name: string, date: string | null) {
@@ -791,7 +816,7 @@ class TimetablePanel {
       this._locate(item, stop.name, stop.position);
     });
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
-    this._drawRoute(crTrainRoute(run?.train ?? train, date, this._signal), stationName);
+    this._drawRoute(() => crTrainRoute(run?.train ?? train, date, this._signal), stationName);
   }
 }
 

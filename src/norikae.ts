@@ -204,7 +204,20 @@ export class NorikaeError extends Error {
   }
 }
 
+// Whether asking again may help: a network failure, a timeout or an upstream
+// error the API reports with 5xx, but not a request it answered or rejected
+// for good (404 for an unknown station or train, 400 for a bad one).
+export function isRetryable(error: unknown) {
+  if (!(error instanceof NorikaeError)) return true;
+  return error.status >= 500 || error.status === 408 || error.status === 429;
+}
+
 const responses = new Map<string, Promise<unknown>>();
+
+// Forgets every answer, so the next request of each asks the API (for tests).
+export function forgetResponses() {
+  responses.clear();
+}
 
 // GET with an in-memory cache; the API sets its own Cache-Control as well.
 async function get<T>(path: string, params: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {

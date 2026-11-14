@@ -10,9 +10,9 @@
 // segment. Below z7 no tiles carry these ids, so route-trace.ts collects the
 // geometry from z7 tiles and a GeoJSON overlay draws it.
 import { mapZoomOutputs } from './map-layers.js';
-import { createPanelShell, el } from './map-panel.js';
+import { createPanelShell, el, retryButton } from './map-panel.js';
 import { withRailwayOverlayVisibility } from './railway-filter.js';
-import { decodePolyline, relationDetails, type RelationDetails } from './norikae.js';
+import { decodePolyline, isRetryable, relationDetails, type RelationDetails } from './norikae.js';
 import { ROUTE_TRACE_ZOOM, tilesInBounds, traceRoute, type RouteGeometry } from './route-trace.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-panels.js';
@@ -717,9 +717,24 @@ class RoutePanel {
     }
   }
 
-  // The API could not describe it: keep what the tiles gave.
-  failed() {
-    if (this._status) this._status.textContent = 'No further details for this one.';
+  // The API could not describe it: keep what the tiles gave, and offer to ask
+  // again unless the API does not have it.
+  failed(error: unknown, retry: () => void) {
+    const status = this._status;
+    if (!status) return;
+    if (!isRetryable(error)) {
+      status.textContent = 'No further details for this one.';
+      return;
+    }
+    status.replaceChildren();
+    // Plain, naming no data source; what went wrong is in the tooltip.
+    const message = el('span', undefined, status);
+    message.textContent = 'Could not load its details.';
+    message.title = error instanceof Error ? error.message : String(error);
+    retryButton(status, () => {
+      status.textContent = 'Loading details…';
+      retry();
+    });
   }
 
   // The traced route's extent, while the API has given none.
@@ -843,9 +858,9 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     let details: RelationDetails | null = null;
     try {
       details = await relationDetails(route.id, signal);
-    } catch {
+    } catch (error) {
       if (signal.aborted) return;
-      panel.failed();
+      panel.failed(error, () => describe(route, signal).catch(() => {}));
       await traceOverview(route, signal);
       return;
     }

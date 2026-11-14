@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CrTrainSchedule, CrTrainset, TrainRoute } from './norikae.js';
+import { forgetResponses, type CrTrainSchedule, type CrTrainset, type TrainRoute } from './norikae.js';
 import {
   crLinesBetweenStops,
   installTimetable,
@@ -235,6 +235,12 @@ function setup() {
     vi.fn(async (url: string) => {
       const { pathname, search } = new URL(url);
       requests.push(pathname + search);
+      // A path set to fail answers once with that status, then as usual.
+      const failure = failOnce.get(pathname);
+      if (failure) {
+        failOnce.delete(pathname);
+        return new Response(JSON.stringify({ error: { message: 'upstream error' } }), { status: failure });
+      }
       const body = API[pathname];
       return new Response(JSON.stringify(body ?? { error: { message: 'not found' } }), { status: body ? 200 : 404 });
     }),
@@ -248,8 +254,12 @@ function setup() {
 const text = (root: HTMLElement, selector: string) =>
   Array.from(root.querySelectorAll(selector)).map((node) => node.textContent);
 
+const failOnce = new Map<string, number>();
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  forgetResponses();
+  failOnce.clear();
   localStorage.clear();
   document.body.replaceChildren();
 });
@@ -379,8 +389,35 @@ describe('timetable panel', () => {
     const { container, panel } = setup();
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '架空', codes: ['99999'] } }));
     await vi.waitFor(() =>
-      expect(panel.panel.querySelector('.timetable-error').textContent).toBe('Could not load the timetable: not found'),
+      expect(panel.panel.querySelector('.timetable-error').textContent).toBe('Could not load the timetable.'),
     );
+    // The message names no data source; what went wrong is in its tooltip.
+    expect(panel.panel.querySelector<HTMLElement>('.timetable-error-message').title).toBe('not found');
+    // An unknown station stays unknown: nothing to retry.
+    expect(panel.panel.querySelector('.panel-retry')).toBeNull();
+  });
+
+  it('asks again from a Retry button when the API failed', async () => {
+    const { container, panel, route } = setup();
+    failOnce.set('/v1/stations/22715/timetables', 502);
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+    const root = panel.panel;
+    await vi.waitFor(() =>
+      expect(root.querySelector('.timetable-error-message').textContent).toBe('Could not load the timetable.'),
+    );
+    root.querySelector<HTMLButtonElement>('.timetable-error .panel-retry').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
+
+    // A train whose track failed to load gets its own Retry.
+    failOnce.set('/v1/stations/22715/timetables/1051/trains/33471/route', 503);
+    root.querySelector<HTMLButtonElement>('.timetable-direction').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
+    root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
+    await vi.waitFor(() => expect(root.querySelector('.timetable-route-missing .panel-retry')).not.toBeNull());
+    expect(root.querySelector('.timetable-route-missing').textContent).toBe('Its track could not be loaded.Retry');
+    root.querySelector<HTMLButtonElement>('.timetable-route-missing .panel-retry').click();
+    await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '渋谷', expect.anything()));
+    expect(root.querySelector('.timetable-route-missing')).toBeNull();
   });
 });
 
@@ -533,6 +570,23 @@ describe('China Railway timetable', () => {
     );
     expect(root.querySelector('.timetable-route-missing').nextElementSibling.classList).toContain('timetable-stops');
     expect(route.show).not.toHaveBeenCalled();
+  });
+
+  it('asks for the trainset again from its row when it failed', async () => {
+    const { container, panel } = setup();
+    failOnce.set(crPath('cr-trainsets/G301'), 504);
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['北京西'] } }));
+    const root = panel.panel;
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
+    await vi.waitFor(() => expect(root.querySelector('.timetable-trainset .panel-retry')).not.toBeNull());
+    expect(root.querySelector('.timetable-trainset').textContent).toBe('Could not load the trainsetRetry');
+    root.querySelector<HTMLButtonElement>('.timetable-trainset .panel-retry').click();
+    await vi.waitFor(() =>
+      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe(
+        'CR400AF-A-2001 · 复兴号 · 16 cars · 1193 seats · 350 km/h',
+      ),
+    );
   });
 
   it('says so when no way of naming the station is known', async () => {

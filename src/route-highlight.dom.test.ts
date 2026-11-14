@@ -8,6 +8,7 @@ import {
   ROUTE_SELECT_EVENT,
   type RouteSelection,
 } from './route-highlight.js';
+import { forgetResponses } from './norikae.js';
 import { tilesInBounds } from './route-trace.js';
 import { UI_PANEL_OPEN_EVENT } from './ui-panels.js';
 
@@ -24,6 +25,12 @@ beforeEach(() => {
     vi.fn(async (url: string) => {
       fetched.push(url);
       const id = decodeURIComponent(url.match(/\/relations\/([^/?]+)$/)?.[1] ?? '');
+      // An id set to fail answers once with that status, then as usual.
+      const failure = failOnce.get(id);
+      if (failure) {
+        failOnce.delete(id);
+        return new Response(JSON.stringify({ error: { message: 'upstream error' } }), { status: failure });
+      }
       const body = relations[id];
       return new Response(JSON.stringify(body ?? { error: { code: 'not_found', message: 'not found' } }), {
         status: body ? 200 : 404,
@@ -31,8 +38,12 @@ beforeEach(() => {
     }),
   );
 });
+const failOnce = new Map<string, number>();
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  forgetResponses();
+  failOnce.clear();
 });
 
 const SHANGHAI_15 = {
@@ -332,5 +343,22 @@ describe('zoomed-out trace', () => {
     );
     expect(fetched[0]).toContain('/v1/relations/900821599');
     expect(container.querySelector('.route-info-status').textContent).toBe('No further details for this one.');
+    // The API does not have it: nothing to retry.
+    expect(container.querySelector('.route-info-status .panel-retry')).toBeNull();
+  });
+
+  it('asks the API again from a Retry button when it failed', async () => {
+    relations['900821540'] = SHANGHAI_15;
+    failOnce.set('900821540', 502);
+    const { map, container } = createMap();
+    installRouteHighlight(map as never);
+    selectRoute(container, ROUTE);
+    const panel = container.querySelector<HTMLElement>('.route-info-panel');
+    await vi.waitFor(() => expect(panel.querySelector('.route-info-status .panel-retry')).not.toBeNull());
+    expect(panel.querySelector('.route-info-status').textContent).toBe('Could not load its details.Retry');
+    expect(panel.querySelector<HTMLElement>('.route-info-status span').title).toBe('upstream error');
+    panel.querySelector<HTMLButtonElement>('.route-info-status .panel-retry').click();
+    await vi.waitFor(() => expect(panel.querySelectorAll('.route-info-station')).toHaveLength(2));
+    expect(panel.querySelector('.route-info-title').textContent).toBe('上海地铁15号线：顾村公园 → 紫竹高新区');
   });
 });

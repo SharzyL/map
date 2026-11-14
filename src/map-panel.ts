@@ -82,6 +82,16 @@ export function createPanelShell(
   return { panel, summary, body };
 }
 
+// A Retry button after the message of a request that failed but may not
+// fail again (norikae.ts isRetryable).
+export function retryButton(parent: Element, retry: () => void) {
+  const button = el('button', 'panel-retry', parent);
+  button.type = 'button';
+  button.textContent = 'Retry';
+  button.addEventListener('click', retry);
+  return button;
+}
+
 export function createPanelFields(prefix: string) {
   return {
     checkboxRow(parent: Element, label: string, hint?: string, type: 'checkbox' | 'radio' = 'checkbox') {
