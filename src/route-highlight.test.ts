@@ -14,6 +14,7 @@ import {
   ROUTE_STOPS_STATE,
   routeListFilter,
   stopKeys,
+  TRAIN_ROUTE_STATE,
   TRAIN_STOPS_STATE,
 } from './route-highlight.js';
 
@@ -152,7 +153,7 @@ describe('addRouteHighlightToStyle', () => {
     expect(opacity(line.id, 'line-opacity', '5611108')).toBeCloseTo(0.25);
   });
 
-  it('keeps the stations of the highlighted route fully visible and others readable', () => {
+  it('keeps the stations of the highlighted route fully visible and fades the others a little', () => {
     const station = styled.layers.find(
       (layer) =>
         layer.type === 'symbol' && 'source' in layer && layer['source-layer'] === 'standard_railway_text_stations',
@@ -163,12 +164,31 @@ describe('addRouteHighlightToStyle', () => {
     expect(opacity(station.id, 'text-opacity', '', {})).toBe(1);
   });
 
-  it('hides the names of stations the route or train labels as stops, but not their icons', () => {
+  // A station layer's label for a feature, as text ('' when it has none).
+  function stationLabel(layerId: string, properties: Record<string, unknown>, state: Record<string, unknown> = {}) {
+    const layer = styled.layers.find((candidate) => candidate.id === layerId);
+    const expression = createExpression(
+      (layer.layout as Record<string, unknown>)['text-field'],
+      latest.layout_symbol['text-field'],
+    );
+    if (expression.result !== 'success') throw new Error(JSON.stringify(expression.value));
+    const value = expression.value.evaluate(
+      {
+        zoom: 12,
+        globalState: { stationLowZoomLabel: 'name', [ROUTE_HIGHLIGHT_ID_STATE]: '', ...state },
+      } as never,
+      { type: 'Point', properties: { station_size: 'large', ...properties } } as never,
+    ) as string | { sections: Array<{ text: string }> };
+    return typeof value === 'string' ? value : value.sections.map(({ text }) => text).join('');
+  }
+
+  it('names only the stations of a highlighted route or train, keeping the others’ icons', () => {
     const stations = styled.layers.filter(
       (layer) =>
         layer.type === 'symbol' &&
         'source' in layer &&
-        layer['source-layer']?.startsWith('standard_railway_text_stations'),
+        layer['source-layer']?.startsWith('standard_railway_text_stations') &&
+        (layer.layout as Record<string, unknown>)['text-field'] !== undefined,
     );
     expect(stations.length).toBeGreaterThan(2);
     const keys = stopKeys([
@@ -176,18 +196,25 @@ describe('addRouteHighlightToStyle', () => {
       { name: '麻城北', elements: null },
     ]);
     expect(keys).toEqual(['湖州东', 'N123', '麻城北']);
-    for (const station of stations) {
-      for (const state of [ROUTE_STOPS_STATE, TRAIN_STOPS_STATE]) {
-        const shown = { [state]: keys };
-        expect(opacity(station.id, 'text-opacity', '', { name: '湖州东' }, shown)).toBe(0);
-        expect(opacity(station.id, 'text-opacity', '', { name: 'Huzhou East', localized_name: '麻城北' }, shown)).toBe(
-          0,
-        );
-        expect(opacity(station.id, 'text-opacity', '', { name: '湖州', osm_type: 'N', osm_id: '123' }, shown)).toBe(0);
-        expect(opacity(station.id, 'text-opacity', '', { name: '湖州', osm_type: 'N', osm_id: '12' }, shown)).toBe(1);
-        expect(opacity(station.id, 'icon-opacity', '', { name: '湖州东' }, shown)).toBe(1);
-      }
-      expect(opacity(station.id, 'text-opacity', '', { name: '湖州东' })).toBe(1);
+    const huzhou = { name: '湖州', localized_name: '湖州', osm_type: 'N', osm_id: '12', station_routes: LINE_ROUTES };
+    const stop = { name: '湖州东', localized_name: '湖州东' };
+    const other = { name: '长兴', localized_name: '长兴' };
+    for (const { id } of stations) {
+      // Nothing shown: every station is named.
+      expect(stationLabel(id, other)).toBe('长兴');
+      // A highlighted route: its stations are named, by the stop labels when
+      // those name them; the others are not.
+      const route = { [ROUTE_HIGHLIGHT_ID_STATE]: '5611108', [ROUTE_STOPS_STATE]: keys };
+      expect(stationLabel(id, huzhou, route)).toBe('湖州');
+      expect(stationLabel(id, { ...stop, station_routes: LINE_ROUTES }, route)).toBe('');
+      expect(stationLabel(id, { ...huzhou, osm_id: '123' }, route)).toBe('');
+      expect(stationLabel(id, other, route)).toBe('');
+      // A train: its stops are named by the stop labels, other stations not at all.
+      const train = { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys };
+      expect(stationLabel(id, { name: 'Huzhou East', localized_name: '麻城北' }, train)).toBe('');
+      expect(stationLabel(id, other, train)).toBe('');
+      // Their icons stay, faded as before.
+      expect(opacity(id, 'icon-opacity', '5611108', other)).toBeCloseTo(0.6);
     }
   });
 

@@ -339,10 +339,10 @@ function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
 }
 
 // While a route is highlighted every other railway layer fades to this
-// opacity; stations on the route stay fully visible. Other stations fade only
-// a little: route stop lists in OSM are often incomplete, so a station the
-// route serves may not list it and must stay readable. Base map labels fade
-// as much, so the route's stop labels stand out.
+// opacity; stations on the route stay fully visible. Other stations' icons
+// fade only a little, so the network around the route stays legible, while
+// their names go (UNNAMED_STATION below). Base map labels fade as much, so
+// the route's stop labels stand out.
 const DIMMED_OPACITY = 0.25;
 const DIMMED_STATION_OPACITY = 0.6;
 const DIMMED_LABEL_OPACITY = 0.6;
@@ -361,17 +361,31 @@ function dimmedOpacity(layer: StyleLayerLike, railway: boolean) {
   return ['case', ['!', DIMMING], 1, routeListFilter('station_routes'), 1, DIMMED_STATION_OPACITY];
 }
 
+// While a route or train shows, only its stations are named: by the stop
+// labels, or by their own label where those do not name them (a highlighted
+// route before or without the API's stop list). Other stations keep their
+// icon but lose their name, which then takes no room from other labels, as
+// a transparent one would.
+const UNNAMED_STATION = ['all', DIMMING, ['any', LABELED_STOP, ['!', routeListFilter('station_routes')]]];
+
+function withoutUnnamedStations(textField: unknown) {
+  return mapZoomOutputs(textField, (output) =>
+    Array.isArray(output) ? ['case', UNNAMED_STATION, '', output] : output,
+  );
+}
+
 function withRouteDimming(layer: StyleLayerLike, railway = true): StyleLayerLike {
   const properties = OPACITY_PROPERTIES[layer.type || ''];
   if (!properties) return layer;
   const factor = dimmedOpacity(layer, railway);
-  // A station's name gives way to the stop label naming it; its icon stays.
-  const station = railway && !!layer['source-layer']?.startsWith(STATION_SOURCE_LAYER_PREFIX);
-  const textFactor = station ? ['case', LABELED_STOP, 0, factor] : factor;
   const paint = { ...((layer.paint as Record<string, unknown>) || {}) };
   for (const property of properties) {
-    const by = property === 'text-opacity' ? textFactor : factor;
-    paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, by]);
+    paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, factor]);
+  }
+  const station = railway && !!layer['source-layer']?.startsWith(STATION_SOURCE_LAYER_PREFIX);
+  const layout = layer.layout as Record<string, unknown> | undefined;
+  if (station && layout?.['text-field'] !== undefined) {
+    return { ...layer, paint, layout: { ...layout, 'text-field': withoutUnnamedStations(layout['text-field']) } };
   }
   return { ...layer, paint };
 }
