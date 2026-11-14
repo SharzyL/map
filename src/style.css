@@ -2311,6 +2311,42 @@ body,
   cursor: pointer;
 }
 
+/* A route master's routes, and the button opening a route's master */
+.route-info-routes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.route-info-routes li {
+  display: flex;
+  align-items: baseline;
+  padding: 1px 0;
+  font-size: 12.5px;
+}
+
+.route-info-detail {
+  margin-left: 6px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.route-info-select {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-info-select:hover,
+.route-info-select:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
 span.route-info-station {
   color: #0f172a;
   cursor: default;
@@ -2501,6 +2537,40 @@ button.timetable-stop-locate:focus-visible {
 .timetable-comment {
   margin: 0;
   color: #475569;
+}
+
+/* China Railway: the trainset 12306 assigns, its coaches folded away */
+.timetable-unavailable {
+  color: #94a3b8;
+}
+
+.timetable-coaches summary {
+  width: max-content;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.timetable-coach-details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 1px 10px;
+  margin: 4px 0;
+}
+
+.timetable-coach-details dt {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.timetable-coach-details dd {
+  margin: 0;
+}
+
+.timetable-coach-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
 }
 
 /* China Railway: a date stepper and a platform column */

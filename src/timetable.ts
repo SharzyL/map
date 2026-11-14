@@ -22,6 +22,7 @@ import {
   crStationTimetable,
   crTrain,
   crTrainRoute,
+  crTrainset,
   departures,
   findStationsByName,
   japanNow,
@@ -30,7 +31,10 @@ import {
   stationLines,
   trainRoute,
   trainStops,
+  type CrLine,
+  type CrRollingStock,
   type CrStationTimetable,
+  type CrTrainset,
   type Departure,
   type DepartureTable,
   type TrainRoute,
@@ -84,6 +88,44 @@ export function nextDepartureIndex(table: Pick<DepartureTable, 'day' | 'departur
   if (table.day !== today) return -1;
   const current = now.minutes < SERVICE_DAY_START ? now.minutes + 24 * 60 : now.minutes;
   return table.departures.findIndex((departure) => serviceMinutes(departure.time) >= current);
+}
+
+// What the timetable says a train runs with: "CR400BF-S ×2 (coupled) · 上局上海段".
+export function rollingStockLabel(stock: CrRollingStock | null | undefined) {
+  if (!stock) return null;
+  const sets = stock.model
+    ? `${stock.model}${stock.coupled ? ' ×2 (coupled)' : ''}`
+    : stock.coupled
+      ? 'Two coupled sets'
+      : null;
+  return [sets, stock.depot].filter(Boolean).join(' · ') || null;
+}
+
+// The lines a train runs over, in order, with the km it runs them between.
+export function crLinesLabel(lines: CrLine[] | undefined) {
+  if (!lines?.length) return null;
+  return lines
+    .map(({ name, stations }) => {
+      const first = stations[0];
+      const last = stations[stations.length - 1];
+      return first && last ? `${name} (${first.km}–${last.km} km)` : name;
+    })
+    .join(' → ');
+}
+
+// The trainset 12306 assigns: "CR400BF-A-5053 · 复兴号 · 16 cars · 1193 seats · 350 km/h".
+export function trainsetLabel(trainset: NonNullable<CrTrainset['trainset']>) {
+  const { id, brand, cars, capacity, max_speed_kmh: speed } = trainset;
+  return [id, brand, cars && `${cars} cars`, capacity && `${capacity} seats`, speed && `${speed} km/h`]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+// Why a train's track is not on the map, from the route request's error.
+function routeMissingText(error: unknown) {
+  if (error instanceof NorikaeError && error.status === 404) return 'Its track is not available yet.';
+  if (error instanceof NorikaeError && error.status === 503) return 'Its track could not be loaded; try again later.';
+  return `Its track could not be loaded${error instanceof Error ? `: ${error.message}` : '.'}`;
 }
 
 class TimetablePanel {
@@ -195,7 +237,8 @@ class TimetablePanel {
   }
 
   // Draws a train's route once the API has it, unless the view changed meanwhile;
-  // a route the API cannot give (an error, a train not routed yet) is left out.
+  // for a route the API cannot give (an error, a train not routed yet) a note
+  // above the stops says why it is not on the map.
   private _drawRoute(load: Promise<TrainRoute>, here: string | null) {
     const signal = this._signal;
     if (!this._route) return;
@@ -212,7 +255,51 @@ class TimetablePanel {
             : { top: margin + 16, right: margin, bottom: map.bottom - panel.top + margin, left: margin };
         this._route.show(route, here, padding);
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        if (signal.aborted) return;
+        const note = el('p', 'timetable-comment timetable-route-missing');
+        note.textContent = routeMissingText(error);
+        this._body.insertBefore(note, this._body.querySelector('.timetable-stops'));
+      });
+  }
+
+  // The trainset 12306 assigns, asked once the train shows. It replaces the
+  // rolling stock the timetable plans (`planned`, its row and note), which
+  // often names another model; a train 12306 has none for (not an EMU), or
+  // no answer, keeps the timetable's.
+  private _trainset(facts: HTMLElement, train: string, date: string, planned: Element[]) {
+    const signal = this._signal;
+    const term = el('dt', undefined, facts);
+    term.textContent = 'Trainset';
+    const value = el('dd', 'timetable-trainset', facts);
+    value.textContent = 'Asking 12306…';
+    crTrainset(train, date, signal)
+      .then(({ trainset }) => {
+        if (signal.aborted) return;
+        if (!trainset) {
+          term.remove();
+          value.remove();
+          return;
+        }
+        for (const element of planned) element.remove();
+        value.textContent = trainsetLabel(trainset);
+        value.title = 'The trainset 12306 assigns for this day';
+        if (!trainset.details.length && !trainset.coaches.length) return;
+        const more = el('details', 'timetable-coaches', value);
+        el('summary', undefined, more).textContent = 'Coaches';
+        const details = el('dl', 'timetable-coach-details', more);
+        for (const { name, value: text } of trainset.details) {
+          el('dt', undefined, details).textContent = name;
+          el('dd', undefined, details).textContent = text ?? '✓';
+        }
+        const coaches = el('ol', 'timetable-coach-list', more);
+        for (const coach of trainset.coaches) el('li', undefined, coaches).textContent = coach;
+      })
+      .catch(() => {
+        if (signal.aborted) return;
+        value.textContent = '12306 did not answer';
+        value.classList.add('timetable-unavailable');
+      });
   }
 
   // A button that flies the map to a stop, or an empty cell keeping the column;
@@ -241,6 +328,7 @@ class TimetablePanel {
       el('dt', undefined, facts).textContent = label;
       el('dd', undefined, facts).textContent = value;
     }
+    return facts;
   }
 
   private _setHeader(title: string, summary: string, source: Source | null) {
@@ -479,13 +567,25 @@ class TimetablePanel {
     this._setBack('Trains');
     this._body.replaceChildren();
     const last = stops[stops.length - 1];
-    this._facts([
+    const facts = this._facts([
       ['Train', run?.train ?? train],
       ['Departs', `${crDateLabel(date)} from ${stops[0]?.name ?? '?'}`],
       ['In service', run ? `${run.service.from} – ${run.service.to ?? 'until further notice'}` : null],
       ['Distance', last ? `${last.km} km` : null],
       ['Stops', String(stops.length)],
+      ['Lines', crLinesLabel(run?.lines)],
+      ['Rolling stock', rollingStockLabel(run?.rolling_stock)],
     ]);
+    // The description, unless it only names the model.
+    const stock = run?.rolling_stock;
+    const stockTerm = Array.from(facts.children).find((child) => child.textContent === 'Rolling stock');
+    const planned = stockTerm ? [stockTerm, stockTerm.nextElementSibling] : [];
+    if (stock?.description && stock.description !== stock.model) {
+      const description = el('p', 'timetable-comment', this._body);
+      description.textContent = stock.description;
+      planned.push(description);
+    }
+    this._trainset(facts, run?.train ?? train, date, planned);
     if (run && !run.runs)
       el('p', 'timetable-comment', this._body).textContent = `Does not leave its origin on ${date}.`;
     const list = el('ol', 'timetable-stops timetable-cr-stops', this._body);

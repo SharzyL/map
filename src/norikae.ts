@@ -2,16 +2,27 @@
 // station timetables from Yahoo! 乗換案内, identified by Yahoo's station code
 // (the export puts the codes on OSM stations in Japan as `yahoo_codes`),
 // China Railway timetables (/v1/cr-*), whose stations the API finds by their
-// OSM elements or name, the track trains run on, and OSM's railway routes
+// OSM elements or name, with the trainsets 12306 assigns (/v1/cr-trainsets),
+// the track trains run on, and OSM's railway routes
 // and lines (/v1/relations), all answered with OSM ids the map's tiles share.
 
 export const NORIKAE_API = 'https://norikae.shz.al/v1';
 
 export type TimetableDay = 'weekday' | 'saturday' | 'holiday';
-export type NorikaeStation = { code: string; name: string; type: string; address: string };
+// Objects with a Yahoo station code also give the OSM features matched to it
+// (N1, W2; [] for none) and their centre (null without any).
+type OsmMatch = { osm?: string[]; lat?: number | null; lon?: number | null };
+type YahooStation = { code: string; name: string } & OsmMatch;
+export type NorikaeStation = YahooStation & {
+  type: string;
+  address: string;
+  // Yahoo's own position, bus stops included.
+  yahoo_lat?: number | null;
+  yahoo_lon?: number | null;
+};
 export type StationLines = {
   source_url: string;
-  station: { code: string; name: string };
+  station: YahooStation;
   lines: Array<{ name: string; directions: Array<{ direction: string; gid: string }> }>;
 };
 export type Departure = {
@@ -23,7 +34,7 @@ export type Departure = {
 };
 export type DepartureTable = {
   source_url: string;
-  station: { code: string; name: string };
+  station: YahooStation;
   line: string;
   direction: string;
   day: TimetableDay;
@@ -31,21 +42,19 @@ export type DepartureTable = {
 };
 export type TrainStops = {
   source_url: string;
-  station: { code: string; name: string };
+  station: YahooStation;
   train_id: string;
   name: string | null;
   line: string | null;
   comments: string[];
-  stops: Array<{
-    code: string | null;
-    name: string;
-    arrival: string | null;
-    departure: string | null;
-    // The OSM stations matched to the code and their centre; [] and null without a match.
-    osm?: string[];
-    lat?: number | null;
-    lon?: number | null;
-  }>;
+  stops: Array<
+    {
+      code: string | null;
+      name: string;
+      arrival: string | null;
+      departure: string | null;
+    } & OsmMatch
+  >;
 };
 
 export type CrStationTrain = {
@@ -76,11 +85,48 @@ export type CrStop = {
   elements?: string[] | null;
   position?: [number, number] | null;
 };
+// What the timetable says a train runs with: the model (null when its
+// description names none), whether two sets run coupled, and the depot.
+export type CrRollingStock = {
+  model: string | null;
+  coupled: boolean;
+  depot: string | null;
+  description: string | null;
+};
+// A railway line a train runs over, with every station it passes on it; `km`
+// is on the stops' scale, and a line's last station is the next one's first.
+export type CrLine = { name: string; stations: Array<{ name: string; km: number }> };
+export type CrTrainRun = {
+  train: string;
+  service: { from: string; to: string | null };
+  runs: boolean;
+  rolling_stock?: CrRollingStock | null;
+  lines?: CrLine[];
+  stops: CrStop[];
+};
 export type CrTrainSchedule = {
   data_version: string;
   train: string;
   date: string;
-  trains: Array<{ train: string; service: { from: string; to: string | null }; runs: boolean; stops: CrStop[] }>;
+  trains: CrTrainRun[];
+};
+// The trainset 12306 assigns to an EMU train on a day (/v1/cr-trainsets),
+// asked live; null for trains it has none for.
+export type CrTrainset = {
+  source_url: string;
+  train: string;
+  date: string;
+  trainset: {
+    id: string;
+    model: string | null;
+    brand: string | null;
+    cars: number | null;
+    length_m: number | null;
+    capacity: number | null;
+    max_speed_kmh: number | null;
+    details: Array<{ name: string; value: string | null }>;
+    coaches: string[];
+  } | null;
 };
 
 // A train's track (…/trains/{id}/route, /cr-trains/{train}/route): the OSM
@@ -98,7 +144,7 @@ export type TrainRoute = {
     from: string;
     to: string;
     line: string | null;
-    method: 'line' | 'graph' | 'straight';
+    method: 'line' | 'straight';
     straight?: string;
   }>;
 };
@@ -197,6 +243,11 @@ export function crStationTimetable(station: string, date: string | null, signal?
 // `date` is the day the train leaves its origin.
 export function crTrain(train: string, date: string, signal?: AbortSignal) {
   return get<CrTrainSchedule>(`/cr-trains/${encodeURIComponent(train)}`, { date }, signal);
+}
+
+// The trainset of a train leaving its origin on `date`, from 12306.
+export function crTrainset(train: string, date: string, signal?: AbortSignal) {
+  return get<CrTrainset>(`/cr-trainsets/${encodeURIComponent(train)}`, { date }, signal);
 }
 
 export function trainRoute(code: string, gid: string, trainId: string, signal?: AbortSignal) {

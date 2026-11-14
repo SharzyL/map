@@ -153,6 +153,7 @@ const LINE_PAINT = {
   'line-width': ['interpolate', ['linear'], ['zoom'], 4, 2, 10, 3, 16, 5],
 };
 const isStop = ['==', ['get', 'kind'], 'stop'];
+const isMaster = ['==', ['get', 'kind'], 'master'];
 
 // The names of a highlighted route's or train's stops, from the API's stop
 // list. They go above every other layer, so they are placed before (and push
@@ -297,9 +298,13 @@ function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
   const filter = ['any', ...LINE_LIST_PROPERTIES.map(routeListFilter)];
   // The overview source holds the route's stops too, for their labels.
   const overview = { source: OVERVIEW_SOURCE, maxzoom: ROUTE_TRACE_ZOOM, filter: ['!', isStop], layout: LINE_LAYOUT };
+  // A route master is in no tile's route list, so its outline draws at every zoom.
+  const master = { source: OVERVIEW_SOURCE, minzoom: ROUTE_TRACE_ZOOM, filter: isMaster, layout: LINE_LAYOUT };
   return [
     { id: 'route_highlight_overview_casing', type: 'line', ...overview, paint: CASING_PAINT },
     { id: 'route_highlight_overview_line', type: 'line', ...overview, paint: LINE_PAINT },
+    { id: 'route_highlight_master_casing', type: 'line', ...master, paint: CASING_PAINT },
+    { id: 'route_highlight_master_line', type: 'line', ...master, paint: LINE_PAINT },
     ...lineRanges.map((range, index) => ({
       id: `route_highlight_casing_${index}`,
       type: 'line',
@@ -444,16 +449,16 @@ export function stopFeatures(stops: Stop[], here: string | null = null): GeoJSON
   );
 }
 
-// Encoded outline polylines as the zoomed-out highlight's geometry, with the
-// stops for their labels.
-function overviewGeometry(lines: string[], stops: Stop[]): RouteGeometry {
+// Encoded outline polylines as the zoomed-out highlight's geometry (a route
+// master's at every zoom), with the stops for their labels.
+function overviewGeometry(lines: string[], stops: Stop[], master = false): RouteGeometry {
   return {
     type: 'FeatureCollection',
     features: [
       ...lines.map(
         (line): GeoJSON.Feature => ({
           type: 'Feature',
-          properties: {},
+          properties: master ? { kind: 'master' } : {},
           geometry: { type: 'LineString', coordinates: decodePolyline(line) },
         }),
       ),
@@ -615,7 +620,11 @@ class RoutePanel {
       this._osm(fields, String(relation.id));
     }
     if (relation.master) {
-      this._link(this._row(fields, 'Route master'), `relation ${relation.master}`, OSM_RELATION + relation.master);
+      const dd = this._row(fields, 'Route master');
+      this._select(dd, 'All routes', { id: String(relation.master), color: relation.colour, label: null }).title =
+        'Show the route master and its routes';
+      dd.append(' · ');
+      this._link(dd, `relation ${relation.master}`, OSM_RELATION + relation.master);
     }
     const links = [
       relation.wikidata && (['Wikidata', `https://www.wikidata.org/wiki/${relation.wikidata}`] as const),
@@ -637,6 +646,35 @@ class RoutePanel {
     ];
     this._body.replaceChildren(fields, this._zoomButton(line));
     if (this._zoom) this._zoom.disabled = false;
+    const routes = details.routes ?? [];
+    if (routes.length) {
+      el('h3', 'route-info-heading', this._body).textContent = `Routes (${routes.length})`;
+      const list = el('ul', 'route-info-routes', this._body);
+      // Routes are often named alike (both ways of a line, a loop's two
+      // directions): each also shows its ends, and its id while still alike.
+      const labels = routes.map((route) => {
+        const name = route.name || route.ref || `relation ${route.id}`;
+        const ends = route.from && route.to && route.from !== route.to ? `${route.from} → ${route.to}` : '';
+        return { name, ends };
+      });
+      const seen = labels.map(({ name, ends }) => `${name}\u0000${ends}`);
+      routes.forEach((route, index) => {
+        const { name, ends } = labels[index];
+        const alike = seen.indexOf(seen[index]) !== seen.lastIndexOf(seen[index]);
+        const item = el('li', undefined, list);
+        if (route.colour) el('span', 'route-info-swatch', item).style.background = route.colour;
+        this._select(item, name, {
+          id: String(route.id),
+          color: route.colour,
+          label: name,
+          kind: 'route',
+          name: route.name,
+          ref: route.ref,
+        });
+        const detail = [ends, alike && `#${route.id}`].filter(Boolean).join(' · ');
+        if (detail) el('span', 'route-info-detail', item).textContent = detail;
+      });
+    }
     const stops = details.stops ?? [];
     if (stops.length) {
       el('h3', 'route-info-heading', this._body).textContent = `Stations (${stops.length})`;
@@ -682,6 +720,17 @@ class RoutePanel {
     const dd = this._row(fields, 'Color');
     el('span', 'route-info-swatch', dd).style.background = color;
     dd.append(color);
+  }
+
+  // A button highlighting another relation in this panel's place.
+  private _select(parent: HTMLElement, text: string, route: RouteSelection) {
+    const button = el('button', 'route-info-select', parent);
+    button.type = 'button';
+    button.textContent = text;
+    button.addEventListener('click', () =>
+      button.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: route })),
+    );
+    return button;
   }
 
   private _link(parent: HTMLElement, text: string, href: string) {
@@ -780,7 +829,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     }
     if (signal.aborted) return;
     panel.fill(details);
-    overview()?.setData(overviewGeometry(details.overview, details.stops ?? []));
+    overview()?.setData(overviewGeometry(details.overview, details.stops ?? [], details.relation.kind === 'master'));
     setStopKeys(stopKeys(details.stops ?? []));
   }
 

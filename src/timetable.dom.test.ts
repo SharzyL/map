@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CrTrainSchedule, TrainRoute } from './norikae.js';
+import type { CrTrainSchedule, CrTrainset, TrainRoute } from './norikae.js';
 import { installTimetable, timetableButton, TIMETABLE_OPEN_EVENT, timetableRequestFor } from './timetable.js';
 
 const crPath = (path: string) => '/v1/' + path.split('/').map(encodeURIComponent).join('/');
@@ -48,6 +48,23 @@ const CR_TRAIN: CrTrainSchedule = {
       train: 'Z156/Z157',
       service: { from: '2024-04-02', to: '2026-11-24' },
       runs: true,
+      rolling_stock: { model: '25T', coupled: false, depot: '上局南京段', description: '25T型，DC600V供电' },
+      lines: [
+        {
+          name: '京沪线',
+          stations: [
+            { name: '泰州', km: 0 },
+            { name: '北京西', km: 1200 },
+          ],
+        },
+        {
+          name: '京哈线',
+          stations: [
+            { name: '北京西', km: 1200 },
+            { name: '哈尔滨西', km: 2400 },
+          ],
+        },
+      ],
       stops: [
         { name: '泰州', telecode: 'UTH', arrival: null, departure: '15:00', day: 1, km: 0, platform: null },
         {
@@ -67,6 +84,45 @@ const CR_TRAIN: CrTrainSchedule = {
   ],
 };
 
+// An EMU train whose track the API has not routed yet, with the trainset 12306 assigns.
+const G301: CrTrainSchedule = {
+  data_version: '20261114',
+  train: 'G301',
+  date: '2026-11-16',
+  trains: [
+    {
+      train: 'G301',
+      service: { from: '2026-01-27', to: null },
+      runs: true,
+      rolling_stock: { model: 'CR400AF', coupled: true, depot: null, description: 'CR400AF型重联' },
+      lines: [],
+      stops: [
+        { name: '北京西', telecode: 'BXP', arrival: null, departure: '08:00', day: 1, km: 0, platform: '7' },
+        { name: '广州南', telecode: 'IZQ', arrival: '16:00', departure: null, day: 1, km: 2298, platform: null },
+      ],
+    },
+  ],
+};
+const G301_TRAINSET: CrTrainset = {
+  source_url: 'https://mobile.12306.cn/',
+  train: 'G301',
+  date: '2026-11-16',
+  trainset: {
+    id: 'CR400AF-A-2001',
+    model: 'CR400AF-A',
+    brand: '复兴号',
+    cars: 16,
+    length_m: 414.26,
+    capacity: 1193,
+    max_speed_kmh: 350,
+    details: [
+      { name: '餐车', value: '09车' },
+      { name: '静音车厢', value: null },
+    ],
+    coaches: ['01车 一等/商务 32/5', '02车 二等 93'],
+  },
+};
+
 // A train route as the API gives it; what is in it is the drawer's business.
 const ROUTE: TrainRoute = {
   data_version: '2026-11-12T16:00:00Z',
@@ -84,6 +140,10 @@ const API: Record<string, unknown> = {
   [crPath('cr-stations/北京西/timetable')]: CR_STATION,
   [crPath('cr-stations/泰州/timetable')]: { ...CR_STATION, station: { name: '泰州', telecode: 'UTH' } },
   [crPath('cr-trains/Z156/Z157').replace('/Z157', '%2FZ157')]: CR_TRAIN,
+  // 12306 has no trainset for a loco-hauled train.
+  [crPath('cr-trainsets/Z156/Z157').replace('/Z157', '%2FZ157')]: { source_url: '', train: 'Z156', trainset: null },
+  [crPath('cr-trains/G301')]: G301,
+  [crPath('cr-trainsets/G301')]: G301_TRAINSET,
   '/v1/stations': { results: [{ code: '22715', name: '渋谷', type: 'station', address: '東京' }] },
   '/v1/stations/22715/timetables': {
     source_url: 'https://transit.yahoo.co.jp/timetable/22715',
@@ -273,14 +333,28 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '北京西', expect.anything()));
     expect(requests).toContain('/v1/cr-trains/Z156%2FZ157/route?date=2026-11-15');
     expect(root.querySelector('.timetable-summary').textContent).toBe('Z156/Z157 · 泰州 → 哈尔滨西');
-    expect(text(root, '.timetable-meta dt')).toEqual(['Train', 'Departs', 'In service', 'Distance', 'Stops']);
+    // 12306 has no trainset for it, so that row goes.
+    await vi.waitFor(() => expect(root.querySelector('.timetable-trainset')).toBeNull());
+    expect(requests).toContain('/v1/cr-trainsets/Z156%2FZ157?date=2026-11-15');
+    expect(text(root, '.timetable-meta dt')).toEqual([
+      'Train',
+      'Departs',
+      'In service',
+      'Distance',
+      'Stops',
+      'Lines',
+      'Rolling stock',
+    ]);
     expect(text(root, '.timetable-meta dd')).toEqual([
       'Z156/Z157',
       '2026-11-15 Sun from 泰州',
       '2024-04-02 – 2026-11-24',
       '2400 km',
       '3',
+      '京沪线 (0–1200 km) → 京哈线 (1200–2400 km)',
+      '25T · 上局南京段',
     ]);
+    expect(text(root, '.timetable-comment')).toEqual(['25T型，DC600V供电']);
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('北京西');
     expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
     expect(text(root, '.timetable-cr-stops .timetable-platform')).toEqual(['', '10', '']);
@@ -289,6 +363,35 @@ describe('China Railway timetable', () => {
     // A stop opens that station's trains on the day the train is there.
     root.querySelector<HTMLButtonElement>('.timetable-stop-name').click();
     await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/泰州/timetable')}?date=2026-11-15`));
+  });
+
+  it('shows the trainset 12306 assigns, and why a track is missing', async () => {
+    const { container, panel, route } = setup();
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['北京西'] } }));
+    const root = panel.panel;
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
+    await vi.waitFor(() =>
+      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe(
+        'CR400AF-A-2001 · 复兴号 · 16 cars · 1193 seats · 350 km/h',
+      ),
+    );
+    const rows = Object.fromEntries(
+      Array.from(root.querySelectorAll('.timetable-meta > dt')).map((dt) => [dt.textContent, dt.nextElementSibling]),
+    );
+    // It replaces the rolling stock the timetable plans, which named another model.
+    expect(rows['Rolling stock']).toBeUndefined();
+    expect(text(root, '.timetable-comment')).not.toContain('CR400AF型重联');
+    expect(rows.Lines).toBeUndefined();
+    expect(text(root, '.timetable-coach-details dt')).toEqual(['餐车', '静音车厢']);
+    expect(text(root, '.timetable-coach-details dd')).toEqual(['09车', '✓']);
+    expect(text(root, '.timetable-coach-list li')).toEqual(['01车 一等/商务 32/5', '02车 二等 93']);
+    // The API has no track for it yet: a note says so above the stops.
+    await vi.waitFor(() =>
+      expect(root.querySelector('.timetable-route-missing')?.textContent).toBe('Its track is not available yet.'),
+    );
+    expect(root.querySelector('.timetable-route-missing').nextElementSibling.classList).toContain('timetable-stops');
+    expect(route.show).not.toHaveBeenCalled();
   });
 
   it('says so when no way of naming the station is known', async () => {

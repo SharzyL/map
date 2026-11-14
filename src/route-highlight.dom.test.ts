@@ -93,6 +93,9 @@ function routeItem(container: HTMLElement, id: string) {
   return item;
 }
 
+const text = (root: HTMLElement, selector: string) =>
+  Array.from(root.querySelectorAll(selector)).map((node) => node.textContent);
+
 function selectRoute(target: HTMLElement, route: RouteSelection) {
   target.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: route }));
 }
@@ -122,6 +125,66 @@ describe('installRouteHighlight', () => {
     expect(item.getAttribute('aria-pressed')).toBe('false');
   });
 
+  it('opens a route’s master, outlined at every zoom, and its routes from there', async () => {
+    relations['900821540'] = SHANGHAI_15;
+    relations['900821541'] = {
+      data_version: SHANGHAI_15.data_version,
+      relation: {
+        ...SHANGHAI_15.relation,
+        id: 900821541,
+        kind: 'master',
+        type: 'subway',
+        name: '上海地铁15号线',
+        from: null,
+        to: null,
+        master: null,
+      },
+      bbox: SHANGHAI_15.bbox,
+      overview: SHANGHAI_15.overview,
+      routes: [
+        { ...SHANGHAI_15.relation, master: 900821541 },
+        {
+          ...SHANGHAI_15.relation,
+          id: 900821542,
+          name: null,
+          ref: '15',
+          from: '紫竹高新区',
+          to: '顾村公园',
+          colour: null,
+        },
+        // Named and tagged like the first, as a loop's two directions are.
+        { ...SHANGHAI_15.relation, id: 900821543, master: 900821541 },
+      ],
+    };
+    const { map, container, state, overview } = createMap();
+    installRouteHighlight(map as never);
+    selectRoute(container, ROUTE);
+    const panel = container.querySelector<HTMLElement>('.route-info-panel');
+    await vi.waitFor(() => expect(panel.querySelector('.route-info-select')?.textContent).toBe('All routes'));
+    panel.querySelector<HTMLButtonElement>('.route-info-select').click();
+    expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('900821541');
+    await vi.waitFor(() => expect(panel.querySelectorAll('.route-info-routes li')).toHaveLength(3));
+    expect(panel.querySelector('.route-info-summary').textContent).toBe('Route master · 15');
+    expect(text(panel, '.route-info-routes .route-info-select')).toEqual([
+      '上海地铁15号线：顾村公园 → 紫竹高新区',
+      '15',
+      '上海地铁15号线：顾村公园 → 紫竹高新区',
+    ]);
+    expect(text(panel, '.route-info-routes .route-info-detail')).toEqual([
+      '顾村公园 → 紫竹高新区 · #900821540',
+      '紫竹高新区 → 顾村公园',
+      '顾村公园 → 紫竹高新区 · #900821543',
+    ]);
+    expect(panel.querySelectorAll('.route-info-routes .route-info-swatch')).toHaveLength(2);
+    // Its outline is drawn at every zoom, since no tile lists it.
+    const { features } = overview.setData.mock.lastCall[0];
+    expect(features.map(({ properties }: GeoJSON.Feature) => properties)).toEqual([{ kind: 'master' }]);
+
+    panel.querySelectorAll<HTMLButtonElement>('.route-info-routes .route-info-select')[1].click();
+    expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('900821542');
+    expect(panel.querySelector('.route-info-title').textContent).toBe('15');
+  });
+
   it('fills the panel from the relations API: details, outline, extent and stations', async () => {
     relations['900821540'] = SHANGHAI_15;
     const { map, container, overview, hover } = createMap();
@@ -141,7 +204,7 @@ describe('installRouteHighlight', () => {
       'From – to': '顾村公园 → 紫竹高新区',
       Operator: '上海地铁',
       Length: '42.3 km',
-      'Route master': 'relation 900821541',
+      'Route master': 'All routes · relation 900821541',
       Links: 'Wikidata · Wikipedia',
     });
     expect(panel.querySelector('.route-info-km').textContent).toBe('42.3 km');
