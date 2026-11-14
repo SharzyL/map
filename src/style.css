@@ -2464,6 +2464,12 @@ button.timetable-stop-locate:focus-visible {
   border-top: 1px solid rgba(15, 23, 42, 0.08);
 }
 
+/* Lines are ruled off from each other and from a station's name above them,
+   but the first of a lone station's would only double the header's rule. */
+.timetable-line:first-child {
+  border-top: 0;
+}
+
 .timetable-line-name {
   font-weight: 750;
 }
