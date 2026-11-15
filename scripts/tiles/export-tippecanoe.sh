@@ -343,7 +343,8 @@ LINE_RELATIONS_SQL=",
   ) as line_relations"
 # A segment's line_color: its line's vote, else, for segments the vote leaves
 # out (unnamed station tracks and connecting curves, lines whose routes have no
-# color), the first color set among its first four routes in line_routes order.
+# color), the first color set among its first four routes in line_routes order,
+# else the color of the track it joins with the same routes (below).
 # The style used to work that fallback out from line_routes itself; as a
 # data-driven expression it went into every tile MapLibre sends from its
 # workers, so it is done here.
@@ -371,6 +372,65 @@ LEFT JOIN LATERAL (
   ORDER BY first_routes.route_id
   LIMIT 1
 ) rc ON true"
+
+# Track still without a color takes that of the track it joins which carries
+# exactly the same routes, when all such track agrees: a tunnel or bridge
+# named after itself (島田トンネル on 中央本線) is outvoted with no line of its
+# own, and its routes there may have no color (しなの, JR中央西線), so it came
+# out in the usage color between two colored stretches. Same routes keep the
+# color from leaking onto branches or track with other services. A few passes
+# carry it through a run of such ways, a tunnel in several pieces.
+NEIGHBOR_COLOR_PASSES=4
+echo "--- Building line colors from joining track ---"
+{
+  cat <<SQL
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS line_neighbor_ways, line_neighbor_colors;
+CREATE TABLE line_neighbor_ways AS
+SELECT DISTINCT ON (lv.osm_id)
+  lv.osm_id AS way_id,
+  lv.way,
+  (SELECT string_agg(route_item -> 'route_id', ',' ORDER BY route_item -> 'route_id')
+    FROM unnest(lv.line_routes) AS route_items(route_item)) AS routes,
+  ${LINE_COLOR_SQL} AS own_color
+FROM railway_line_view lv
+${LINE_JOINS}
+WHERE lv.state = 'present' AND cardinality(lv.line_routes) > 0
+ORDER BY lv.osm_id;
+ALTER TABLE line_neighbor_ways ADD COLUMN color text;
+UPDATE line_neighbor_ways SET color = own_color;
+CREATE INDEX ON line_neighbor_ways USING gist (way);
+CREATE INDEX ON line_neighbor_ways (routes);
+ANALYZE line_neighbor_ways;
+SQL
+  for _ in $(seq "${NEIGHBOR_COLOR_PASSES}"); do
+    cat <<SQL
+UPDATE line_neighbor_ways w SET color = n.color
+FROM (
+  SELECT u.way_id, min(c.color) AS color
+  FROM line_neighbor_ways u
+  JOIN line_neighbor_ways c
+    ON c.routes = u.routes AND c.way_id <> u.way_id AND c.color IS NOT NULL AND ST_Touches(u.way, c.way)
+  WHERE u.color IS NULL
+  GROUP BY u.way_id
+  HAVING count(DISTINCT c.color) = 1
+) n
+WHERE w.way_id = n.way_id;
+SQL
+  done
+  cat <<SQL
+CREATE TABLE line_neighbor_colors AS
+SELECT way_id, color FROM line_neighbor_ways WHERE own_color IS NULL AND color IS NOT NULL;
+CREATE UNIQUE INDEX ON line_neighbor_colors (way_id);
+ANALYZE line_neighbor_colors;
+DROP TABLE line_neighbor_ways;
+SQL
+} | psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q
+psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) || ' segments colored by the track they join' FROM line_neighbor_colors"
+echo ""
+LINE_COLOR_SQL="coalesce(lc.color, rc.color, nc.color)"
+LINE_JOINS="${LINE_JOINS}
+LEFT JOIN line_neighbor_colors nc ON nc.way_id = lv.osm_id"
 OPERATOR_SQL="nullif(array_to_string(
     CASE WHEN cardinality(lv.operator) > 0 THEN lv.operator ELSE lo.fallback_operator END,
     U&'\001E'), '')"
