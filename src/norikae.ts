@@ -79,6 +79,16 @@ export type CrStationTrain = {
   // Day of the train's run (1 = the day it left its origin) this stop falls on.
   day: number;
   platform: string | null;
+  // The number it arrives and leaves under here (they differ where the
+  // number changes); 下行 for an odd number, 上行 for an even one.
+  arrival_number?: string | null;
+  departure_number?: string | null;
+  bound?: '上行' | '下行' | null;
+  // The lines it arrives and leaves on (京沪, 京沪高速), and the one to group
+  // it by: `line_out`, or `line_in` where it ends; null without one.
+  line?: string | null;
+  line_in?: string | null;
+  line_out?: string | null;
 };
 export type CrStationTimetable = {
   data_version: string;
@@ -97,6 +107,9 @@ export type CrStop = {
   // The OSM station features and their centre ([lon, lat]); null without a match.
   elements?: string[] | null;
   position?: [number, number] | null;
+  arrival_number?: string | null;
+  departure_number?: string | null;
+  bound?: '上行' | '下行' | null;
 };
 // What the timetable says a train runs with: the model (null when its
 // description names none), whether two sets run coupled, and the depot.

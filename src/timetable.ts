@@ -35,6 +35,7 @@ import {
   type CrLine,
   type CrRollingStock,
   type CrStationTimetable,
+  type CrStationTrain,
   type CrTrainset,
   type Departure,
   type DepartureTable,
@@ -84,6 +85,35 @@ function serviceMinutes(time: string) {
 export function nextCrTrainIndex(table: Pick<CrStationTimetable, 'date' | 'trains'>, now = chinaNow()) {
   if (table.date !== now.date) return -1;
   return table.trains.findIndex(({ arrival, departure }) => minutesOf(departure ?? arrival ?? '00:00') >= now.minutes);
+}
+
+// A China Railway station's tabs, in two rows: the lines its trains take
+// here, the busiest first, then "Other" for the trains the data names no line
+// for; and their directions, 下行 before 上行. Each tab with its train count.
+const OTHER_LINE = 'Other';
+const BOUNDS = ['下行', '上行'] as const;
+
+export function crLineOf(train: Pick<CrStationTrain, 'line'>) {
+  return train.line ?? OTHER_LINE;
+}
+
+export function crLineTabs(trains: Array<Pick<CrStationTrain, 'line'>>) {
+  const counts = new Map<string, number>();
+  for (const train of trains) counts.set(crLineOf(train), (counts.get(crLineOf(train)) ?? 0) + 1);
+  return [...counts]
+    .map(([line, count]) => ({ line, count }))
+    .sort(
+      (a, b) =>
+        Number(a.line === OTHER_LINE) - Number(b.line === OTHER_LINE) ||
+        b.count - a.count ||
+        a.line.localeCompare(b.line),
+    );
+}
+
+export function crBoundTabs(trains: Array<Pick<CrStationTrain, 'bound'>>) {
+  return BOUNDS.map((bound) => ({ bound, count: trains.filter((train) => train.bound === bound).length })).filter(
+    ({ count }) => count > 0,
+  );
 }
 
 // The departure to highlight: the next one today, when the table shows today's schedule.
@@ -194,6 +224,8 @@ class TimetablePanel {
   private readonly _route: TrainRouteDrawer | null;
   private _abort: AbortController | null = null;
   private _history: View[] = [];
+  // The line and direction tabs picked at a China Railway station, kept across its days.
+  private _crFilter: { station: string; line: string | null; bound: string | null } | null = null;
   private _open = false;
 
   constructor(map: TimetableMap, route: TrainRouteDrawer | null) {
@@ -701,7 +733,73 @@ class TimetablePanel {
       el('div', 'timetable-status', this._body).textContent = 'No trains.';
       return;
     }
+
+    // Line and direction tabs under the date, a row each, the ones picked
+    // kept while stepping through this station's days.
+    const kept = this._crFilter?.station === station ? this._crFilter : null;
+    const lines = crLineTabs(table.trains);
+    const bounds = crBoundTabs(table.trains);
+    let line = lines.some((tab) => tab.line === kept?.line) ? kept.line : null;
+    let bound = bounds.some((tab) => tab.bound === kept?.bound) ? kept.bound : null;
+    const tabRow = (label: string, show: boolean) => {
+      if (!show) return null;
+      const row = this._navGroup(label);
+      row.classList.add('timetable-directions');
+      return row;
+    };
+    const lineRow = tabRow('Line', lines.length > 1);
+    const boundRow = tabRow('Direction', bounds.length > 1);
+    const tab = (row: HTMLElement, label: string, value: string | null, pick: (value: string | null) => void) => {
+      const button = el('button', 'timetable-day', row);
+      button.type = 'button';
+      button.textContent = label;
+      button.dataset.value = value ?? '';
+      button.addEventListener('click', () => {
+        pick(value);
+        this._crFilter = { station, line, bound };
+        show();
+      });
+      return button;
+    };
+    if (lineRow) {
+      tab(lineRow, 'All', null, (value) => (line = value));
+      for (const { line: value } of lines) tab(lineRow, value, value, (picked) => (line = picked));
+    }
+    if (boundRow) {
+      tab(boundRow, 'Both', null, (value) => (bound = value));
+      for (const { bound: value } of bounds) tab(boundRow, value, value, (picked) => (bound = picked));
+    }
+    const counted = (count: number) => `${count} train${count === 1 ? '' : 's'}`;
+
     const list = el('ol', 'timetable-departures timetable-cr-trains', this._body);
+    const show = () => {
+      const onLine = table.trains.filter((train) => line === null || crLineOf(train) === line);
+      const trains = onLine.filter((train) => bound === null || train.bound === bound);
+      // Each tab says how many trains it would show with the other row's pick.
+      for (const button of lineRow?.querySelectorAll<HTMLElement>('.timetable-day') ?? []) {
+        const value = button.dataset.value || null;
+        button.setAttribute('aria-pressed', String(value === line));
+        const count = table.trains.filter(
+          (train) => (value === null || crLineOf(train) === value) && (bound === null || train.bound === bound),
+        ).length;
+        button.title = counted(count);
+      }
+      for (const button of boundRow?.querySelectorAll<HTMLElement>('.timetable-day') ?? []) {
+        const value = button.dataset.value || null;
+        button.setAttribute('aria-pressed', String(value === bound));
+        button.title = counted(onLine.filter((train) => value === null || train.bound === value).length);
+      }
+      this._summary.textContent = `${crDateLabel(table.date)} · ${
+        trains.length === table.trains.length ? trainCount : `${trains.length} of ${trainCount}`
+      }`;
+      this._renderCrTrains(list, { ...table, trains }, station);
+    };
+    show();
+  }
+
+  // The trains of a station's day, by hour, the next one highlighted.
+  private _renderCrTrains(list: HTMLElement, table: CrStationTimetable, station: string) {
+    list.replaceChildren();
     const next = nextCrTrainIndex(table);
     let hour = '';
     table.trains.forEach((train, index) => {
@@ -721,10 +819,22 @@ class TimetablePanel {
         timeCell.classList.add('timetable-time-arrival');
         timeCell.title = 'Arrives; the train ends here';
       }
-      el('span', 'timetable-kind timetable-train-number', button).textContent = train.train;
-      el('span', 'timetable-destination', button).textContent = `${train.origin} → ${train.destination}`;
+      // The number it runs under here (Z156 of Z156/Z157), as the station shows it.
+      const number = train.departure_number ?? train.arrival_number ?? train.train;
+      el('span', 'timetable-kind timetable-train-number', button).textContent = number;
+      const destination = el('span', 'timetable-destination', button);
+      destination.textContent = `${train.origin} → ${train.destination}`;
+      // A train changing lines here says so.
+      if (train.line_in && train.line_out && train.line_in !== train.line_out)
+        el('span', 'timetable-line-change', destination).textContent = `${train.line_in}→${train.line_out}`;
       el('span', 'timetable-platform', button).textContent = train.platform ?? '';
-      if (train.platform) button.title = `Platform or gate ${train.platform}`;
+      button.title = [
+        number !== train.train && `Runs as ${train.train}`,
+        [train.line, train.bound].filter(Boolean).join(' '),
+        train.platform && `Platform or gate ${train.platform}`,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       // The train's own date is the day it left its origin.
       button.addEventListener('click', () =>
         this._show(() => this._renderCrTrain(train.train, addDays(table.date, 1 - train.day), station)),
@@ -796,6 +906,12 @@ class TimetablePanel {
       name.type = 'button';
       name.textContent = stop.name;
       name.title = `Timetable at ${stop.name}`;
+      // Where the number changes (Z156/Z157 at 山海关), the numbers in and out.
+      if (stop.arrival_number && stop.departure_number && stop.arrival_number !== stop.departure_number) {
+        const change = el('span', 'timetable-number-change', name);
+        change.textContent = `${stop.arrival_number}→${stop.departure_number}`;
+        change.title = `Arrives as ${stop.arrival_number}, leaves as ${stop.departure_number}`;
+      }
       name.addEventListener('click', () =>
         this._show(() => this._renderCrStation([stop.name], stop.name, addDays(date, stop.day - 1))),
       );

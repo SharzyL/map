@@ -2399,6 +2399,9 @@ button.timetable-stop-locate:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
+  /* A grid item, so its scrolling direction tabs would otherwise widen the
+     panel's only column, and the list below with it, to their full width. */
+  min-width: 0;
   font-size: 12px;
   line-height: 20px;
   grid-row: 2;
@@ -2594,6 +2597,45 @@ button.timetable-stop-locate:focus-visible {
 .timetable-destination {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* China Railway: the lines a train changes between at the station, and in
+   its stops the numbers it changes between; inline, on the text's baseline. */
+.timetable-line-change,
+.timetable-number-change {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+.timetable-number-change {
+  font-weight: 600;
+}
+
+.timetable-line-change {
+  color: #94a3b8;
+}
+
+.timetable-number-change {
+  color: #b45309;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A China Railway station's direction tabs: a row of their own in the back
+   row, scrolling sideways rather than wrapping at a busy station. */
+.timetable-directions {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.timetable-directions::-webkit-scrollbar {
+  display: none;
+}
+
+.timetable-directions .timetable-day {
+  flex: none;
   white-space: nowrap;
 }
 

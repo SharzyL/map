@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetResponses, type CrTrainSchedule, type CrTrainset, type TrainRoute } from './norikae.js';
 import {
+  crBoundTabs,
+  crLineTabs,
   crLinesBetweenStops,
   installTimetable,
   timetableButton,
@@ -24,6 +26,13 @@ const CR_STATION = {
       destination: '哈尔滨西',
       day: 2,
       platform: '10',
+      // It arrives as Z156 and leaves as Z157, onto another line.
+      arrival_number: 'Z156',
+      departure_number: 'Z157',
+      bound: '下行',
+      line: '京哈',
+      line_in: '京沪',
+      line_out: '京哈',
     },
     {
       train: 'G301',
@@ -33,6 +42,12 @@ const CR_STATION = {
       destination: '广州南',
       day: 1,
       platform: '7',
+      arrival_number: null,
+      departure_number: 'G301',
+      bound: '下行',
+      line: '京广高速',
+      line_in: null,
+      line_out: '京广高速',
     },
     {
       train: 'K2550',
@@ -42,6 +57,12 @@ const CR_STATION = {
       destination: '北京西',
       day: 1,
       platform: null,
+      arrival_number: 'K2550',
+      departure_number: null,
+      bound: '上行',
+      line: null,
+      line_in: null,
+      line_out: null,
     },
   ],
 };
@@ -83,6 +104,9 @@ const CR_TRAIN: CrTrainSchedule = {
           platform: '10',
           elements: ['N7780210950'],
           position: [116.3151, 39.8937],
+          arrival_number: 'Z156',
+          departure_number: 'Z157',
+          bound: '下行',
         },
         { name: '哈尔滨西', telecode: 'VAB', arrival: '18:00', departure: null, day: 2, km: 2400, platform: null },
       ],
@@ -459,7 +483,78 @@ describe('crLinesBetweenStops', () => {
   });
 });
 
+describe('crLineTabs and crBoundTabs', () => {
+  it('list the lines, the busiest first and the trains with none last, and the directions, 下行 first', () => {
+    const trains = [
+      ...Array(3).fill({ line: '京沪高速', bound: '上行' }),
+      ...Array(2).fill({ line: '京沪高速', bound: '下行' }),
+      ...Array(4).fill({ line: '京津城际', bound: '下行' }),
+      { line: null, bound: '上行' },
+      { line: '京九', bound: null },
+    ];
+    expect(crLineTabs(trains)).toEqual([
+      { line: '京沪高速', count: 5 },
+      { line: '京津城际', count: 4 },
+      { line: '京九', count: 1 },
+      { line: 'Other', count: 1 },
+    ]);
+    expect(crBoundTabs(trains)).toEqual([
+      { bound: '下行', count: 6 },
+      { bound: '上行', count: 4 },
+    ]);
+  });
+});
+
 describe('China Railway timetable', () => {
+  it('filters a station’s trains by line and by direction, keeping both across its days', async () => {
+    const { container, panel, requests } = setup();
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['北京西'] } }));
+    const root = panel.panel;
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    // Two rows in the back row, under the date: lines, then directions.
+    const [lineRow, boundRow] = Array.from(root.querySelectorAll<HTMLElement>('.timetable-nav .timetable-directions'));
+    const tabs = (row: HTMLElement) => Array.from(row.querySelectorAll<HTMLButtonElement>('button'));
+    const pick = (row: HTMLElement, label: string) =>
+      tabs(row)
+        .find((tab) => tab.textContent === label)
+        .click();
+    const pressed = (row: HTMLElement) =>
+      tabs(row).find((tab) => tab.getAttribute('aria-pressed') === 'true').textContent;
+    expect(lineRow.getAttribute('aria-label')).toBe('Line');
+    expect(tabs(lineRow)[0].textContent).toBe('All');
+    expect(
+      tabs(lineRow)
+        .map((tab) => tab.textContent)
+        .slice(1)
+        .sort(),
+    ).toEqual(['Other', '京哈', '京广高速'].sort());
+    expect(tabs(lineRow).at(-1).textContent).toBe('Other');
+    expect(boundRow.getAttribute('aria-label')).toBe('Direction');
+    expect(tabs(boundRow).map((tab) => tab.textContent)).toEqual(['Both', '下行', '上行']);
+    expect([pressed(lineRow), pressed(boundRow)]).toEqual(['All', 'Both']);
+
+    pick(boundRow, '下行');
+    expect(text(root, '.timetable-train-number')).toEqual(['Z157', 'G301']);
+    expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 Mon · 2 of 3 trains');
+    // Each tab counts what it would show with the other row's pick.
+    expect(tabs(lineRow).find((tab) => tab.textContent === 'Other').title).toBe('0 trains');
+    pick(lineRow, '京广高速');
+    expect(text(root, '.timetable-train-number')).toEqual(['G301']);
+    expect(text(root, '.timetable-hour')).toEqual(['8时']);
+    expect(tabs(boundRow).find((tab) => tab.textContent === '上行').title).toBe('0 trains');
+
+    // The next day keeps both.
+    Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
+      .find((button) => button.title === 'Next day')
+      .click();
+    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/北京西/timetable')}?date=2026-11-17`));
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['G301']));
+    const [nextLineRow, nextBoundRow] = Array.from(
+      root.querySelectorAll<HTMLElement>('.timetable-nav .timetable-directions'),
+    );
+    expect([pressed(nextLineRow), pressed(nextBoundRow)]).toEqual(['京广高速', '下行']);
+  });
+
   it('lists a station’s trains by date and opens a train’s stops', async () => {
     const { container, panel, requests, route } = setup();
     // The OSM elements are unknown here, so the panel falls back to the name.
@@ -467,7 +562,8 @@ describe('China Railway timetable', () => {
       new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西站', cr: ['N1,W2', '北京西'] } }),
     );
     const root = panel.panel;
-    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['Z156/Z157', 'G301', 'K2550']));
+    // Each train under the number it runs as here.
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['Z157', 'G301', 'K2550']));
     expect(requests.slice(0, 2)).toEqual([
       crPath('cr-stations/N1,W2/timetable'),
       crPath('cr-stations/北京西/timetable'),
@@ -478,6 +574,11 @@ describe('China Railway timetable', () => {
     expect(text(root, '.timetable-time')).toEqual(['06:02', '08:00', '09:11']);
     expect(root.querySelector('.timetable-time-arrival').textContent).toBe('09:11');
     expect(text(root, '.timetable-platform')).toEqual(['10', '7', '']);
+    // A train changing lines here says so; the full number and its direction are on hover.
+    expect(text(root, '.timetable-line-change')).toEqual(['京沪→京哈']);
+    expect(root.querySelector<HTMLElement>('.timetable-departure-button').title).toBe(
+      'Runs as Z156/Z157 · 京哈 下行 · Platform or gate 10',
+    );
     const source = root.querySelector<HTMLAnchorElement>('.timetable-source');
     expect(source.textContent).toBe('lltskb 20261114');
     expect(source.hasAttribute('href')).toBe(false);
@@ -495,7 +596,9 @@ describe('China Railway timetable', () => {
 
     // Z156/Z157 stops here on the second day of its run, so it left the day before.
     root.querySelector<HTMLButtonElement>('.timetable-departure-button').click();
-    await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['泰州', '北京西', '哈尔滨西']));
+    await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['泰州', '北京西Z156→Z157', '哈尔滨西']));
+    // Its number changes at 北京西.
+    expect(text(root, '.timetable-number-change')).toEqual(['Z156→Z157']);
     expect(requests).toContain('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '北京西', expect.anything()));
     expect(requests).toContain('/v1/cr-trains/Z156%2FZ157/route?date=2026-11-15');
