@@ -284,6 +284,31 @@ export function crTrain(train: string, date: string, signal?: AbortSignal) {
   return get<CrTrainSchedule>(`/cr-trains/${encodeURIComponent(train)}`, { date }, signal);
 }
 
+// A China Railway train found by the start of its number (/v1/search, which
+// will find stations and lines too, each result with its `type`); `train` is
+// what /v1/cr-trains takes, one result per service period.
+export type CrTrainHit = {
+  type: 'cr_train';
+  train: string;
+  origin: string;
+  destination: string;
+  service: { from: string; to: string | null };
+};
+
+export function searchCrTrains(query: string, limit: number, signal?: AbortSignal) {
+  return get<{ results: Array<{ type: string }> }>('/search', { q: query, limit: String(limit) }, signal).then((body) =>
+    body.results.filter((result): result is CrTrainHit => result.type === 'cr_train'),
+  );
+}
+
+// The day to show a found train on: today in China, or the nearest day of
+// its service period when today is outside it.
+export function crTrainHitDate(hit: Pick<CrTrainHit, 'service'>, today = chinaNow().date) {
+  if (today < hit.service.from) return hit.service.from;
+  if (hit.service.to && today > hit.service.to) return hit.service.to;
+  return today;
+}
+
 // The trainset of a train leaving its origin on `date`, from 12306.
 export function crTrainset(train: string, date: string, signal?: AbortSignal) {
   return get<CrTrainset>(`/cr-trainsets/${encodeURIComponent(train)}`, { date }, signal);

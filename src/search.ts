@@ -1,3 +1,8 @@
+import { chinaNow, crTrainHitDate, searchCrTrains, type CrTrainHit } from './norikae.js';
+import { TIMETABLE_OPEN_EVENT, type TimetableRequest } from './timetable.js';
+
+// Places come from Photon; China Railway trains, for text that could start a
+// train number, from the norikae API's search, listed first.
 const PHOTON_API_URL = 'https://photon.komoot.io/api/';
 const SEARCH_SOURCE_ID = 'search';
 const MIN_QUERY_LENGTH = 2;
@@ -5,6 +10,13 @@ const SEARCH_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 320;
 const COMPACT_RESULTS_MEDIA_QUERY = '(max-width: 640px)';
 const PHOTON_SUPPORTED_LANGUAGES = new Set(['de', 'en', 'fr']);
+const TRAIN_LIMIT = 5;
+// An optional letter, then digits (G1, z157, Ｇ１, 4401), as the API matches them.
+const TRAIN_NUMBER_START = /^[A-Za-z]?\d/;
+
+export function looksLikeTrainNumber(query: string) {
+  return TRAIN_NUMBER_START.test(query.normalize('NFKC').replace(/\s+/g, ''));
+}
 
 const EMPTY_FEATURE_COLLECTION: { type: 'FeatureCollection'; features: PhotonPointFeature[] } = {
   type: 'FeatureCollection',
@@ -24,6 +36,7 @@ type PhotonProperties = Record<string, unknown>;
 type LngLatLike = { lng: number; lat: number };
 type SearchGeoJsonSource = { setData?: (data: unknown) => void };
 type SearchMap = {
+  getContainer(): HTMLElement;
   getCenter(): LngLatLike;
   getZoom(): number;
   getSource(id: string): unknown;
@@ -129,6 +142,17 @@ function getFeatureKey(feature: PhotonPointFeature) {
   return [properties.osm_type, properties.osm_id, properties.name, lng, lat].filter((value) => value != null).join('|');
 }
 
+function trainKey(hit: CrTrainHit) {
+  return `train|${hit.train}|${hit.service.from}`;
+}
+
+// A found train's service period, when today is outside it.
+export function servicePeriodNote(hit: Pick<CrTrainHit, 'service'>, today = chinaNow().date) {
+  if (today < hit.service.from) return `Runs from ${hit.service.from}`;
+  if (hit.service.to && today > hit.service.to) return `Ran until ${hit.service.to}`;
+  return '';
+}
+
 function buildPhotonUrl(query: string, map: SearchMap) {
   const center = map.getCenter();
   const params = new URLSearchParams({
@@ -192,6 +216,7 @@ class PhotonSearchControl {
   _debounceTimer: number;
   _popup: PopupLike | null;
   _lastResults: PhotonPointFeature[];
+  _lastTrains: CrTrainHit[];
   _selectedFeatureKey: string | null;
   _resultsCollapsed: boolean;
   _handleViewportChange: () => void;
@@ -203,6 +228,7 @@ class PhotonSearchControl {
     this._debounceTimer = 0;
     this._popup = null;
     this._lastResults = [];
+    this._lastTrains = [];
     this._selectedFeatureKey = null;
     this._resultsCollapsed = false;
     this._handleViewportChange = () => this._syncResultsVisibility();
@@ -220,10 +246,10 @@ class PhotonSearchControl {
     const form = el('form', 'poi-search-form', this._container);
     this._input = el('input', 'poi-search-input', form);
     this._input.type = 'search';
-    this._input.placeholder = 'Search POI';
+    this._input.placeholder = 'Search places or trains';
     this._input.autocomplete = 'off';
     this._input.spellcheck = false;
-    this._input.setAttribute('aria-label', 'Search POI');
+    this._input.setAttribute('aria-label', 'Search places or trains');
 
     this._clearButton = el('button', 'poi-search-clear', form);
     this._clearButton.type = 'button';
@@ -247,7 +273,9 @@ class PhotonSearchControl {
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      if (this._lastResults.length > 0) {
+      if (this._lastTrains.length > 0) {
+        this._selectTrain(this._lastTrains[0]);
+      } else if (this._lastResults.length > 0) {
         this._selectFeature(this._lastResults[0]);
       } else {
         this._searchNow();
@@ -278,7 +306,7 @@ class PhotonSearchControl {
     }
 
     if (e.key !== 'ArrowDown') return;
-    if (this._resultsCollapsed && this._lastResults.length > 0) {
+    if (this._resultsCollapsed && this._resultCount() > 0) {
       this._resultsCollapsed = false;
       this._syncResultsVisibility();
     }
@@ -312,26 +340,32 @@ class PhotonSearchControl {
     this._abortController = new AbortController();
     const requestId = ++this._activeRequestId;
 
-    try {
-      const response = await fetch(buildPhotonUrl(query, this._map), {
-        signal: this._abortController.signal,
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error(`Photon request failed: ${response.status}`);
-      const data: unknown = await response.json();
-      if (requestId !== this._activeRequestId) return;
-
-      const features = photonFeatures(data);
-      this._setResults(features);
-      this._setStatus(features.length > 0 ? '' : 'No results');
-    } catch (error: unknown) {
+    const signal = this._abortController.signal;
+    const places = fetch(buildPhotonUrl(query, this._map), { signal, headers: { Accept: 'application/json' } }).then(
+      async (response) => {
+        if (!response.ok) throw new Error(`Photon request failed: ${response.status}`);
+        return photonFeatures(await response.json());
+      },
+    );
+    const trains = looksLikeTrainNumber(query) ? searchCrTrains(query, TRAIN_LIMIT, signal) : Promise.resolve([]);
+    // Each source on its own: one failing still shows the other's results.
+    const [placeResult, trainResult] = await Promise.allSettled([places, trains]);
+    if (requestId !== this._activeRequestId) return;
+    const failed = [placeResult, trainResult].filter((result) => result.status === 'rejected');
+    for (const result of failed) {
+      const error = (result as PromiseRejectedResult).reason;
       if (errorName(error) === 'AbortError') return;
       console.error(error);
-      if (requestId === this._activeRequestId) {
-        this._setResults([]);
-        this._setStatus('Search failed');
-      }
     }
+    const features = placeResult.status === 'fulfilled' ? placeResult.value : [];
+    const hits = trainResult.status === 'fulfilled' ? trainResult.value : [];
+    this._setResults(features, hits);
+    // Nothing found means "No results" only when every source asked answered.
+    this._setStatus(features.length + hits.length > 0 ? '' : failed.length > 0 ? 'Search failed' : 'No results');
+  }
+
+  _resultCount() {
+    return this._lastResults.length + this._lastTrains.length;
   }
 
   _setStatus(message: string) {
@@ -339,10 +373,24 @@ class PhotonSearchControl {
     this._status.classList.toggle('visible', Boolean(message));
   }
 
-  _setResults(features: PhotonPointFeature[]) {
+  _setResults(features: PhotonPointFeature[], trains: CrTrainHit[] = []) {
     this._lastResults = features;
+    this._lastTrains = trains;
     this._resultsCollapsed = false;
     clearNode(this._results);
+
+    for (const hit of trains) {
+      const button = el('button', 'poi-search-result poi-search-train', this._results);
+      button.type = 'button';
+      button.setAttribute('role', 'option');
+      button.dataset.featureKey = trainKey(hit);
+      el('span', 'poi-search-result-name', button).textContent = hit.train;
+      el('span', 'poi-search-result-meta', button).textContent = `Train - ${hit.origin} → ${hit.destination}`;
+      const period = servicePeriodNote(hit);
+      if (period) el('span', 'poi-search-result-address', button).textContent = period;
+      button.addEventListener('click', () => this._selectTrain(hit));
+      button.addEventListener('keydown', (e: KeyboardEvent) => this._handleResultKeydown(e, button));
+    }
 
     const center = this._map.getCenter();
     for (const feature of features) {
@@ -378,14 +426,13 @@ class PhotonSearchControl {
   }
 
   _syncResultsVisibility() {
-    const hasResults = this._lastResults.length > 0;
+    const count = this._resultCount();
+    const hasResults = count > 0;
     const collapsed = hasResults && this._resultsCollapsed && isCompactViewport();
     this._results.classList.toggle('visible', hasResults && !collapsed);
     this._resultsToggle.classList.toggle('visible', hasResults);
     this._resultsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    this._resultsToggle.textContent = collapsed
-      ? `Show ${this._lastResults.length} results`
-      : `Hide ${this._lastResults.length} results`;
+    this._resultsToggle.textContent = collapsed ? `Show ${count} results` : `Hide ${count} results`;
   }
 
   _syncSelectedResultState() {
@@ -436,12 +483,27 @@ class PhotonSearchControl {
     this._clearButton.classList.add('visible');
   }
 
+  // Opens a found train in the timetable panel, which draws its track.
+  _selectTrain(hit: CrTrainHit) {
+    this._selectedFeatureKey = trainKey(hit);
+    this._popup?.remove();
+    this._popup = null;
+    setSearchFeature(this._map, null);
+    const request: TimetableRequest = { name: hit.train, crTrain: hit.train, date: crTrainHitDate(hit) };
+    this._map.getContainer().dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { bubbles: true, detail: request }));
+    this._syncSelectedResultState();
+    if (isCompactViewport()) this._resultsCollapsed = true;
+    this._syncResultsVisibility();
+    this._clearButton.classList.add('visible');
+  }
+
   _clear() {
     this._abortController?.abort();
     window.clearTimeout(this._debounceTimer);
     this._activeRequestId += 1;
     this._input.value = '';
     this._lastResults = [];
+    this._lastTrains = [];
     this._selectedFeatureKey = null;
     this._resultsCollapsed = false;
     this._clearButton.classList.remove('visible');

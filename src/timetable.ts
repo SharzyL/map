@@ -53,7 +53,12 @@ export const TIMETABLE_PRINTED_STORAGE_KEY = 'atlas-realm:timetable-printed';
 // Yahoo station codes, or China Railway stations to try in turn (OSM elements
 // "N1,W2", then the name).
 type YahooRequest = { name: string; codes: string[] };
-export type TimetableRequest = YahooRequest | { name: string; cr: string[] };
+// A China Railway train can also be opened by itself, as search does
+// (`crTrain`, the day it leaves its origin).
+export type TimetableRequest =
+  | YahooRequest
+  | { name: string; cr: string[] }
+  | { name: string; crTrain: string; date: string };
 type Source = { text: string; href?: string };
 
 const DAY_LABELS: Record<TimetableDay, string> = {
@@ -265,7 +270,11 @@ class TimetablePanel {
     this.panel.inert = false;
     this._history = [];
     this._show(() =>
-      'cr' in request ? this._renderCrStation(request.cr, request.name, null) : this._renderLines(request),
+      'crTrain' in request
+        ? this._renderCrTrain(request.crTrain, request.date, null)
+        : 'cr' in request
+          ? this._renderCrStation(request.cr, request.name, null)
+          : this._renderLines(request),
     );
   }
 
@@ -843,7 +852,9 @@ class TimetablePanel {
     if (next >= 0) list.querySelector('.timetable-next')?.scrollIntoView?.({ block: 'center' });
   }
 
-  private async _renderCrTrain(train: string, date: string, stationName: string) {
+  // `stationName` is the station it was opened from, null when opened by
+  // itself; the station's stop is marked, and named first on the map.
+  private async _renderCrTrain(train: string, date: string, stationName: string | null) {
     const signal = this._signal;
     const schedule = await crTrain(train, date, signal);
     if (signal.aborted) return;
@@ -853,8 +864,8 @@ class TimetablePanel {
     const stops = run?.stops ?? [];
     const route = stops.length ? `${stops[0].name} → ${stops[stops.length - 1].name}` : '';
     this._setHeader(
-      stationName,
-      [run?.train ?? train, route].filter(Boolean).join(' · '),
+      stationName ?? run?.train ?? train,
+      [stationName && (run?.train ?? train), route].filter(Boolean).join(' · '),
       crSource(schedule.data_version),
     );
     this._setBack('Trains');

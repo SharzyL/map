@@ -7,7 +7,7 @@ test.describe('POI search in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
 
-    await page.getByRole('searchbox', { name: 'Search POI' }).fill('shanghai station');
+    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('shanghai station');
     await expect(page.locator('.poi-search-result')).toHaveCount(2);
     await page.locator('.poi-search-result', { hasText: 'Shanghai Railway Station' }).click();
 
@@ -24,7 +24,7 @@ test.describe('POI search in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
 
-    await page.getByRole('searchbox', { name: 'Search POI' }).fill('temple');
+    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('temple');
     await page.locator('.poi-search-result').first().click();
     await expect.poll(() => searchSourceFeatureCount(page)).toBe(1);
 
@@ -44,10 +44,88 @@ test.describe('POI search in a real browser', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"features":[]}' });
     });
 
-    await page.getByRole('searchbox', { name: 'Search POI' }).fill('s');
+    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('s');
     await page.waitForTimeout(450);
     expect(photonRequests).toBe(0);
     await expect(page.locator('.poi-search-result')).toHaveCount(0);
+    errors.assertNoErrors();
+  });
+
+  test('finds China Railway trains by number and opens one in the timetable', async ({ page }) => {
+    const errors = await installBrowserErrorWatch(page);
+    await openApp(page);
+    // The norikae API: two trains for G1, G1's stops, and nothing else (its track, trainset).
+    await page.route(/https:\/\/norikae\.shz\.al\/v1\/.*/, (route) => {
+      const url = new URL(route.request().url());
+      const json = (status: number, body: unknown) =>
+        route.fulfill({
+          status,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': '*' },
+          body: JSON.stringify(body),
+        });
+      if (url.pathname === '/v1/search') {
+        return json(200, {
+          data_version: '20261120',
+          query: 'G1',
+          results: [
+            {
+              type: 'cr_train',
+              train: 'G1',
+              origin: '北京南',
+              destination: '上海虹桥',
+              service: { from: '2026-01-27', to: null },
+            },
+            {
+              type: 'cr_train',
+              train: 'G10',
+              origin: '上海虹桥',
+              destination: '北京南',
+              service: { from: '2026-01-26', to: null },
+            },
+          ],
+        });
+      }
+      if (url.pathname === '/v1/cr-trains/G1') {
+        const stop = (name: string, km: number, arrival: string | null, departure: string | null) => ({
+          name,
+          telecode: '',
+          arrival,
+          departure,
+          day: 1,
+          km,
+          platform: null,
+        });
+        return json(200, {
+          data_version: '20261120',
+          train: 'G1',
+          date: url.searchParams.get('date'),
+          trains: [
+            {
+              train: 'G1',
+              service: { from: '2026-01-27', to: null },
+              runs: true,
+              stops: [stop('北京南', 0, null, '06:30'), stop('上海虹桥', 1318, '10:58', null)],
+            },
+          ],
+        });
+      }
+      return json(404, { error: { code: 'not_found', message: 'not found' } });
+    });
+
+    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('G1');
+    const trains = page.locator('.poi-search-train');
+    await expect(trains).toHaveCount(2);
+    // Trains come before places.
+    await expect(page.locator('.poi-search-result').first()).toHaveClass(/poi-search-train/);
+    await expect(trains.first()).toContainText('G1');
+    await expect(trains.first()).toContainText('北京南 → 上海虹桥');
+
+    await trains.first().click();
+    const timetable = page.locator('.timetable-panel');
+    await expect(timetable.locator('.timetable-title')).toHaveText('G1');
+    await expect(timetable.locator('.timetable-stop-name')).toHaveText(['北京南', '上海虹桥']);
+    await expect(trains.first()).toHaveAttribute('aria-selected', 'true');
     errors.assertNoErrors();
   });
 
@@ -57,7 +135,7 @@ test.describe('POI search in a real browser', () => {
       route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"bad gateway"}' }),
     );
 
-    await page.getByRole('searchbox', { name: 'Search POI' }).fill('station');
+    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('station');
     await expect(page.locator('.poi-search-status')).toHaveText('Search failed');
     await expect(page.locator('.poi-search-result')).toHaveCount(0);
   });
