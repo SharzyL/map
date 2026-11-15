@@ -219,7 +219,6 @@ class PhotonSearchControl {
   _lastTrains: CrTrainHit[];
   _selectedFeatureKey: string | null;
   _resultsCollapsed: boolean;
-  _handleViewportChange: () => void;
 
   constructor(maplibregl: SearchMaplibre) {
     this._maplibregl = maplibregl;
@@ -231,7 +230,6 @@ class PhotonSearchControl {
     this._lastTrains = [];
     this._selectedFeatureKey = null;
     this._resultsCollapsed = false;
-    this._handleViewportChange = () => this._syncResultsVisibility();
   }
 
   onAdd(map: SearchMap) {
@@ -284,7 +282,6 @@ class PhotonSearchControl {
     this._input.addEventListener('input', () => this._scheduleSearch());
     this._input.addEventListener('keydown', (e: KeyboardEvent) => this._handleInputKeydown(e));
     this._clearButton.addEventListener('click', () => this._clear());
-    window.addEventListener('resize', this._handleViewportChange, { passive: true });
 
     return this._container;
   }
@@ -293,7 +290,6 @@ class PhotonSearchControl {
     window.clearTimeout(this._debounceTimer);
     this._abortController?.abort();
     this._popup?.remove();
-    window.removeEventListener('resize', this._handleViewportChange);
     this._container.parentNode?.removeChild(this._container);
     this._map = undefined;
   }
@@ -428,7 +424,7 @@ class PhotonSearchControl {
   _syncResultsVisibility() {
     const count = this._resultCount();
     const hasResults = count > 0;
-    const collapsed = hasResults && this._resultsCollapsed && isCompactViewport();
+    const collapsed = hasResults && this._resultsCollapsed;
     this._results.classList.toggle('visible', hasResults && !collapsed);
     this._resultsToggle.classList.toggle('visible', hasResults);
     this._resultsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -483,7 +479,8 @@ class PhotonSearchControl {
     this._clearButton.classList.add('visible');
   }
 
-  // Opens a found train in the timetable panel, which draws its track.
+  // Opens a found train in the timetable panel, which draws its track, and
+  // folds the results away so they do not cover it.
   _selectTrain(hit: CrTrainHit) {
     this._selectedFeatureKey = trainKey(hit);
     this._popup?.remove();
@@ -492,9 +489,10 @@ class PhotonSearchControl {
     const request: TimetableRequest = { name: hit.train, crTrain: hit.train, date: crTrainHitDate(hit) };
     this._map.getContainer().dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { bubbles: true, detail: request }));
     this._syncSelectedResultState();
-    if (isCompactViewport()) this._resultsCollapsed = true;
+    this._resultsCollapsed = true;
     this._syncResultsVisibility();
     this._clearButton.classList.add('visible');
+    this._input.blur();
   }
 
   _clear() {

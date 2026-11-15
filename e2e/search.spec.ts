@@ -125,6 +125,11 @@ test.describe('POI search in a real browser', () => {
     const timetable = page.locator('.timetable-panel');
     await expect(timetable.locator('.timetable-title')).toHaveText('G1');
     await expect(timetable.locator('.timetable-stop-name')).toHaveText(['北京南', '上海虹桥']);
+    // The results fold away so they do not cover the timetable, and can come back.
+    await expect(page.locator('.poi-search-results')).toBeHidden();
+    await expect(page.getByRole('searchbox', { name: 'Search places or trains' })).not.toBeFocused();
+    await expect(page.locator('.poi-search-results-toggle')).toHaveText('Show 4 results');
+    await page.locator('.poi-search-results-toggle').dispatchEvent('click');
     await expect(trains.first()).toHaveAttribute('aria-selected', 'true');
     errors.assertNoErrors();
   });

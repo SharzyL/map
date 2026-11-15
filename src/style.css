@@ -3613,6 +3613,11 @@ a.credits-name:hover {
   cursor: pointer;
 }
 
+/* Wider screens fold the results only for an opened train, offering them back. */
+.poi-search-results-toggle.visible[aria-expanded='false'] {
+  display: block;
+}
+
 .poi-search-results-toggle:hover,
 .poi-search-results-toggle:focus {
   background: #eef6ff;
