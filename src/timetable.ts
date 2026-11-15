@@ -159,10 +159,7 @@ export function crLinesBetweenStops(stops: Array<{ km: number }>, lines: CrLine[
 
 // The trainset 12306 assigns: "CR400BF-A-5053 · 复兴号 · 16 cars · 1193 seats · 350 km/h".
 export function trainsetLabel(trainset: NonNullable<CrTrainset['trainset']>) {
-  const { id, brand, cars, capacity, max_speed_kmh: speed } = trainset;
-  return [id, brand, cars && `${cars} cars`, capacity && `${capacity} seats`, speed && `${speed} km/h`]
-    .filter(Boolean)
-    .join(' · ');
+  return [trainset.id, trainset.cars && `${trainset.cars} cars`].filter(Boolean).join(' · ');
 }
 
 // What a departure's row says on hover: the railway's train number and what
@@ -863,20 +860,20 @@ class TimetablePanel {
       schedule.trains.find((it) => it.runs) ?? schedule.trains.find((it) => it.train === train) ?? schedule.trains[0];
     const stops = run?.stops ?? [];
     const route = stops.length ? `${stops[0].name} → ${stops[stops.length - 1].name}` : '';
+    // The header names the train and its ends, and the day it leaves its
+    // origin unless that is today; its facts below say the rest.
+    const leaves = date !== chinaNow().date && `from ${crDateLabel(date)}`;
     this._setHeader(
       stationName ?? run?.train ?? train,
-      [stationName && (run?.train ?? train), route].filter(Boolean).join(' · '),
+      [stationName && (run?.train ?? train), route, leaves].filter(Boolean).join(' · '),
       crSource(schedule.data_version),
     );
     this._setBack('Trains');
     this._body.replaceChildren();
     const last = stops[stops.length - 1];
     const facts = this._facts([
-      ['Train', run?.train ?? train],
-      ['Departs', `${crDateLabel(date)} from ${stops[0]?.name ?? '?'}`],
+      ['Stops', [String(stops.length), last && `${last.km} km`].filter(Boolean).join(' · ')],
       ['In service', run ? `${run.service.from} – ${run.service.to ?? 'until further notice'}` : null],
-      ['Distance', last ? `${last.km} km` : null],
-      ['Stops', String(stops.length)],
       ['Rolling stock', rollingStockLabel(run?.rolling_stock)],
     ]);
     // The description, unless it only names the model.

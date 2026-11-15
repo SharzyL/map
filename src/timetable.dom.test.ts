@@ -281,6 +281,7 @@ const text = (root: HTMLElement, selector: string) =>
 const failOnce = new Map<string, number>();
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   forgetResponses();
   failOnce.clear();
@@ -556,6 +557,9 @@ describe('China Railway timetable', () => {
   });
 
   it('lists a station’s trains by date and opens a train’s stops', async () => {
+    // Today in China is after the train leaves, so its header gives the day.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-20T04:00:00Z'));
     const { container, panel, requests, route } = setup();
     // The OSM elements are unknown here, so the panel falls back to the name.
     container.dispatchEvent(
@@ -602,26 +606,15 @@ describe('China Railway timetable', () => {
     expect(requests).toContain('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '北京西', expect.anything()));
     expect(requests).toContain('/v1/cr-trains/Z156%2FZ157/route?date=2026-11-15');
-    expect(root.querySelector('.timetable-summary').textContent).toBe('Z156/Z157 · 泰州 → 哈尔滨西');
+    expect(root.querySelector('.timetable-summary').textContent).toBe(
+      'Z156/Z157 · 泰州 → 哈尔滨西 · from 2026-11-15 Sun',
+    );
     // 12306 has no trainset for it, so that row goes.
     await vi.waitFor(() => expect(root.querySelector('.timetable-trainset')).toBeNull());
     expect(requests).toContain('/v1/cr-trainsets/Z156%2FZ157?date=2026-11-15');
-    expect(text(root, '.timetable-meta dt')).toEqual([
-      'Train',
-      'Departs',
-      'In service',
-      'Distance',
-      'Stops',
-      'Rolling stock',
-    ]);
-    expect(text(root, '.timetable-meta dd')).toEqual([
-      'Z156/Z157',
-      '2026-11-15 Sun from 泰州',
-      '2024-04-02 – 2026-11-24',
-      '2400 km',
-      '3',
-      '25T · 上局南京段',
-    ]);
+    // The train and its first stop are in the header: the facts say the rest.
+    expect(text(root, '.timetable-meta dt')).toEqual(['Stops', 'In service', 'Rolling stock']);
+    expect(text(root, '.timetable-meta dd')).toEqual(['3 · 2400 km', '2024-04-02 – 2026-11-24', '25T · 上局南京段']);
     expect(text(root, '.timetable-comment')).toEqual(['25T型，DC600V供电']);
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('北京西');
     expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
@@ -654,9 +647,7 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() =>
-      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe(
-        'CR400AF-A-2001 · 复兴号 · 16 cars · 1193 seats · 350 km/h',
-      ),
+      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe('CR400AF-A-2001 · 16 cars'),
     );
     const rows = Object.fromEntries(
       Array.from(root.querySelectorAll('.timetable-meta > dt')).map((dt) => [dt.textContent, dt.nextElementSibling]),
@@ -686,9 +677,7 @@ describe('China Railway timetable', () => {
     expect(root.querySelector('.timetable-trainset').textContent).toBe('Could not load the trainsetRetry');
     root.querySelector<HTMLButtonElement>('.timetable-trainset .panel-retry').click();
     await vi.waitFor(() =>
-      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe(
-        'CR400AF-A-2001 · 复兴号 · 16 cars · 1193 seats · 350 km/h',
-      ),
+      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe('CR400AF-A-2001 · 16 cars'),
     );
   });
 
