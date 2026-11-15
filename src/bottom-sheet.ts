@@ -1,16 +1,26 @@
 // On phones the info box (popup.ts) and the map panels (map-panel.ts) are
-// sheets along the bottom of the map. A grabber along a sheet's top taps or
-// drags it down to its head and back up, like Apple Maps' sheets. style.css
-// moves a sheet with `translate` (by --sheet-peek when collapsed, by
-// --sheet-drag while dragged), which adds to whatever transform it already
-// has, and keeps the sheet's bottom padding (the home indicator's safe area)
-// in view below its head.
+// sheets along the bottom of the map, resting at one of three heights, like
+// Apple Maps' sheets: half the map (where they open, so what they show on the
+// map, such as a train's track, keeps the upper half), nearly all of it (up
+// to just below the search box), or collapsed to their head. A sheet with
+// little in it is only as tall as that. A grabber along a sheet's top taps it
+// between collapsed and half, or drags it to any of the three. The height is
+// the sheet's --sheet-max (style.css); collapsing moves it down with
+// `translate` (by --sheet-peek), as dragging below half does (by
+// --sheet-drag), which adds to whatever transform it already has, keeping
+// its bottom padding (the home indicator's safe area) in view below its head.
 export const SHEET_MEDIA_QUERY = '(max-width: 640px)';
 const DRAG_THRESHOLD = 24;
+const HALF = 0.5;
+// The room a full sheet leaves at the map's top, for the search box.
+const FULL_TOP_GAP = 72;
 
 export function isSheetLayout() {
   return window.matchMedia?.(SHEET_MEDIA_QUERY).matches ?? false;
 }
+
+export type SheetDetent = 'collapsed' | 'half' | 'full';
+const DETENTS: SheetDetent[] = ['collapsed', 'half', 'full'];
 
 export type SheetOptions = {
   // Named in the grabber's label: "Collapse <label>".
@@ -28,50 +38,103 @@ export function installSheetCollapse(sheet: HTMLElement, grabber: HTMLButtonElem
   grabber.type = 'button';
   grabber.classList.add('sheet-grabber');
 
-  const isCollapsed = () => sheet.classList.contains('sheet-collapsed');
-  const setCollapsed = (collapsed: boolean) => {
-    if (collapsed) sheet.style.setProperty('--sheet-peek', `${peek()}px`);
-    sheet.classList.toggle('sheet-collapsed', collapsed);
-    grabber.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${label}`);
-    grabber.setAttribute('aria-expanded', String(!collapsed));
+  const room = () => sheet.parentElement?.clientHeight || window.innerHeight;
+  const maxHeight = (detent: SheetDetent) =>
+    detent === 'full' ? Math.max(0, room() - FULL_TOP_GAP) : Math.round(room() * HALF);
+  const inset = () => parseFloat(getComputedStyle(sheet).paddingBottom) || 0;
+  let detent: SheetDetent = 'half';
+  const setDetent = (next: SheetDetent) => {
+    detent = next;
+    // Collapsing keeps half's height; only the head shows.
+    sheet.style.setProperty('--sheet-max', `${maxHeight(next === 'full' ? 'full' : 'half')}px`);
+    if (next === 'collapsed') sheet.style.setProperty('--sheet-peek', `${peek()}px`);
+    sheet.classList.toggle('sheet-collapsed', next === 'collapsed');
+    sheet.classList.toggle('sheet-full', next === 'full');
+    grabber.setAttribute('aria-label', `${next === 'collapsed' ? 'Expand' : 'Collapse'} ${label}`);
+    grabber.setAttribute('aria-expanded', String(next !== 'collapsed'));
   };
-  setCollapsed(false);
-  const collapsedOffset = () => {
-    const inset = parseFloat(getComputedStyle(sheet).paddingBottom) || 0;
-    return Math.max(0, sheet.getBoundingClientRect().height - peek() - inset);
-  };
+  const isCollapsed = () => detent === 'collapsed';
+  const setCollapsed = (collapsed: boolean) => setDetent(collapsed ? 'collapsed' : 'half');
+  setDetent('half');
+  window.addEventListener('resize', () => setDetent(detent), { passive: true });
 
-  // A tap on the grabber toggles (as a click, so keys work too); a drag goes
-  // the way it moved, or to the nearer end when it moved only a little.
-  let drag: { pointerId: number; startY: number; from: number; max: number; offset: number } = null;
+  // A drag moves the sheet's top with the pointer: above half by growing the
+  // sheet, below by sliding it down. It ends at the resting height it moved
+  // toward, or the nearer one when it moved only a little. A tap on the
+  // grabber toggles collapsed and half (as a click, so keys work too).
+  type Drag = {
+    pointerId: number;
+    startY: number;
+    from: SheetDetent;
+    // The visible height at the start, and at each resting height.
+    start: number;
+    heights: Record<SheetDetent, number>;
+    visible: number;
+  };
+  let drag: Drag = null;
   let dragged = false;
+  // The sheet's height with `max` as its --sheet-max, read with transitions off.
+  const heightWith = (max: number) => {
+    sheet.style.setProperty('--sheet-max', `${max}px`);
+    return sheet.getBoundingClientRect().height;
+  };
+  const beginDrag = (current: Drag) => {
+    const height = sheet.getBoundingClientRect().height;
+    const collapsed = peek() + inset();
+    current.start = detent === 'collapsed' ? collapsed : height;
+    sheet.style.setProperty('--sheet-drag', `${height - current.start}px`);
+    sheet.classList.add('sheet-dragging');
+    sheet.classList.remove('sheet-collapsed');
+    const half = heightWith(maxHeight('half'));
+    const full = heightWith(maxHeight('full'));
+    current.heights = { collapsed, half, full };
+    current.visible = current.start;
+  };
+  const show = (visible: number) => {
+    const { heights } = drag;
+    drag.visible = Math.min(heights.full, Math.max(heights.collapsed, visible));
+    if (drag.visible >= heights.half) {
+      sheet.style.setProperty('--sheet-max', `${drag.visible}px`);
+      sheet.style.setProperty('--sheet-drag', '0px');
+    } else {
+      sheet.style.setProperty('--sheet-max', `${maxHeight('half')}px`);
+      sheet.style.setProperty('--sheet-drag', `${heights.half - drag.visible}px`);
+    }
+  };
   const startDrag = (handle: HTMLElement) => (event: PointerEvent) => {
     if (!isSheetLayout() || event.button > 0) return;
     if (handle !== grabber && (event.target as Element).closest?.('button, a, input, select, [role="button"]')) return;
-    const max = collapsedOffset();
-    const from = isCollapsed() ? max : 0;
-    drag = { pointerId: event.pointerId, startY: event.clientY, from, max, offset: from };
+    drag = { pointerId: event.pointerId, startY: event.clientY, from: detent, start: 0, heights: null, visible: 0 };
     dragged = false;
     handle.setPointerCapture?.(event.pointerId);
   };
   const moveDrag = (event: PointerEvent) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
     if (!dragged && Math.abs(event.clientY - drag.startY) <= 4) return;
+    if (!dragged) beginDrag(drag);
     dragged = true;
-    drag.offset = Math.min(drag.max, Math.max(0, drag.from + event.clientY - drag.startY));
-    sheet.classList.add('sheet-dragging');
-    sheet.style.setProperty('--sheet-drag', `${drag.offset}px`);
+    show(drag.start - (event.clientY - drag.startY));
   };
   const endDrag = (event: PointerEvent) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
-    const { from, max, offset } = drag;
+    const current = drag;
     drag = null;
-    sheet.classList.remove('sheet-dragging');
     if (!dragged) return;
     // Past the click this drag ends in (below).
     setTimeout(() => (dragged = false));
-    const moved = offset - from;
-    setCollapsed(Math.abs(moved) >= DRAG_THRESHOLD ? moved > 0 : offset > max / 2);
+    const { heights, start, visible } = current;
+    // Full only where it is taller than half: a short sheet has two heights.
+    const detents = DETENTS.filter((it) => it !== 'full' || heights.full - heights.half > 4);
+    const moved = visible - start;
+    const toward =
+      Math.abs(moved) >= DRAG_THRESHOLD
+        ? detents.filter((it) => (moved > 0 ? heights[it] > start + 1 : heights[it] < start - 1))
+        : detents;
+    const target = (toward.length ? toward : detents).reduce((best, it) =>
+      Math.abs(heights[it] - visible) < Math.abs(heights[best] - visible) ? it : best,
+    );
+    sheet.classList.remove('sheet-dragging');
+    setDetent(target);
   };
   for (const handle of [grabber, ...handles]) {
     handle.addEventListener('pointerdown', startDrag(handle));
@@ -97,7 +160,14 @@ export function installSheetCollapse(sheet: HTMLElement, grabber: HTMLButtonElem
     setCollapsed(false);
   });
 
-  return { setCollapsed, isCollapsed };
+  return {
+    setCollapsed,
+    isCollapsed,
+    setDetent,
+    get detent() {
+      return detent;
+    },
+  };
 }
 
 // The sheets open on a phone, oldest first. Only the latest shows: those

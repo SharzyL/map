@@ -59,7 +59,7 @@ export function createPanelShell(
   const body = el('div', `${prefix}-body`, panel);
 
   // On phones the panel is a bottom sheet that collapses to its header
-  // (bottom-sheet.ts), opens expanded again each time it is shown, and
+  // (bottom-sheet.ts), opens at half height again each time it is shown, and
   // covers the sheets opened before it.
   const grabber = el('button');
   panel.insertBefore(grabber, header);
@@ -76,7 +76,8 @@ export function createPanelShell(
       return;
     }
     sheetClosed(panel);
-    if (sheet.isCollapsed()) sheet.setCollapsed(false);
+    // It opens at half height again next time.
+    if (sheet.detent !== 'half') sheet.setDetent('half');
   }).observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
 
   return { panel, summary, body };
