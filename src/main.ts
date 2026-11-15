@@ -21,6 +21,7 @@ import { installTimetable, timetableButton } from './timetable.js';
 import { installTrainRoute } from './train-route.js';
 import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
 import { installLoadStatus } from './load-status.js';
+import { hashHasView, loadMapView, rememberMapView } from './map-view.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -641,9 +642,10 @@ function installSpriteFallback(map: maplibregl.Map) {
   });
 }
 
-// Without a URL hash the map opens on the whole Yamanote loop in Tokyo (新宿
-// to 秋葉原, 田端 to 品川): zoom 12 on wide screens, further out on narrow ones
-// so the loop still fits.
+// Without a view in the URL's hash the map reopens where it was last left on
+// this device (map-view.ts), and the first time on the whole Yamanote loop in
+// Tokyo (新宿 to 秋葉原, 田端 to 品川): zoom 12 on wide screens, further out
+// on narrow ones so the loop still fits.
 const DEFAULT_VIEW = {
   center: [139.737, 35.685] as [number, number],
   zoom: 12,
@@ -674,14 +676,21 @@ async function init() {
     const style = await loadStyle(demSource, railwayFilter, mapLayers);
 
     window._mlmap = null;
+    const lastView = screenshotFixtureView || hashHasView(window.location.hash) ? null : loadMapView();
+    const startView = screenshotFixtureView
+      ? { center: screenshotFixtureView.center, zoom: screenshotFixtureView.zoom }
+      : lastView
+        ? lastView
+        : {
+            center: DEFAULT_VIEW.center,
+            zoom: DEFAULT_VIEW.zoom,
+            bounds: DEFAULT_VIEW.bounds,
+            fitBoundsOptions: DEFAULT_VIEW.fitBoundsOptions,
+          };
     const map = new maplibregl.Map({
       container: 'map',
       style: style as maplibregl.StyleSpecification,
-      center: screenshotFixtureView ? screenshotFixtureView.center : DEFAULT_VIEW.center,
-      zoom: screenshotFixtureView ? screenshotFixtureView.zoom : DEFAULT_VIEW.zoom,
-      ...(screenshotFixtureView
-        ? {}
-        : { bounds: DEFAULT_VIEW.bounds, fitBoundsOptions: DEFAULT_VIEW.fitBoundsOptions }),
+      ...startView,
       hash: true,
       attributionControl: {
         customAttribution: [GITHUB_ATTRIBUTION, CREDITS_ATTRIBUTION],
@@ -693,6 +702,8 @@ async function init() {
     });
 
     window._mlmap = map;
+    // The demo scenes leave the viewer's own last view alone.
+    if (!screenshotFixtureView) rememberMapView(map);
     // style.css joins fullscreen onto zoom and compass, and Locate onto geolocate.
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
     map.addControl(new maplibregl.FullscreenControl(), 'top-right');
