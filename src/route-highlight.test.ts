@@ -153,15 +153,34 @@ describe('addRouteHighlightToStyle', () => {
     expect(opacity(line.id, 'line-opacity', '5611108')).toBeCloseTo(0.25);
   });
 
-  it('keeps the stations of the highlighted route fully visible and fades the others a little', () => {
-    const station = styled.layers.find(
-      (layer) =>
-        layer.type === 'symbol' && 'source' in layer && layer['source-layer'] === 'standard_railway_text_stations',
+  // Whether a layer's filter keeps a feature.
+  function shown(layerId: string, properties: Record<string, unknown>, state: Record<string, unknown> = {}) {
+    const layer = styled.layers.find((candidate) => candidate.id === layerId);
+    const filter = featureFilter((layer as { filter?: unknown }).filter as never, {
+      [ROUTE_HIGHLIGHT_ID_STATE]: '',
+      ...state,
+    });
+    return filter.filter({ zoom: 12 }, { type: 1, properties } as never);
+  }
+
+  it('keeps only the stations of the highlighted route or train', () => {
+    const stations = styled.layers.filter(
+      (layer) => 'source' in layer && layer['source-layer']?.startsWith('standard_railway_text_stations'),
     );
-    const onRoute = { station_routes: LINE_ROUTES };
-    expect(opacity(station.id, 'text-opacity', '5611108', onRoute)).toBe(1);
-    expect(opacity(station.id, 'text-opacity', '42', onRoute)).toBeCloseTo(0.6);
-    expect(opacity(station.id, 'text-opacity', '', {})).toBe(1);
+    expect(stations.length).toBeGreaterThan(2);
+    const keys = stopKeys([{ name: '湖州东', elements: ['N123'] }]);
+    const station = { railway: 'station', station_size: 'large', name: '长兴' };
+    const onRoute = { ...station, station_routes: LINE_ROUTES };
+    const drawing = stations.filter(({ id }) => shown(id, station));
+    expect(drawing.length).toBeGreaterThan(0);
+    for (const { id } of drawing) {
+      expect(shown(id, onRoute, { [ROUTE_HIGHLIGHT_ID_STATE]: '5611108' })).toBe(true);
+      expect(shown(id, onRoute, { [ROUTE_HIGHLIGHT_ID_STATE]: '42' })).toBe(false);
+      expect(shown(id, station, { [ROUTE_HIGHLIGHT_ID_STATE]: '5611108' })).toBe(false);
+      const train = { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys };
+      expect(shown(id, { ...station, name: '湖州东' }, train)).toBe(true);
+      expect(shown(id, onRoute, train)).toBe(false);
+    }
   });
 
   // A station layer's label for a feature, as text ('' when it has none).
@@ -182,7 +201,7 @@ describe('addRouteHighlightToStyle', () => {
     return typeof value === 'string' ? value : value.sections.map(({ text }) => text).join('');
   }
 
-  it('names only the stations of a highlighted route or train, keeping the others’ icons', () => {
+  it('names the stations of a highlighted route or train by the stop labels where they can', () => {
     const stations = styled.layers.filter(
       (layer) =>
         layer.type === 'symbol' &&
@@ -203,24 +222,18 @@ describe('addRouteHighlightToStyle', () => {
       // Nothing shown: every station is named.
       expect(stationLabel(id, other)).toBe('长兴');
       // A highlighted route: its stations are named, by the stop labels when
-      // those name them; the others are not.
+      // those name them (other stations go, see above).
       const route = { [ROUTE_HIGHLIGHT_ID_STATE]: '5611108', [ROUTE_STOPS_STATE]: keys };
       expect(stationLabel(id, huzhou, route)).toBe('湖州');
       expect(stationLabel(id, { ...stop, station_routes: LINE_ROUTES }, route)).toBe('');
       expect(stationLabel(id, { ...huzhou, osm_id: '123' }, route)).toBe('');
-      expect(stationLabel(id, other, route)).toBe('');
-      // A train: its stops are named by the stop labels, other stations not at all.
+      // A train: its stops are named by the stop labels.
       const train = { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys };
       expect(stationLabel(id, { name: 'Huzhou East', localized_name: '麻城北' }, train)).toBe('');
-      expect(stationLabel(id, other, train)).toBe('');
-      // Their icons stay, faded as before; the route's and train's own give
-      // way to the rings marking them.
-      expect(opacity(id, 'icon-opacity', '5611108', other)).toBeCloseTo(0.6);
+      // Their icons give way to the rings marking them.
+      expect(opacity(id, 'icon-opacity', '', other)).toBe(1);
       expect(opacity(id, 'icon-opacity', '5611108', huzhou)).toBe(0);
-      expect(opacity(id, 'icon-opacity', '', stop, { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys })).toBe(0);
-      expect(
-        opacity(id, 'icon-opacity', '', other, { [TRAIN_ROUTE_STATE]: true, [TRAIN_STOPS_STATE]: keys }),
-      ).toBeCloseTo(0.6);
+      expect(opacity(id, 'icon-opacity', '', stop, train)).toBe(0);
     }
   });
 

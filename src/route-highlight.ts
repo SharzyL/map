@@ -339,12 +339,10 @@ function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
 }
 
 // While a route is highlighted every other railway layer fades to this
-// opacity; stations on the route stay fully visible. Other stations' icons
-// fade only a little, so the network around the route stays legible, while
-// their names go (UNNAMED_STATION below). Base map labels fade as much, so
-// the route's stop labels stand out.
+// opacity; stations on the route stay fully visible, and the other stations
+// go (OTHER_STATION below). Base map labels fade as much, so the route's stop
+// labels stand out.
 const DIMMED_OPACITY = 0.25;
-const DIMMED_STATION_OPACITY = 0.6;
 const DIMMED_LABEL_OPACITY = 0.6;
 const OPACITY_PROPERTIES: Record<string, string[]> = {
   line: ['line-opacity'],
@@ -358,21 +356,23 @@ function dimmedOpacity(layer: StyleLayerLike, railway: boolean) {
   if (!layer['source-layer']?.startsWith(STATION_SOURCE_LAYER_PREFIX)) {
     return ['case', DIMMING, DIMMED_OPACITY, 1];
   }
-  return ['case', ['!', DIMMING], 1, routeListFilter('station_routes'), 1, DIMMED_STATION_OPACITY];
+  return 1;
 }
-
-// While a route or train shows, only its stations are named: by the stop
-// labels, or by their own label where those do not name them (a highlighted
-// route before or without the API's stop list). Other stations keep their
-// icon but lose their name, which then takes no room from other labels, as
-// a transparent one would.
-const UNNAMED_STATION = ['all', DIMMING, ['any', LABELED_STOP, ['!', routeListFilter('station_routes')]]];
 
 // The stations a highlight rings (route_highlight_station_*, at the station)
 // or a train marks as stops (train_route_stops, where its track meets the
 // station, often off the station's own point): their icon gives way to the
 // empty ring, which it would otherwise sit in off centre.
 const RINGED_STATION = ['any', LABELED_STOP, routeListFilter('station_routes')];
+
+// While a route or train shows, only its stations stay: the others' icons and
+// names go, so they take no room from other labels.
+const OTHER_STATION = ['all', DIMMING, ['!', RINGED_STATION]];
+
+// The stations that stay are named by the stop labels, or by their own label
+// where those do not name them (a highlighted route before or without the
+// API's stop list).
+const UNNAMED_STATION = ['all', DIMMING, LABELED_STOP];
 
 function withoutUnnamedStations(textField: unknown) {
   return mapZoomOutputs(textField, (output) =>
@@ -389,13 +389,21 @@ function withRouteDimming(layer: StyleLayerLike, railway = true): StyleLayerLike
   const iconFactor = station ? ['case', RINGED_STATION, 0, factor] : factor;
   for (const property of properties) {
     const by = property === 'icon-opacity' ? iconFactor : factor;
+    if (by === 1) continue;
     paint[property] = mapZoomOutputs(paint[property] ?? 1, (output) => ['*', output, by]);
   }
+  if (!station) return { ...layer, paint };
+  const filter = layer.filter ? ['all', layer.filter, ['!', OTHER_STATION]] : ['!', OTHER_STATION];
   const layout = layer.layout as Record<string, unknown> | undefined;
-  if (station && layout?.['text-field'] !== undefined) {
-    return { ...layer, paint, layout: { ...layout, 'text-field': withoutUnnamedStations(layout['text-field']) } };
+  if (layout?.['text-field'] !== undefined) {
+    return {
+      ...layer,
+      filter,
+      paint,
+      layout: { ...layout, 'text-field': withoutUnnamedStations(layout['text-field']) },
+    };
   }
-  return { ...layer, paint };
+  return { ...layer, filter, paint };
 }
 
 // Adds the highlight layers right above the last line layer drawing railway
