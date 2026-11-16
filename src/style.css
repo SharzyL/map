@@ -17,26 +17,10 @@ body,
    floating toolbar, which browser-inset.ts measures in its place. */
 :root {
   --browser-inset-bottom: env(safe-area-inset-bottom, 0px);
-  /* The status bar over the page, from the home screen (bottom-sheet.ts). */
-  --safe-area-top: env(safe-area-inset-top, 0px);
 }
 
 #app {
   position: relative;
-}
-
-/* From the home screen (index.html) the status bar's white text sits over the
-   map, on a light shade; elsewhere the inset is 0 and so is the shade. */
-#app::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 30;
-  height: env(safe-area-inset-top, 0px);
-  background: linear-gradient(rgba(1, 2, 7, 0.5), rgba(1, 2, 7, 0.2));
-  pointer-events: none;
 }
 
 #map .maplibregl-ctrl-bottom-left,
@@ -44,8 +28,8 @@ body,
   bottom: var(--browser-inset-bottom);
 }
 
-/* With viewport-fit=cover (index.html) the map runs under the status bar and
-   beside the notch where Safari allows it; the controls keep out. */
+/* With viewport-fit=cover (index.html) the map runs beside the notch in
+   landscape; the controls keep out. */
 #map .maplibregl-ctrl-top-left,
 #map .maplibregl-ctrl-top-right {
   top: env(safe-area-inset-top, 0px);

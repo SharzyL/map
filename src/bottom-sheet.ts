@@ -40,10 +40,8 @@ export function installSheetCollapse(sheet: HTMLElement, grabber: HTMLButtonElem
   grabber.classList.add('sheet-grabber');
 
   const room = () => sheet.parentElement?.clientHeight || window.innerHeight;
-  // The status bar over the page, from the home screen (style.css).
-  const statusBar = () => parseFloat(getComputedStyle(sheet).getPropertyValue('--safe-area-top')) || 0;
   const maxHeight = (detent: SheetDetent) =>
-    detent === 'full' ? Math.max(0, room() - FULL_TOP_GAP - statusBar()) : Math.round(room() * HALF);
+    detent === 'full' ? Math.max(0, room() - FULL_TOP_GAP) : Math.round(room() * HALF);
   const inset = () => parseFloat(getComputedStyle(sheet).paddingBottom) || 0;
   let detent: SheetDetent = 'half';
   const setDetent = (next: SheetDetent) => {
