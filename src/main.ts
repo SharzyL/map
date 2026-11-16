@@ -22,6 +22,7 @@ import { installTrainRoute } from './train-route.js';
 import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
 import { installLoadStatus } from './load-status.js';
 import { installBrowserInset } from './browser-inset.js';
+import { installStarfield } from './starfield.js';
 import { hashHasView, loadMapView, rememberMapView } from './map-view.js';
 import {
   applyMapLayerState,
@@ -557,7 +558,7 @@ function withShortAttributions(style: StyleLike): StyleLike {
 
 // Always a globe: MapLibre draws a sphere at low zoom and blends into the flat
 // map around zoom 10-12. Outside the sphere the canvas is transparent and the
-// map container's starfield (style.css) shows through; `sky` adds the
+// stars behind it (starfield.ts) show through; `sky` adds the
 // atmosphere glow around the globe and a sky gradient above the horizon when
 // the map is tilted.
 function withGlobe(style: StyleLike): StyleLike {
@@ -745,6 +746,8 @@ async function init() {
     installTimetable(map, installTrainRoute(map));
     installCredits(map);
     installLoadStatus(map, style.sources || {}, [ORM_SOURCE], ['contourSource']);
+    // The screenshots' sky stays put: as at the 2026 March equinox.
+    installStarfield(map, screenshotFixtureView ? () => Date.UTC(2026, 2, 20, 14, 46) : Date.now);
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureData(layerStore, screenshotFixtureMode);
     }

@@ -33,34 +33,19 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  /* Space around the globe (src/main.ts withGlobe): two layers of tiny stars
-     over a deep navy glow; the map canvas is transparent outside the sphere. */
-  background-color: #03050c;
-  background-image:
-    radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1px 1px at 37% 72%, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(1.5px 1.5px at 58% 34%, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1px 1px at 81% 61%, rgba(214, 228, 255, 0.8), transparent),
-    radial-gradient(1px 1px at 91% 12%, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(1px 1px at 24% 88%, rgba(255, 244, 222, 0.7), transparent),
-    radial-gradient(1px 1px at 8% 53%, rgba(255, 255, 255, 0.5), transparent),
-    radial-gradient(1.5px 1.5px at 66% 91%, rgba(214, 228, 255, 0.75), transparent),
-    radial-gradient(1px 1px at 46% 8%, rgba(255, 255, 255, 0.55), transparent),
-    radial-gradient(1px 1px at 73% 47%, rgba(255, 255, 255, 0.45), transparent),
-    radial-gradient(ellipse at 50% 45%, #0e1d3d 0%, #060b1a 55%, #03050c 100%);
-  background-repeat: repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat;
-  background-size:
-    230px 230px,
-    310px 310px,
-    270px 270px,
-    190px 190px,
-    350px 350px,
-    290px 290px,
-    170px 170px,
-    410px 410px,
-    250px 250px,
-    330px 330px,
-    100% 100%;
+  /* Space around the globe (src/main.ts withGlobe), with the stars of
+     src/starfield.ts drawn over it; the map canvas is transparent outside the
+     sphere. */
+  background: #010207;
+}
+
+/* Under the map's canvas (src/starfield.ts). */
+#map > .starfield {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .maplibregl-ctrl-weather {

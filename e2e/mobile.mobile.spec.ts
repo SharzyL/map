@@ -7,7 +7,7 @@ test.describe('mobile map shell', () => {
 
     await openApp(page);
 
-    await expect(page.locator('#map canvas')).toBeVisible();
+    await expect(page.locator('#map canvas.maplibregl-canvas')).toBeVisible();
     await page.getByRole('button', { name: 'Layers' }).click();
     await expect(page.locator('.map-layers-panel')).toHaveAttribute('aria-hidden', 'false');
     await expect(page.locator('#map')).toHaveAttribute('data-map-layers-panel-open', 'true');

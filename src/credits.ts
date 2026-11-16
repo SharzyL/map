@@ -61,6 +61,12 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
         use: 'Elevation: hillshade, contour lines, 3D terrain and the Locate readout',
       },
       { name: '© Google', use: 'Satellite imagery' },
+      {
+        name: 'Yale Bright Star Catalog',
+        href: 'https://github.com/brettonw/YaleBrightStarCatalog',
+        use: 'Stars around the globe',
+        note: 'Hoffleit & Warren, 5th ed.; JSON by Bretton Wade, MIT License',
+      },
     ],
   },
   {

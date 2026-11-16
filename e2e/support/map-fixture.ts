@@ -438,7 +438,7 @@ async function waitForMapShell(page: Page) {
     const map = window._mlmap as FixtureMap | null | undefined;
     return Boolean(map?.style?._loaded || map?.isStyleLoaded?.());
   });
-  await expect(page.locator('#map canvas')).toBeVisible();
+  await expect(page.locator('#map canvas.maplibregl-canvas')).toBeVisible();
 }
 
 export async function mapState(page: Page) {

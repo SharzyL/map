@@ -62,7 +62,7 @@ test.describe('first-principles UI invariants', () => {
         panel: page.locator('.weather-panel'),
         close: page.getByRole('button', { name: 'Close weather' }),
         afterOpen: async () => {
-          const box = await page.locator('#map canvas').boundingBox();
+          const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
           expect(box, 'map canvas should be available for weather picking').not.toBeNull();
           if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
         },

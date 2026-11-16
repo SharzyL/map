@@ -31,7 +31,7 @@ type IntrospectionMap = {
 };
 
 export async function clickMap(page: Page, xRatio = 0.5, yRatio = 0.5) {
-  const box = await page.locator('#map canvas').boundingBox();
+  const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
   expect(box, 'map canvas should have a rendered box').not.toBeNull();
   if (!box) return;
   await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
@@ -239,7 +239,7 @@ export async function openAnnotationEditorFromCanvas(page: Page, label: string) 
     return null;
   }, label);
 
-  const canvasBox = await page.locator('#map canvas').boundingBox();
+  const canvasBox = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
   expect(canvasBox, 'map canvas should have a rendered box').not.toBeNull();
   const projected = await point.jsonValue();
   expect(projected, `annotation "${label}" should project to a screen point`).toEqual(
