@@ -28,6 +28,23 @@ body,
   bottom: var(--browser-inset-bottom);
 }
 
+/* With viewport-fit=cover (index.html) the map runs under the status bar and
+   beside the notch where Safari allows it; the controls keep out. */
+#map .maplibregl-ctrl-top-left,
+#map .maplibregl-ctrl-top-right {
+  top: env(safe-area-inset-top, 0px);
+}
+
+#map .maplibregl-ctrl-top-left,
+#map .maplibregl-ctrl-bottom-left {
+  left: env(safe-area-inset-left, 0px);
+}
+
+#map .maplibregl-ctrl-top-right,
+#map .maplibregl-ctrl-bottom-right {
+  right: env(safe-area-inset-right, 0px);
+}
+
 #map {
   position: relative;
   width: 100%;
@@ -223,7 +240,7 @@ body,
    where the two would meet. */
 .load-status {
   position: absolute;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   left: 50%;
   z-index: 3;
   display: inline-flex;
@@ -293,7 +310,7 @@ body,
 
 @media (max-width: 1100px) {
   .load-status {
-    top: 64px;
+    top: calc(64px + env(safe-area-inset-top, 0px));
   }
 }
 
