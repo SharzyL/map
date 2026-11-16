@@ -428,7 +428,8 @@ class PhotonSearchControl {
     this._results.classList.toggle('visible', hasResults && !collapsed);
     this._resultsToggle.classList.toggle('visible', hasResults);
     this._resultsToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    this._resultsToggle.textContent = collapsed ? `Show ${count} results` : `Hide ${count} results`;
+    const results = `${count} result${count === 1 ? '' : 's'}`;
+    this._resultsToggle.textContent = collapsed ? `Show ${results}` : `Hide ${results}`;
   }
 
   _syncSelectedResultState() {

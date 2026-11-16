@@ -13,8 +13,19 @@ body,
     sans-serif;
 }
 
+/* What covers the bottom of the page: the home indicator, or Safari's
+   floating toolbar, which browser-inset.ts measures in its place. */
+:root {
+  --browser-inset-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 #app {
   position: relative;
+}
+
+#map .maplibregl-ctrl-bottom-left,
+#map .maplibregl-ctrl-bottom-right {
+  bottom: var(--browser-inset-bottom);
 }
 
 #map {
@@ -1965,7 +1976,7 @@ body,
 
   .annotation-body {
     gap: 8px;
-    padding: 9px 10px calc(10px + env(safe-area-inset-bottom));
+    padding: 9px 10px calc(10px + var(--browser-inset-bottom));
   }
 
   .annotation-mode-grid {
@@ -3273,7 +3284,7 @@ a.credits-name:hover {
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--browser-inset-bottom);
     border-radius: 10px 10px 0 0;
     transform: translateY(100%);
     transition:
@@ -4138,7 +4149,7 @@ a.credits-name:hover {
 
 @media (max-width: 640px) {
   .sheet-collapsed {
-    translate: 0 calc(100% - var(--sheet-peek, 64px) - env(safe-area-inset-bottom, 0px));
+    translate: 0 calc(100% - var(--sheet-peek, 64px) - var(--browser-inset-bottom));
   }
 
   .sheet-dragging {
@@ -4178,7 +4189,7 @@ a.credits-name:hover {
     flex-direction: column;
     max-width: none !important;
     max-height: var(--sheet-max, 50%);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--browser-inset-bottom);
     border-radius: 14px 14px 0 0;
     background: #fff;
     box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.18);

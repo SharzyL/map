@@ -21,6 +21,7 @@ import { installTimetable, timetableButton } from './timetable.js';
 import { installTrainRoute } from './train-route.js';
 import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
 import { installLoadStatus } from './load-status.js';
+import { installBrowserInset } from './browser-inset.js';
 import { hashHasView, loadMapView, rememberMapView } from './map-view.js';
 import {
   applyMapLayerState,
@@ -700,6 +701,7 @@ async function init() {
             bounds: DEFAULT_VIEW.bounds,
             fitBoundsOptions: DEFAULT_VIEW.fitBoundsOptions,
           };
+    installBrowserInset();
     const map = new maplibregl.Map({
       container: 'map',
       style: style as maplibregl.StyleSpecification,

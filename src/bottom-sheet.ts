@@ -8,7 +8,8 @@
 // the sheet's --sheet-max (style.css); collapsing moves it down with
 // `translate` (by --sheet-peek), as dragging below half does (by
 // --sheet-drag), which adds to whatever transform it already has, keeping
-// its bottom padding (the home indicator's safe area) in view below its head.
+// its bottom padding (the home indicator's safe area, or the room Safari's
+// floating toolbar takes, browser-inset.ts) in view below its head.
 export const SHEET_MEDIA_QUERY = '(max-width: 640px)';
 const DRAG_THRESHOLD = 24;
 const HALF = 0.5;
