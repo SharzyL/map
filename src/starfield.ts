@@ -24,6 +24,24 @@ export type Camera = { lng: number; lat: number; bearing: number; pitch: number 
 // Past this zoom the globe or the sky fills the view.
 const MAX_ZOOM = 8;
 const RAD = Math.PI / 180;
+// Finer than this the dots look no different, and the canvas takes memory.
+const MAX_PIXEL_RATIO = 2;
+// The Milky Way's glow is a blur, drawn at this fraction of the size and
+// stretched, which saves most of the work of its many wide blobs.
+const GLOW_SCALE = 1 / 4;
+
+// Whether the globe covers the whole view, so no sky shows: looking straight
+// down, its disc, MapLibre's globe radius (the Mercator world size over 2π,
+// widened at the centre's latitude) seen from the camera's distance, reaches
+// past the corners.
+export function globeCoversView(camera: Camera, zoom: number, view: { width: number; height: number; fov: number }) {
+  if (camera.pitch > 5) return false;
+  const radius = (512 * 2 ** zoom) / (2 * Math.PI) / Math.cos(camera.lat * RAD);
+  const focal = view.height / 2 / Math.tan((view.fov * RAD) / 2);
+  const distance = radius + focal;
+  const disc = (focal * radius) / Math.sqrt(distance ** 2 - radius ** 2);
+  return disc > Math.hypot(view.width, view.height) / 2 + 2;
+}
 
 // Greenwich mean sidereal time, in degrees.
 export function siderealDegrees(time: number) {
@@ -175,6 +193,7 @@ function tintedBlob(style: string) {
 }
 const blobs = new Map<string, { image: HTMLCanvasElement; alpha: number }>();
 
+// Draws the groups onto a context whose transform maps the view's CSS pixels.
 export function drawSky(
   context: CanvasRenderingContext2D,
   groups: Group[],
@@ -216,47 +235,65 @@ export function drawSky(
   context.globalAlpha = 1;
 }
 
-export function installStarfield(map: StarfieldMap, now: () => number = Date.now) {
+// A canvas under the map's, sized to the view at `scale` canvas pixels per
+// CSS pixel and stretched back over it by CSS (style.css).
+function skyLayer(map: StarfieldMap, className: string) {
   const canvas = document.createElement('canvas');
-  canvas.className = 'starfield';
+  canvas.className = `starfield ${className}`;
   canvas.setAttribute('aria-hidden', 'true');
   map.getContainer().insertBefore(canvas, map.getCanvasContainer());
   const context = canvas.getContext('2d');
-  if (!context) return;
-  let groups: Group[] = [];
+  return {
+    context,
+    // Clears it and sets its size, if that changed; zero lets go of its pixels.
+    fit(width: number, height: number, scale: number) {
+      const pixelWidth = Math.round(width * scale);
+      const pixelHeight = Math.round(height * scale);
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+      }
+      context.setTransform(scale, 0, 0, scale, 0, 0);
+    },
+  };
+}
+
+export function installStarfield(map: StarfieldMap, now: () => number = Date.now) {
+  // The Milky Way's glow on a small canvas the browser stretches, the stars
+  // over it at the screen's resolution.
+  const glowLayer = skyLayer(map, 'starfield-glow');
+  const starLayer = skyLayer(map, 'starfield-stars');
+  if (!glowLayer.context || !starLayer.context) return;
+  const haze = milkyWay();
+  const glow = haze.filter((group) => group.soft);
+  let stars = haze.filter((group) => !group.soft);
   let frame = 0;
-  let width = 0;
-  let height = 0;
 
   const draw = () => {
     frame = 0;
-    const ratio = window.devicePixelRatio || 1;
     const container = map.getContainer();
-    if (container.clientWidth !== width || container.clientHeight !== height) {
-      width = container.clientWidth;
-      height = container.clientHeight;
-      canvas.width = Math.round(width * ratio);
-      canvas.height = Math.round(height * ratio);
-    }
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    if (map.getZoom() > MAX_ZOOM) {
-      context.clearRect(0, 0, width, height);
-      return;
-    }
     const { lng, lat } = map.getCenter();
     const camera = { lng, lat, bearing: map.getBearing(), pitch: map.getPitch() };
-    drawSky(context, groups, camera, now(), { width, height, fov: map.getVerticalFieldOfView() });
+    const view = { width: container.clientWidth, height: container.clientHeight, fov: map.getVerticalFieldOfView() };
+    if (map.getZoom() > MAX_ZOOM || globeCoversView(camera, map.getZoom(), view)) {
+      glowLayer.fit(0, 0, 1);
+      starLayer.fit(0, 0, 1);
+      return;
+    }
+    const time = now();
+    glowLayer.fit(view.width, view.height, GLOW_SCALE);
+    drawSky(glowLayer.context, glow, camera, time, view);
+    starLayer.fit(view.width, view.height, Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+    drawSky(starLayer.context, stars, camera, time, view);
   };
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(draw);
   };
   map.on('move', schedule);
   map.on('resize', schedule);
-  const haze = milkyWay();
-  groups = haze;
   schedule();
-  void import('./stars.json').then(({ default: stars }) => {
-    groups = [...haze, ...starGroups(stars as number[])];
+  void import('./stars.json').then(({ default: catalog }) => {
+    stars = [...stars, ...starGroups(catalog as number[])];
     schedule();
   });
 }

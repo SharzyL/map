@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import stars from './stars.json';
-import { cameraBasis, milkyWay, siderealDegrees, starGroups } from './starfield.js';
+import { cameraBasis, globeCoversView, milkyWay, siderealDegrees, starGroups } from './starfield.js';
 
 const J2000 = Date.UTC(2000, 0, 1, 12);
 const RAD = Math.PI / 180;
@@ -34,6 +34,21 @@ describe('the sky around the globe', () => {
     const polaris = direction(37.95, 89.26);
     expect(dot(cameraBasis({ lng: 30, lat: 0, bearing: 0, pitch: 90 }, J2000).look, polaris)).toBeGreaterThan(0.99);
     expect(dot(cameraBasis({ lng: 30, lat: 0, bearing: 180, pitch: 90 }, J2000).look, polaris)).toBeLessThan(-0.99);
+  });
+
+  it('knows when the globe fills the view and no sky shows', () => {
+    const phone = { width: 393, height: 852, fov: 36.87 };
+    const desktop = { width: 1280, height: 720, fov: 36.87 };
+    const above = (lat: number, pitch = 0) => ({ lng: 0, lat, bearing: 0, pitch });
+    expect(globeCoversView(above(0), 3, phone)).toBe(false);
+    expect(globeCoversView(above(0), 3.3, phone)).toBe(true);
+    expect(globeCoversView(above(0), 4, desktop)).toBe(false);
+    expect(globeCoversView(above(0), 4.3, desktop)).toBe(true);
+    // The globe is drawn larger away from the equator: twice as large at 60°.
+    expect(globeCoversView(above(0), 3.3, desktop)).toBe(false);
+    expect(globeCoversView(above(60), 3.3, desktop)).toBe(true);
+    // Tilted, the sky shows above the horizon.
+    expect(globeCoversView(above(0, 40), 7, desktop)).toBe(false);
   });
 
   it('draws every catalog star once, the brightest largest', () => {
