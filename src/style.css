@@ -3561,6 +3561,11 @@ a.credits-name:hover {
     sans-serif;
 }
 
+/* The clear button beside it does this. */
+.poi-search-input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
 .poi-search-input::placeholder {
   color: #6b7280;
 }
@@ -4284,5 +4289,15 @@ a.credits-name:hover {
   #map .maplibregl-popup.orm-info-popup {
     transition: none;
     animation: none;
+  }
+}
+
+/* Safari on iOS zooms the page into a focused field whose text is under
+   16px, and a pinch then zooms the map instead of the page back out. */
+@media (pointer: coarse) {
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 }

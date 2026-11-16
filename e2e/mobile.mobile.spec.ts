@@ -27,4 +27,21 @@ test.describe('mobile map shell', () => {
 
     errors.assertNoErrors();
   });
+
+  // Safari on iOS zooms into a focused field with text under 16px.
+  test('sets every text field at 16px or more', async ({ page }) => {
+    await openApp(page);
+    for (const name of ['Layers', 'Railway filter', 'Annotations']) {
+      await page.getByRole('button', { name, exact: true }).click();
+      await page.getByRole('button', { name: `Close ${name.toLowerCase()}` }).click();
+    }
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('input, textarea, select')]
+        .filter((field) => !['checkbox', 'radio', 'range', 'color', 'file'].includes(field.getAttribute('type') ?? ''))
+        .filter((field) => parseFloat(getComputedStyle(field).fontSize) < 16)
+        .map((field) => field.outerHTML.slice(0, 120)),
+    );
+    expect(small).toEqual([]);
+    expect(await page.locator('input, textarea, select').count()).toBeGreaterThan(5);
+  });
 });
