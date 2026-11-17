@@ -47,3 +47,5 @@ test-results
 
 # China Railway timetable exports (lulutong); only data/cr-station-trains.csv is derived from them
 /lulutong-timetable-csv-*
+
+.claude
