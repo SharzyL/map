@@ -2,25 +2,23 @@
 #
 #   timetable ─ lltskb ─┬─ cr-timetable ─────────────────── deploy-timetable ─┐
 #                       ├─ cr-station-trains ─┬─ station-coords ──────────────┤
-#   Geofabrik ─ region-extract                │                               │
-#   diffs ───── box-extract ─┬────────────────┼─ osm-stations                 │
-#                            │                ├─ relations ── deploy-relations┤
-#                            │                └─ routing-graph ─┬─ cr-routes ─┬ deploy-routes
-#                            │                                  └─ jp-hops ───┘
-#   N02 ─────── n02 ─────────┴─ line-groups ──┐                               │
-#   planet ──── planet-extract                │                               │
-#   diffs ───── railway-extract ──────────────┤                               │
-#   Yahoo ───── jp-station-codes              │                               │
-#   image ──────────────────────────────── tiles ─────────── deploy-tiles ────┤
+#   planet ──── planet-extract ┬ (box)        │                               │
+#   diffs ───── box-extract ───┴┬─────────────┼─ osm-stations                 │
+#                               │             ├─ relations ── deploy-relations┤
+#                               │             └─ routing-graph ─┬─ cr-routes ─┬ deploy-routes
+#                               │                               └─ jp-hops ───┘
+#   N02 ─────── n02 ────────────┴─ line-groups ──┐                            │
+#   diffs ───── railway-extract (world) ─────────┤                            │
+#   Yahoo ───── jp-station-codes                 │                            │
+#   image ────────────────────────────────── tiles ──────── deploy-tiles ─────┤
 #   this repository ───────────────────────────────────────── deploy-worker ──┘
 #
-# OpenStreetMap comes in twice, both brought to the same hourly diff: the
-# planet worldwide, for what the tiles add to the import database's railways
-# (line relations, way tags), which needs no coordinates; and Geofabrik's
-# extracts of Asia and Russia's east, which fit on disk, for what needs them
-# (relations, routes, stations, official lines), in the box around China and
-# Japan.
-#
+# One pass over the planet makes two extracts, both brought to the same
+# hourly diff: worldwide, the line relations and railway ways the tiles add to
+# the import database's railways, by id, without coordinates; and the box
+# around China and Japan with coordinates, for relations, routes, stations
+# and official lines.
+
 # and the checks (check-*: formatting, types, unit and end-to-end tests, the
 # scripts' tests), which the deploys of what they test come after.
 #
@@ -38,11 +36,6 @@ about = "OpenStreetMap's weekly planet file: the dated file planet-latest points
 probe = """
 basename "$(curl -sSfIL -o /dev/null -w '%{url_effective}' https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf)"
 """
-
-# Geofabrik cuts its regions daily and keeps each day's files about a week
-[sources.geofabrik]
-about = "Geofabrik's extracts of Asia and of Russia's Far East and Siberia: the date of the newest cut of all three"
-probe = "scripts/extract/geofabrik-date.sh asia russia/far-eastern-fed-district russia/siberian-fed-district"
 
 [sources.osm-diffs]
 about = "OpenStreetMap's hourly replication diffs: the latest sequence number"
@@ -88,49 +81,37 @@ keep = false
 # ── OpenStreetMap's railways ────────────────────────────
 
 [steps.planet-extract]
-about = "The railway objects of the weekly planet, worldwide, without coordinates: one pass over ~95 GB, about 30 minutes"
-cpus = 2
+about = "One pass over the weekly planet (~95 GB, ~25 min): its railway objects worldwide without coordinates, and with them in the box around China and Japan"
+# Two osmium commands read the stream at once; the checks may run beside it
+cpus = 3
 memory = 4
 run = """
-scripts/extract/filter-planet.sh "https://planet.openstreetmap.org/pbf/$SRC_PLANET" "$OUT/planet.osm.pbf"
+scripts/extract/filter-planet.sh "https://planet.openstreetmap.org/pbf/$SRC_PLANET" \
+  "$OUT/world.osm.pbf" "$OUT/box.osm.pbf" 72,16,147,55
 """
 files = ["scripts/extract/filter-planet.sh", "scripts/extract/meter.py", "scripts/extract/railway-extract.filter"]
 sources = ["planet"]
-outs = ["planet.osm.pbf"]
+outs = ["world.osm.pbf", "box.osm.pbf"]
 
 [steps.railway-extract]
 about = "The worldwide railway objects brought up to the pinned hourly diff: line relations and tagged ways as text, for the tiles"
 cpus = 2
 memory = 2
 run = """
-scripts/extract/update.sh "$BUILD/planet-extract/planet.osm.pbf" "$OUT/lines.osm.pbf" "$SRC_OSM_DIFFS"
+scripts/extract/update.sh "$BUILD/planet-extract/world.osm.pbf" "$OUT/lines.osm.pbf" "$SRC_OSM_DIFFS"
 osmium tags-filter "$OUT/lines.osm.pbf" r/route=railway w/tracks w/start_date w/opening_date -R -O -o "$OUT/tagged.osm.pbf"
 osmium cat "$OUT/tagged.osm.pbf" -f opl,add_metadata=false -O -o "$OUT/lines.opl"
 rm "$OUT/tagged.osm.pbf" "$OUT/lines.osm.pbf"
 """
 files = ["scripts/extract/update.sh", "scripts/extract/railway-extract.filter"]
 sources = ["osm-diffs"]
-needs = ["planet-extract/planet.osm.pbf"]
+needs = ["planet-extract/world.osm.pbf"]
 outs = ["lines.opl"]
 
-[steps.region-extract]
-about = "The railway objects of Asia and Russia's east with the coordinates of their nodes, from Geofabrik's extracts (17.5 GB)"
-cpus = 2
-memory = 2
-run = """
-d="$SRC_GEOFABRIK"
-g=https://download.geofabrik.de
-scripts/extract/filter-region.sh "$OUT/region.osm.pbf" "$g/asia-$d.osm.pbf" \
-  "$g/russia/far-eastern-fed-district-$d.osm.pbf" "$g/russia/siberian-fed-district-$d.osm.pbf"
-"""
-files = ["scripts/extract/filter-region.sh", "scripts/extract/meter.py", "scripts/extract/railway-extract.filter"]
-sources = ["geofabrik"]
-outs = ["region.osm.pbf"]
-
 [steps.box-extract]
-about = "The regional extract brought up to the pinned hourly diff and cut to China and Japan with what lies between"
+about = "The box extract brought up to the pinned hourly diff and cut to China and Japan with what lies between"
 run = """
-scripts/extract/update.sh "$BUILD/region-extract/region.osm.pbf" "$OUT/updated.osm.pbf" "$SRC_OSM_DIFFS"
+scripts/extract/update.sh "$BUILD/planet-extract/box.osm.pbf" "$OUT/updated.osm.pbf" "$SRC_OSM_DIFFS"
 ts="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "$OUT/updated.osm.pbf")"
 osmium extract -b 73,17,146,54 -s smart "$OUT/updated.osm.pbf" -O -o "$OUT/cnjp.osm.pbf" \
   --output-header="osmosis_replication_timestamp=$ts"
@@ -139,7 +120,7 @@ echo "$ts" > "$OUT/timestamp"
 """
 files = ["scripts/extract/update.sh", "scripts/extract/railway-extract.filter"]
 sources = ["osm-diffs"]
-needs = ["region-extract/region.osm.pbf"]
+needs = ["planet-extract/box.osm.pbf"]
 outs = ["cnjp.osm.pbf", "timestamp"]
 
 [steps.n02]

@@ -19,7 +19,7 @@ official lines (路線) from MLIT's railway data, 国土数値情報 N02 (`../li
 The build (`scripts/build`) runs these steps; by hand, they need curl, osmium, and Python 3
 with osmium (pyosmium), numpy and scipy (`nix-shell ../routing/shell.nix` has them, and
 `PYTHON="uv run --script"` makes `relations.sh` install them). From this directory, with the
-regional railway extract (`../extract/filter-region.sh`, here `lines.osm.pbf`):
+railway extract of the box around China and Japan (`../extract/filter-planet.sh`, here `lines.osm.pbf`):
 
 ```bash
 ../lines/fetch-n02.sh https://nlftp.mlit.go.jp/ksj/gml/data/N02/N02-25/N02-25_GML.zip n02

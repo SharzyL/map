@@ -29,7 +29,7 @@ database (`cr`), from which the Worker serves
 ## Running
 
 The build (`scripts/build`) runs these steps. By hand, from this directory,
-with the regional railway extract (`../extract/filter-region.sh`, here `lines.osm.pbf`), the timetable
+with the railway extract of the box around China and Japan (`../extract/filter-planet.sh`, here `lines.osm.pbf`), the timetable
 unpacked and exported (`../lltskb`: `an/`, `csv/`) and the station files
 (`../stations`: `cr-station-trains.csv`, `jp-station-codes.csv`):
 
