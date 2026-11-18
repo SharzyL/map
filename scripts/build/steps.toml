@@ -12,6 +12,9 @@
 #   image ─── tiles ──────────────────────────────────── deploy-tiles ───────┤
 #   this repository ───────────────────────────────────── deploy-worker ─────┘
 #
+# and the checks (check-*: formatting, types, unit and end-to-end tests, the
+# scripts' tests), which the deploys of what they test come after.
+#
 # In `files`, a directory stands for every file in it, and an exclusion's `*`
 # also crosses directories.
 
@@ -72,6 +75,8 @@ keep = false
 
 [steps.planet-extract]
 about = "The railway objects of the weekly planet: two passes over ~95 GB, about 80 minutes"
+cpus = 2
+memory = 4
 run = """
 scripts/extract/filter-planet.sh "https://planet.openstreetmap.org/pbf/$SRC_PLANET" "$OUT/planet.osm.pbf"
 """
@@ -81,6 +86,8 @@ outs = ["planet.osm.pbf"]
 
 [steps.railway-extract]
 about = "The railway extract brought up to the pinned hourly diff, and its line relations and tagged ways as text"
+cpus = 2
+memory = 2
 run = """
 scripts/extract/update.sh "$BUILD/planet-extract/planet.osm.pbf" "$OUT/lines.osm.pbf" "$SRC_OSM_DIFFS"
 osmium tags-filter "$OUT/lines.osm.pbf" r/route=railway w/tracks w/start_date w/opening_date -R -O -o "$OUT/tagged.osm.pbf"
@@ -112,6 +119,8 @@ outs = ["n02"]
 
 [steps.line-groups]
 about = "Japan's railway ways grouped into their official lines"
+cpus = 1
+memory = 4
 run = """
 N02_DIR="$BUILD/n02/n02" scripts/lines/line-groups.sh "$BUILD/railway-extract/lines.osm.pbf" "$OUT"
 """
@@ -121,6 +130,8 @@ outs = ["line_groups.csv", "line_group_ways.csv", "review.csv", "unmatched.csv"]
 
 [steps.relations]
 about = "Routes, lines, route masters and Japan's official lines as prefilled answers, for D1 (osm_relations)"
+cpus = 1
+memory = 5
 run = """
 N02_DIR="$BUILD/n02/n02" scripts/relations/relations.sh "$BUILD/box-extract/cnjp.osm.pbf" "$BUILD/line-groups" "$OUT/relations.sql"
 cp "$BUILD/railway-extract/timestamp" "$OUT/version"
@@ -193,6 +204,8 @@ outs = ["station-coords.csv"]
 
 [steps.routing-graph]
 about = "The routing graph of the extract: track, junctions, and where stations attach"
+cpus = 1
+memory = 4
 run = """
 cd scripts/routing
 python3 graph.py "$BUILD/box-extract/cnjp.osm.pbf" "$OUT/graph.pkl"
@@ -204,6 +217,8 @@ keep = false
 
 [steps.cr-routes]
 about = "The route of every China Railway run on OSM track, for D1 (route_cr_*), and what looked wrong on the way"
+cpus = 2
+memory = 10
 run = """
 cd scripts/routing
 ver="$(cat "$BUILD/lltskb/an/ver.txt")"
@@ -238,6 +253,8 @@ keep = false
 
 [steps.jp-hops]
 about = "Japan's OSM service routes cut into stop-to-stop hops, for D1 (jp_*)"
+cpus = 1
+memory = 4
 run = """
 cd scripts/routing
 ts="$(cat "$BUILD/railway-extract/timestamp")"
@@ -261,6 +278,8 @@ outs = ["jp.sql", "version"]
 
 [steps.tiles]
 about = "The railway tile archive, from the OpenRailwayMap import database and what the build adds to it"
+cpus = 4
+memory = 8
 run = """
 LINE_RELATIONS_OPL="$BUILD/railway-extract/lines.opl" LINE_GROUPS_DIR="$BUILD/line-groups" \
 CR_STATION_TRAINS="$BUILD/cr-station-trains/cr-station-trains.csv" \
@@ -280,6 +299,94 @@ needs = [
 outs = ["openrailwaymap.pmtiles"]
 keep = false
 
+# ── Checks ──────────────────────────────────────────────
+
+# The tests, each run again only when what it reads changed. Deploys come
+# after the checks of what they publish. They need the dependencies installed
+# (pnpm install; scripts/requirements.txt for the Python ones).
+
+[steps.check-format]
+about = "Everything in the repository is formatted (oxfmt)"
+run = "pnpm fmt:check"
+files = ["."]
+check = true
+
+[steps.check-lint]
+about = "The JavaScript and TypeScript pass the linter (oxlint)"
+run = "pnpm lint"
+files = ["."]
+check = true
+
+[steps.check-types]
+about = "The app and the Worker type-check"
+run = "pnpm typecheck"
+memory = 2
+files = ["src", "tsconfig.json", "vite.config.js", "vitest.config.js", "package.json", "pnpm-lock.yaml"]
+check = true
+
+[steps.check-unit]
+about = "Unit tests of the app, the Worker's API and the style scripts (vitest)"
+run = "pnpm test"
+cpus = 2
+memory = 2
+files = ["src", "scripts/styles", "public/orm", "vitest.config.js", "tsconfig.json", "package.json", "pnpm-lock.yaml"]
+check = true
+
+[steps.check-e2e]
+about = "End-to-end tests of the app in a browser (Playwright)"
+run = """
+if [ "${CI:-}" = "true" ]; then pnpm exec playwright install --with-deps chromium; fi
+pnpm test:e2e
+"""
+cpus = 2
+memory = 3
+files = [
+  "src",
+  "e2e",
+  "public",
+  "index.html",
+  "playwright.config.ts",
+  "vite.config.js",
+  "tsconfig.json",
+  "wrangler.toml",
+  "package.json",
+  "pnpm-lock.yaml",
+]
+check = true
+
+[steps.check-build]
+about = "Tests of the build runner itself"
+run = "python3 -m unittest discover -s scripts/build -p 'test_*.py'"
+files = ["scripts/build/build.py", "scripts/build/test_build.py"]
+check = true
+
+# The lltskb and routing tests also hold the Worker's SQL fixtures to what the
+# scripts write
+[steps.check-lltskb]
+about = "Tests of the timetable scripts"
+run = "python3 -m unittest discover -s scripts/lltskb -p 'test_*.py'"
+files = ["scripts/lltskb", "src/worker/api/fixtures", "!scripts/lltskb/*.md"]
+check = true
+
+[steps.check-relations]
+about = "Tests of the relations scripts"
+run = "python3 -m unittest discover -s scripts/relations -p 'test_*.py'"
+files = ["scripts/relations", "!scripts/relations/*.md"]
+check = true
+
+[steps.check-routing]
+about = "Tests of the routing scripts"
+run = "python3 -m unittest discover -s scripts/routing -p 'test_*.py'"
+files = [
+  "scripts/routing",
+  "scripts/stations/cr-station-trains.py",
+  "src/worker/api/fixtures",
+  "!scripts/routing/*.md",
+  "!scripts/routing/*.html",
+  "!scripts/routing/*.nix",
+]
+check = true
+
 # ── Deploys ─────────────────────────────────────────────
 
 [steps.deploy-timetable]
@@ -294,6 +401,7 @@ files = [
   "wrangler.toml",
 ]
 needs = ["cr-timetable/cr.sql", "cr-timetable/version"]
+after = ["check-lltskb"]
 deploy = true
 
 [steps.deploy-relations]
@@ -303,6 +411,7 @@ scripts/build/d1-import.sh "$BUILD/relations/relations.sql" scripts/relations/re
 """
 files = ["scripts/build/d1-import.sh", "scripts/relations/relations_sql.py", "wrangler.toml"]
 needs = ["relations/relations.sql", "relations/version"]
+after = ["check-relations"]
 deploy = true
 
 # One import for both: their old tables are dropped together, by timetable
@@ -316,7 +425,7 @@ scripts/build/d1-import.sh "$OUT/routes.sql" scripts/routing/export_d1.py "$ver"
 """
 files = ["scripts/build/d1-import.sh", "scripts/routing/export_d1.py", "wrangler.toml"]
 needs = ["cr-routes/cr-routes.sql", "cr-routes/version", "jp-hops/jp.sql", "jp-hops/version"]
-after = ["deploy-timetable"]
+after = ["deploy-timetable", "check-routing"]
 deploy = true
 
 [steps.deploy-tiles]
@@ -328,7 +437,8 @@ aws s3 cp "$BUILD/tiles/openrailwaymap.pmtiles" s3://orm/openrailwaymap.pmtiles 
 needs = ["tiles/openrailwaymap.pmtiles"]
 deploy = true
 
-# Last: the Worker's code may read what the deploys before it publish
+# Last: the Worker's code may read what the deploys before it publish, and
+# goes out only when every check of the app passed
 [steps.deploy-worker]
 about = "Build the app and deploy the Worker, with the station files it bundles"
 run = """
@@ -349,5 +459,16 @@ files = [
   "!src/worker/api/fixtures/*",
 ]
 needs = ["jp-station-codes/jp-station-codes.csv", "station-coords/station-coords.csv"]
-after = ["deploy-timetable", "deploy-relations", "deploy-routes", "deploy-tiles"]
+after = [
+  "deploy-timetable",
+  "deploy-relations",
+  "deploy-routes",
+  "deploy-tiles",
+  "check-format",
+  "check-lint",
+  "check-types",
+  "check-unit",
+  "check-e2e",
+  "check-build",
+]
 deploy = true

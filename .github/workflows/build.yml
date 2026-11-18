@@ -1,7 +1,8 @@
 name: Build
 
-# Brings the map's data and the Worker up to date and deploys what changed
-# (scripts/build/build.py, steps in scripts/build/steps.toml):
+# Brings the map's data and the Worker up to date, runs the checks of what
+# changed, and deploys (scripts/build/build.py, steps in
+# scripts/build/steps.toml; steps run together where the runner holds them):
 #
 # - on a push to main, with the data sources as pinned, so only what the
 #   commit touched is rebuilt;
@@ -54,12 +55,8 @@ permissions:
   actions: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yml
-
   build:
-    name: Build and deploy
-    needs: test
+    name: Build, check and deploy
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
@@ -129,6 +126,16 @@ jobs:
           if [ "${DEPLOY}" = "true" ]; then args+=(--deploy); fi
           # shellcheck disable=SC2086
           python3 scripts/build/build.py run ${TARGETS} "${args[@]}"
+
+      # Traces, videos and screenshots of failed end-to-end tests
+      - name: Upload the end-to-end tests' results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
       # The matched stations and the official lines' review, to look at or to
       # run the app with locally

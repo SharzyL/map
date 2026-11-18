@@ -1,10 +1,12 @@
 name: Test
 
-# On pull requests, and from the Build workflow before it builds or deploys.
+# The checks of the build (scripts/build/steps.toml: formatting, the linter,
+# types, unit and end-to-end tests, the data scripts' tests) on pull requests.
+# Pushes to main run them in the Build workflow, where each one runs only when
+# what it reads changed; here there is no state to tell, so all of them run.
 on:
   pull_request:
     branches: [main]
-  workflow_call:
 
 jobs:
   test:
@@ -21,26 +23,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm fmt:check
-
-      - run: pnpm lint
-
-      - run: pnpm typecheck
-
-      - run: pnpm test
-
-      # The data scripts (scripts/*/test_*.py) and the build runner
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - run: pip install -q -r scripts/requirements.txt
 
-      - run: ./scripts/test-python.sh
-
-      - run: pnpm exec playwright install --with-deps chromium
-
-      - run: pnpm test:e2e
+      - run: python3 scripts/build/build.py run --checks
 
       # Traces, videos and screenshots of failed attempts, flaky ones included
       # (passing tests leave nothing behind).

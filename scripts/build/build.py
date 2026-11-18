@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Builds the map's data and deploys what changed.
 
-Usage: build.py plan [target ...] [--refresh SOURCES]
-       build.py run [target ...] [--refresh SOURCES] [--force STEPS] [--deploy]
+Usage: build.py plan [target ...] [--checks] [--refresh SOURCES]
+       build.py run [target ...] [--checks] [--refresh SOURCES] [--force STEPS]
+                    [--deploy] [--cpus N] [--memory GB]
        build.py prune
        build.py adopt step ...
 
@@ -10,7 +11,8 @@ The steps are declared in steps.toml next to this script. A step runs a
 command that writes its outputs into a directory of its own, and names
 everything the command reads:
 
-  files    files of this repository (glob patterns, `!pattern` excludes)
+  files    files of this repository (glob patterns, `!pattern` excludes;
+           only files git tracks or would add count)
   sources  data from outside (a timetable, the OSM planet, ...), by name
   needs    outputs of other steps, as "step/output"
 
@@ -24,9 +26,14 @@ the sources again (`all`, or names; a source without a probe changes only when
 named). So a build after a commit rebuilds what the commit touched, and a
 scheduled build with --refresh all what changed outside.
 
+Steps marked `check` write no output either: they are the tests (formatting,
+types, unit and end-to-end tests), up to date like any step while what they
+read is unchanged, so a test runs again only when its files changed.
+
 Steps marked `deploy` write no output: they publish (import into D1, upload
 to R2, deploy the Worker) and run only with --deploy, after the steps listed
-in their `after`. When one of those cannot be brought up to date, the deploy
+in their `after`: the deploys before them, and the checks of what they
+publish. When one of those cannot be brought up to date, the deploy
 waits, unless only data from outside holds it back (its command and files are
 the ones it was last built with): then what is deployed still fits the code.
 
@@ -37,6 +44,13 @@ lost CI cache, runs again only when a step that has to run reads them. With
 BUILD_REMOTE set (s3://bucket/prefix, or a directory) the state is read from
 there and written back after every step, with a copy per run under runs/, and
 a step's `store` files (what it keeps between runs) are kept there too.
+
+Steps run several at a time: one starts as soon as the steps it needs or
+comes after are done and the machine holds it. A step says what it takes with
+`cpus` and `memory` (GB; 1 each when unsaid), and the steps running together
+stay within --cpus and --memory (the machine's own by default); a step that
+takes more than that runs alone, and deploys go one at a time. Every line a
+step prints is passed on with the step's name in front.
 
 A command runs from the repository root under `bash -euo pipefail` with:
 
@@ -61,10 +75,12 @@ import fnmatch
 import hashlib
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 from pathlib import Path
@@ -73,10 +89,18 @@ HERE = Path(__file__).resolve().parent
 STATE_VERSION = 1
 # A step file may only use these keys, so a typo is an error
 SOURCE_KEYS = {'about', 'probe'}
-STEP_KEYS = {'about', 'run', 'files', 'sources', 'needs', 'after', 'outs', 'store', 'deploy', 'keep'}
+STEP_KEYS = {
+    *('about', 'run', 'files', 'sources', 'needs', 'after', 'outs', 'store'),
+    *('deploy', 'check', 'keep', 'cpus', 'memory'),
+}
 LOG_TAIL = 30
-# Passes over the steps: one more is made when rebuilding lost outputs changed them
-MAX_PASSES = 5
+# Reasons for running a step shown in a line; the state has them all
+MAX_REASONS = 3
+# How a step that ran well is reported, by kind
+RAN = {'build': 'built', 'check': 'passed', 'deploy': 'deployed'}
+# Times a step is run again for lost outputs before its outputs are taken to
+# differ every time
+MAX_REBUILDS = 3
 
 
 class BuildError(Exception):
@@ -102,7 +126,14 @@ class Step:
     outs: tuple[str, ...]
     store: tuple[str, ...]
     deploy: bool
+    check: bool
     keep: bool
+    cpus: float
+    memory: float  # GB
+
+    @property
+    def kind(self) -> str:
+        return 'deploy' if self.deploy else 'check' if self.check else 'build'
 
     @property
     def upstream(self) -> list[str]:
@@ -169,7 +200,10 @@ def load_steps(path: Path) -> tuple[dict[str, Source], dict[str, Step]]:
             outs=tuple(entry.get('outs', [])),
             store=tuple(entry.get('store', [])),
             deploy=entry.get('deploy', False),
+            check=entry.get('check', False),
             keep=entry.get('keep', True),
+            cpus=entry.get('cpus', 1),
+            memory=entry.get('memory', 1),
         )
     check_steps(sources, steps)
     return sources, steps
@@ -178,10 +212,12 @@ def load_steps(path: Path) -> tuple[dict[str, Source], dict[str, Step]]:
 def check_steps(sources: dict[str, Source], steps: dict[str, Step]) -> None:
     for step in steps.values():
         where = f'step {step.name}'
-        if step.deploy and step.outs:
-            raise BuildError(f'{where}: a deploy step has no outputs')
-        if not step.deploy and not step.outs:
-            raise BuildError(f'{where}: no outputs (only deploy steps have none)')
+        if step.deploy and step.check:
+            raise BuildError(f'{where}: a step is a deploy or a check, not both')
+        if (step.deploy or step.check) and step.outs:
+            raise BuildError(f'{where}: a {step.kind} step has no outputs')
+        if step.kind == 'build' and not step.outs:
+            raise BuildError(f'{where}: no outputs (only deploy and check steps have none)')
         for source in step.sources:
             if source not in sources:
                 raise BuildError(f'{where}: unknown source {source!r}')
@@ -290,6 +326,7 @@ class Build:
         self.state_file = build_dir / 'state.json'
         self.state: dict = {'version': STATE_VERSION, 'sources': {}, 'steps': {}}
         self._file_hashes: dict[str, str] = {}
+        self._repository_files: list[str] | bool | None = None
 
     # State
 
@@ -314,7 +351,10 @@ class Build:
                     'needs': [f'{step}/{out}' for step, out in s.needs],
                     'after': list(s.after),
                     'outs': list(s.outs),
+                    'kind': s.kind,
                     'deploy': s.deploy,
+                    'cpus': s.cpus,
+                    'memory': s.memory,
                 }
                 for s in self.steps.values()
             },
@@ -342,9 +382,11 @@ class Build:
             return None
         return version
 
-    def refresh(self, names: list[str]) -> None:
+    def refresh(self, names: list[str], targets: list[str] | None = None) -> None:
         """Probes the named sources (`all`: every source with a probe) and
-        the ones never pinned, and pins what they answer"""
+        the ones never pinned that the targets' steps read, and pins what
+        they answer"""
+        read = {source for name in self.order(targets or []) for source in self.steps[name].sources}
         chosen = set()
         for name in names:
             if name == 'all':
@@ -356,7 +398,7 @@ class Build:
         pins = self.state['sources']
         for source in self.sources.values():
             pin = pins.get(source.name)
-            if pin is not None and source.name not in chosen:
+            if source.name not in chosen and (pin is not None or source.name not in read):
                 continue
             if pin is None and source.probe is None and source.name not in chosen:
                 # A source without a probe starts at a fixed version
@@ -377,19 +419,39 @@ class Build:
 
     # What a step reads
 
+    def repository_files(self) -> list[str] | None:
+        """The files git tracks or would add (so nothing ignored: node_modules,
+        build outputs, caches), or None when the root is not in a repository"""
+        if self._repository_files is None:
+            result = subprocess.run(
+                ['git', '-C', str(self.root), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+                capture_output=True,
+                text=True,
+            )
+            self._repository_files = sorted(filter(None, result.stdout.split('\0'))) if result.returncode == 0 else False
+        return self._repository_files or None
+
     def step_files(self, step: Step) -> dict[str, str]:
         """The repository files matching the step's patterns, with their hashes"""
         excluded = [p[1:] for p in step.files if p.startswith('!')]
+        known = self.repository_files()
         found: dict[str, str] = {}
         for pattern in step.files:
             if pattern.startswith('!'):
                 continue
             matched = False
-            for path in sorted(self.root.glob(pattern)):
-                if path.is_dir():
-                    paths = sorted(p for p in path.rglob('*') if p.is_file())
-                else:
+            for path in [self.root] if pattern == '.' else sorted(self.root.glob(pattern)):
+                if not path.is_dir():
                     paths = [path]
+                elif known is None:
+                    # Not a repository: everything but git's and the build's own
+                    own = (self.root / '.git', self.dir)
+                    paths = sorted(
+                        p for p in path.rglob('*') if p.is_file() and not any(p.is_relative_to(d) for d in own)
+                    )
+                else:
+                    inside = '' if path == self.root else path.relative_to(self.root).as_posix() + '/'
+                    paths = [self.root / rel for rel in known if rel.startswith(inside) and (self.root / rel).is_file()]
                 for p in paths:
                     rel = p.relative_to(self.root).as_posix()
                     if '__pycache__' in p.parts or any(fnmatch.fnmatch(rel, e) for e in excluded):
@@ -537,61 +599,110 @@ class Build:
 
 
 class Runner:
-    def __init__(self, build: Build, deploy: bool, force: set[str]) -> None:
+    """Runs the steps that are not up to date, several at a time where their
+    dependencies allow and the machine's CPUs and memory hold them (each step
+    says what it takes; deploys go one at a time). One thread per running step
+    reads its output; everything else happens on the caller's thread."""
+
+    def __init__(self, build: Build, deploy: bool, force: set[str], cpus: float, memory: float) -> None:
         self.build = build
         self.deploy = deploy
         self.force = set(force)
-        self.results: dict[str, tuple[str, str]] = {}  # step → (outcome, detail)
-        self.failed: set[str] = set()
+        self.cpus = cpus
+        self.memory = memory
+        self.results: dict[str, tuple[str, str]] = {}  # settled steps → (outcome, detail)
         self.ran: set[str] = set()
-        # Per pass: whether each step seen could be brought up to date
-        self.seen: dict[str, bool] = {}
+        self.results_before: dict[str, str] = {}  # what a step built in this run was built for
+        self.running: dict[str, dict] = {}
+        # Up-to-date steps to run again for outputs that are gone → why
+        self.wanted: dict[str, str] = {}
+        self.rebuilt: dict[str, int] = {}
         # Outputs found in the build directory as recorded
         self.present: set[tuple[str, str]] = set()
-        self.another_pass = False
+        self.events: queue.Queue = queue.Queue()
+        self.output = threading.Lock()
+        self.width = 0
 
     def run(self, targets: list[str]) -> bool:
         order = self.build.order(targets)
-        for _ in range(MAX_PASSES):
-            self.another_pass = False
-            self.seen = {}
-            self.results = {n: r for n, r in self.results.items() if r[0] in ('built', 'failed')}
-            for name in order:
-                self.ensure(name)
-            if not self.another_pass:
-                break
-        else:
-            raise BuildError('outputs keep changing when rebuilt; some step is not reproducible')
+        self.width = max((len(name) for name in order), default=0)
+        try:
+            while True:
+                moved = self.schedule(order)
+                if self.running:
+                    self.finish(*self.events.get())
+                elif not moved:
+                    break
+        finally:
+            for job in self.running.values():
+                job['process'].kill()
         self.results = {name: self.results[name] for name in order if name in self.results}
-        return not self.failed
+        return not any(outcome == 'failed' for outcome, _ in self.results.values())
 
-    def ensure(self, name: str) -> bool:
-        """Brings the step up to date; False when it could not be"""
-        if name not in self.seen:
-            self.seen[name] = False  # until known
-            self.seen[name] = self.bring_up_to_date(self.build.steps[name])
-        return self.seen[name]
+    def say(self, name: str, text: str) -> None:
+        with self.output:
+            print(f'{name:<{self.width}} | {text}', flush=True)
 
-    def bring_up_to_date(self, step: Step) -> bool:
+    # Deciding
+
+    def schedule(self, order: list[str]) -> bool:
+        """Settles the steps whose fate is known and starts those that can
+        run; True when anything changed"""
         build = self.build
-        if step.name in self.failed:
+        moved = False
+        for name in order:
+            if name in self.results or name in self.running:
+                continue
+            step = build.steps[name]
+            if any(other not in self.results for other in step.upstream):
+                continue
+            stuck = [other for other in step.upstream if self.results[other][0] in ('failed', 'blocked')]
+            # A deploy does not wait for one held back by data from outside alone
+            needed = {other for other, _ in step.needs}
+            stuck = [other for other in stuck if other in needed or not self.held_back_from_outside(other)]
+            if stuck:
+                self.results[name] = ('blocked', 'needs ' + ', '.join(stuck))
+                moved = True
+                continue
+            reasons = ['forced'] if name in self.force else []
+            reasons += [self.wanted[name]] if name in self.wanted else []
+            reasons += build.reasons(step, build.inputs(step))
+            if not reasons:
+                self.results[name] = (RAN[step.kind], self.results_before[name]) if name in self.ran else ('up to date', '')
+                moved = True
+                continue
+            if step.deploy and not self.deploy:
+                self.results[name] = ('not deployed', told(reasons))
+                moved = True
+                continue
+            # Its inputs must be there as recorded; the steps that made the
+            # ones that are not run again first
+            gone = [(other, out) for other, out in step.needs if not self.input_present(other, out)]
+            if gone:
+                for other, out in gone:
+                    self.rebuilt[other] = self.rebuilt.get(other, 0) + 1
+                    if self.rebuilt[other] > MAX_REBUILDS:
+                        raise BuildError(f'the outputs of {other} keep changing when rebuilt; it is not reproducible')
+                    self.wanted[other] = f'its output {out} is gone and {name} reads it'
+                    del self.results[other]
+                moved = True
+                continue
+            if self.fits(step):
+                self.start(step, reasons)
+                moved = True
+        return moved
+
+    def fits(self, step: Step) -> bool:
+        # Never while a step reading its outputs runs: they are replaced whole
+        if any(step.name in {other for other, _ in self.build.steps[r].needs} for r in self.running):
             return False
-        blocked = [other for other in step.upstream if not self.ensure(other)]
-        # A deploy does not wait for one held back by data from outside alone
-        needed = {other for other, _ in step.needs}
-        blocked = [other for other in blocked if other in needed or not self.held_back_from_outside(other)]
-        if blocked:
-            self.results[step.name] = ('blocked', 'needs ' + ', '.join(blocked))
+        if not self.running:
+            return True  # alone, whatever it takes
+        if step.deploy and any(self.build.steps[r].deploy for r in self.running):
             return False
-        reasons = ['forced'] if step.name in self.force else []
-        reasons += build.reasons(step, build.inputs(step))
-        if not reasons:
-            self.results.setdefault(step.name, ('up to date', ''))
-            return True
-        if step.deploy and not self.deploy:
-            self.results[step.name] = ('not deployed', '; '.join(reasons))
-            return True
-        return self.execute(step, reasons)
+        cpus = sum(self.build.steps[r].cpus for r in self.running)
+        memory = sum(self.build.steps[r].memory for r in self.running)
+        return cpus + step.cpus <= self.cpus and memory + step.memory <= self.memory
 
     def held_back_from_outside(self, name: str) -> bool:
         """Whether the step, and every step before it that could not be brought
@@ -604,23 +715,21 @@ class Runner:
             return False
         if record['inputs']['run'] != step.run or record['inputs']['files'] != build.step_files(step):
             return False
-        return all(self.seen.get(other, True) or self.held_back_from_outside(other) for other in step.upstream)
+        failing = [other for other in step.upstream if self.results.get(other, ('',))[0] in ('failed', 'blocked')]
+        return all(self.held_back_from_outside(other) for other in failing)
 
     def input_present(self, step: str, out: str) -> bool:
         if (step, out) not in self.present and self.build.output_present(step, out):
             self.present.add((step, out))
         return (step, out) in self.present
 
-    def execute(self, step: Step, reasons: list[str]) -> bool:
+    # Running
+
+    def start(self, step: Step, reasons: list[str]) -> None:
         build = self.build
-        # Its inputs must be there as recorded; rebuild the ones that are not
-        for other, out in step.needs:
-            if not self.input_present(other, out) and not self.rebuild(build.steps[other], f'{step.name} reads its {out}'):
-                self.results[step.name] = ('blocked', f'needs {other}')
-                return False
         inputs = build.inputs(step)
-        fingerprint = digest_json(inputs)
         self.force.discard(step.name)
+        self.wanted.pop(step.name, None)
 
         tmp = build.dir / 'tmp' / step.name
         shutil.rmtree(tmp, ignore_errors=True)
@@ -640,10 +749,7 @@ class Runner:
         started = now()
         record['attempt'] = {'status': 'running', 'at': started, 'run': run_info(), 'reasons': reasons}
         build.save_state()
-        group = os.environ.get('GITHUB_ACTIONS') == 'true'
-        print(f'{"::group::" if group else "── "}{step.name}: {"; ".join(reasons)}', flush=True)
-        clock = time.monotonic()
-        tail: list[str] = []
+        self.say(step.name, f'── starts: {told(reasons)}')
         process = subprocess.Popen(
             ['bash', '-euo', 'pipefail', '-c', step.run],
             cwd=build.root,
@@ -653,67 +759,89 @@ class Runner:
             text=True,
             errors='replace',
         )
+        job = {'process': process, 'inputs': inputs, 'reasons': reasons, 'started': started, 'store': store, 'tmp': tmp}
+        self.running[step.name] = job
+        threading.Thread(target=self.follow, args=(step.name, process), daemon=True).start()
+
+    def follow(self, name: str, process: subprocess.Popen) -> None:
+        """A running step's thread: passes its output on, then says it ended"""
+        clock = time.monotonic()
+        tail: list[str] = []
         assert process.stdout is not None
         with process.stdout:
             for line in process.stdout:
-                sys.stdout.write(line)
-                sys.stdout.flush()
+                self.say(name, line.rstrip('\n'))
                 tail = [*tail[-(LOG_TAIL - 1) :], line.rstrip('\n')]
         code = process.wait()
-        duration = round(time.monotonic() - clock, 1)
+        self.events.put((name, code, round(time.monotonic() - clock, 1), tail))
+
+    def finish(self, name: str, code: int, duration: float, tail: list[str]) -> None:
+        build = self.build
+        step = build.steps[name]
+        job = self.running.pop(name)
+        tmp = job['tmp']
+        record = build.state['steps'][name]
+        attempt = record['attempt']
+        attempt['duration_s'] = duration
         error = f'exit code {code}' if code else None
         missing = [out for out in step.outs if not (tmp / out).exists()]
         if not error and missing:
             error = 'did not write ' + ', '.join(missing)
-        if group:
-            print('::endgroup::', flush=True)
-
-        attempt = record['attempt']
-        attempt['duration_s'] = duration
         if error:
             # The outputs of the last good build stay
             attempt.update(status='failed', error=error, log_tail=tail)
             shutil.rmtree(tmp, ignore_errors=True)
             build.save_state()
-            print(f'✗ {step.name} failed after {duration} s: {error}', flush=True)
-            self.failed.add(step.name)
-            self.results[step.name] = ('failed', error)
-            return False
+            self.say(name, f'✗ failed after {duration} s: {error}')
+            self.results[name] = ('failed', error)
+            return
 
+        before = record.get('outputs')
         outputs = {out: build.describe_output(tmp / out) for out in step.outs}
         if step.outs:
-            target = build.out / step.name
+            target = build.out / name
             shutil.rmtree(target, ignore_errors=True)
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp.replace(target)
         else:
             shutil.rmtree(tmp, ignore_errors=True)
         if build.remote:
-            for name in store:
-                if (build.store / name).exists():
-                    build.remote.put(build.store / name, f'store/{name}')
-        changed = record.get('outputs') != outputs
+            for stored in job['store']:
+                if (build.store / stored).exists():
+                    build.remote.put(build.store / stored, f'store/{stored}')
         attempt['status'] = 'ok'
-        record.update(fingerprint=fingerprint, inputs=inputs, outputs=outputs, built_at=started, duration_s=duration)
+        record.update(
+            fingerprint=digest_json(job['inputs']),
+            inputs=job['inputs'],
+            outputs=outputs,
+            built_at=job['started'],
+            duration_s=duration,
+        )
         build.save_state()
         size = sum(o['size'] for o in outputs.values())
-        print(f'✓ {step.name} in {duration} s' + (f', {size:,} bytes' if step.outs else ''), flush=True)
-        self.ran.add(step.name)
-        self.present = {(other, out) for other, out in self.present if other != step.name}
-        self.results[step.name] = ('built', '; '.join(reasons) + ('' if changed or step.deploy else ' (output unchanged)'))
-        return True
+        self.say(name, f'✓ done in {duration} s' + (f', {size:,} bytes' if step.outs else ''))
+        self.ran.add(name)
+        self.present = {(other, out) for other, out in self.present if other != name}
+        unchanged = bool(step.outs) and before == outputs
+        self.results[name] = (RAN[step.kind], told(job['reasons']) + (' (output unchanged)' if unchanged else ''))
+        self.results_before[name] = self.results[name][1]
+        if before is not None and before != outputs:
+            # Steps settled on what it wrote before are looked at again
+            for other in self.readers(name):
+                if self.results.get(other, ('',))[0] in ('up to date', *RAN.values()):
+                    del self.results[other]
 
-    def rebuild(self, step: Step, why: str) -> bool:
-        """Runs an up-to-date step again for its lost outputs"""
-        if step.name in self.failed:
-            return False
-        before = self.build.state['steps'].get(step.name, {}).get('outputs')
-        if not self.execute(step, [f'its output is gone and {why}']):
-            return False
-        if self.build.state['steps'][step.name]['outputs'] != before:
-            # Not the output it had: the steps reading it are to be looked at again
-            self.another_pass = True
-        return True
+    def readers(self, name: str) -> set[str]:
+        """Every step that reads the step's outputs, directly or through others"""
+        found: set[str] = set()
+        queue_ = [name]
+        while queue_:
+            current = queue_.pop()
+            for step in self.build.steps.values():
+                if step.name not in found and current in {other for other, _ in step.needs}:
+                    found.add(step.name)
+                    queue_.append(step.name)
+        return found
 
 
 def run_info() -> dict | None:
@@ -734,6 +862,22 @@ def run_info() -> dict | None:
 # ── Commands ────────────────────────────────────────────
 
 
+def machine_memory() -> float:
+    """The machine's memory in GB (8 where it cannot be told)"""
+    try:
+        with open('/proc/meminfo') as f:
+            return round(int(re.search(r'MemTotal:\s+(\d+) kB', f.read())[1]) / 1e6, 1)
+    except (OSError, TypeError):
+        return 8.0
+
+
+def told(reasons: list[str]) -> str:
+    """The reasons in a line; the first few when there are many"""
+    if len(reasons) <= MAX_REASONS:
+        return '; '.join(reasons)
+    return '; '.join(reasons[:MAX_REASONS]) + f'; and {len(reasons) - MAX_REASONS} more'
+
+
 def split(values: list[str] | None) -> list[str]:
     return [v for value in values or [] for v in value.replace(',', ' ').split()]
 
@@ -743,8 +887,7 @@ def print_plan(build: Build, plan: dict[str, list[str]]) -> None:
         print('Everything is up to date.')
         return
     for name, reasons in plan.items():
-        kind = 'deploy' if build.steps[name].deploy else 'build'
-        print(f'{kind:6} {name}: {"; ".join(reasons)}')
+        print(f'{build.steps[name].kind:6} {name}: {told(reasons)}')
 
 
 def summary(build: Build, runner: Runner, started: str) -> str:
@@ -775,7 +918,11 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument('targets', nargs='*', help='steps to bring up to date (default: all)')
         command.add_argument('--refresh', action='append', help='sources to probe again: names, or all')
         command.add_argument('--force', action='append', help='steps to run even if up to date')
-    commands.choices['run'].add_argument('--deploy', action='store_true', help='run the deploy steps too')
+        command.add_argument('--checks', action='store_true', help='the check steps (with any targets named)')
+    run = commands.choices['run']
+    run.add_argument('--deploy', action='store_true', help='run the deploy steps too')
+    run.add_argument('--cpus', type=float, default=os.cpu_count() or 1, help='CPUs steps may take together')
+    run.add_argument('--memory', type=float, default=machine_memory(), help='GB of memory they may take together')
     commands.add_parser('prune')
     commands.add_parser('adopt').add_argument('names', nargs='+', metavar='step')
     args = parser.parse_args(argv)
@@ -811,15 +958,18 @@ def main(argv: list[str] | None = None) -> int:
         for name in force:
             if name not in build.steps:
                 raise BuildError(f'unknown step {name!r}')
-        build.refresh(split(args.refresh))
+        targets = args.targets
+        if args.checks:
+            targets = [s.name for s in build.steps.values() if s.check] + targets
+        build.refresh(split(args.refresh), targets)
         if args.command == 'plan':
             # Nothing is written: the pins a plan refreshed are for the plan only
-            print_plan(build, build.plan(args.targets, force))
+            print_plan(build, build.plan(targets, force))
             return 0
 
         build.save_state()
-        runner = Runner(build, args.deploy, force)
-        ok = runner.run(args.targets)
+        runner = Runner(build, args.deploy, force, args.cpus, args.memory)
+        ok = runner.run(targets)
         text = summary(build, runner, started)
         print('\n' + text)
         if os.environ.get('GITHUB_STEP_SUMMARY'):

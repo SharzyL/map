@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -69,6 +70,8 @@ class BuildTest(unittest.TestCase):
     def build(self, *args: str) -> tuple[int, str]:
         """Runs build.py; its exit code and output, and the steps it ran in self.ran"""
         (self.root / 'runs').unlink(missing_ok=True)
+        if args[0] == 'run' and '--cpus' not in args:
+            args = (*args, '--cpus', '1')  # one step at a time, so in a known order
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
             code = build.main(['--steps', str(self.root / 'steps.toml'), '--root', str(self.root), *args])
@@ -248,7 +251,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual((self.remote / 'store' / 'count.txt').read_text(), 'x\n')
         self.assertEqual((self.remote / 'store' / 'feed' / '1' / 'data').read_text(), '1\n')
         report = json.loads((self.remote / 'runs' / '42.json').read_text())
-        self.assertEqual((report['ok'], report['steps']['publish']['outcome']), (True, 'built'))
+        self.assertEqual((report['ok'], report['steps']['publish']['outcome']), (True, 'deployed'))
         state = json.loads((self.remote / 'state.json').read_text())
         self.assertEqual(state['graph']['steps']['joined']['needs'], ['upper/upper.txt'])
         self.assertEqual(state['steps']['joined']['attempt']['run']['id'], '42')
@@ -308,6 +311,76 @@ class BuildTest(unittest.TestCase):
             shutil.rmtree(self.root / '.build')
             code, _ = self.build('run', '--deploy')
             self.assertEqual((code, self.ran), (0, []))
+
+    def test_steps_run_together_within_the_machine(self) -> None:
+        # Each step ends only once it has seen the other start
+        meet = 'touch {me}.started; for i in $(seq 40); do [ -e {other}.started ] && exit 0; sleep 0.05; done; exit 1'
+        steps = """
+            [steps.a]
+            run = "({a}); touch $OUT/a"
+            outs = ["a"]
+
+            [steps.b]
+            run = "({b}); touch $OUT/b"
+            outs = ["b"]
+            memory = 3
+            """.format(a=meet.format(me='a', other='b'), b=meet.format(me='b', other='a'))
+        self.write('steps.toml', steps)
+        code, output = self.build('run', '--cpus', '2', '--memory', '4')
+        self.assertEqual(code, 0, output)
+        self.assertIn('a | ── starts: never built', output)
+        self.assertIn('b | ✓ done in', output)
+        # One at a time when the CPUs, or the memory, hold only one
+        for limits in (('--cpus', '1', '--memory', '4'), ('--cpus', '2', '--memory', '3')):
+            for name in ('a.started', 'b.started'):
+                (self.root / name).unlink()
+            code, _ = self.build('run', '--force', 'a,b', *limits)
+            self.assertEqual(code, 1)
+
+    def test_deploys_run_one_at_a_time(self) -> None:
+        alone = '[ ! -e deploying ]; touch deploying; sleep 0.2; rm deploying'
+        self.write(
+            'steps.toml',
+            f"""
+            [steps.first]
+            run = "{alone}"
+            deploy = true
+
+            [steps.second]
+            run = "{alone}"
+            deploy = true
+            """,
+        )
+        code, output = self.build('run', '--deploy', '--cpus', '4')
+        self.assertEqual(code, 0, output)
+
+    def test_checks_run_when_their_files_change_and_hold_deploys(self) -> None:
+        steps = STEPS + """
+            [steps.tested]
+            run = "echo tested >> runs; ! grep -q broken text.txt"
+            files = ["text.txt"]
+            check = true
+            """
+        steps = steps.replace('after = ["publish"]', 'after = ["publish", "tested"]')
+        self.write('steps.toml', steps)
+        code, output = self.build('plan', '--checks')
+        self.assertEqual(output, 'check  tested: never built\n')
+        self.build('run', '--checks')
+        self.assertEqual(self.ran, ['tested'])
+        # Checks need no --deploy, and pass once for the files they read
+        self.build('run', '--deploy')
+        self.assertEqual(self.ran, ['upper', 'joined', 'publish', 'announce'])
+        self.write('notes.txt', 'new\n')
+        self.build('run', '--deploy')
+        self.assertEqual(self.ran, ['upper', 'announce'])
+        # A failing check holds the deploy that comes after it, not the build
+        self.write('text.txt', 'broken\n')
+        self.write('notes.txt', 'newer\n')
+        code, output = self.build('run', '--deploy')
+        self.assertEqual((code, self.ran), (1, ['upper', 'joined', 'publish', 'tested']))
+        self.assertIn('| tested | failed |', output)
+        self.assertIn('| announce | blocked |  |  | needs tested |', output)
+        self.assertEqual(self.state()['graph']['steps']['tested']['kind'], 'check')
 
     def test_prune_removes_outputs_not_kept_once_read(self) -> None:
         self.write('steps.toml', STEPS.replace('[steps.joined]', '[steps.joined]\nkeep = false'))
@@ -380,6 +453,7 @@ class BuildTest(unittest.TestCase):
             'unknown source': STEPS.replace('sources = ["feed", "manual"]', 'sources = ["feed", "manual", "x"]'),
             'depend on each other': STEPS.replace('files = ["text.txt", "notes.txt"]', 'after = ["announce"]'),
             'a deploy step has no outputs': STEPS.replace('after = ["publish"]', 'outs = ["x"]'),
+            'a deploy or a check, not both': STEPS.replace('after = ["publish"]', 'check = true'),
             "'missing.txt' matches no file": STEPS.replace('files = ["notes.txt"]', 'files = ["missing.txt"]'),
         }
         for message, steps in cases.items():
@@ -409,6 +483,30 @@ class BuildTest(unittest.TestCase):
         self.write('src/a.py', 'b\n')
         self.build('run')
         self.assertEqual(self.ran, ['code'])
+
+    def test_whole_repository_as_a_dependency(self) -> None:
+        self.write(
+            'steps.toml',
+            """
+            [steps.all]
+            run = "echo all >> seen"
+            files = [".", "!seen", "!runs"]
+            check = true
+            """,
+        )
+        self.build('run')
+        self.build('run')
+        self.assertEqual((self.root / 'seen').read_text(), 'all\n')
+        # In a repository, only what git tracks or would add counts
+        subprocess.run(['git', 'init', '-q'], cwd=self.root, check=True)
+        self.write('.gitignore', '.build\nseen\nignored\n')
+        self.build('run')
+        self.write('ignored', 'x\n')
+        self.build('run')
+        self.assertEqual((self.root / 'seen').read_text(), 'all\nall\n')
+        self.write('new.txt', 'x\n')
+        self.build('run')
+        self.assertEqual((self.root / 'seen').read_text(), 'all\nall\nall\n')
 
 
 if __name__ == '__main__':

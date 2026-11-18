@@ -71,7 +71,7 @@ A first run takes about two and a half hours, most of it two passes over OpenStr
 minutes). After that the workflow runs by itself:
 
 - on every push to `main`, with the data sources as they were last pinned, so only the steps the commit
-  touched run again (a change to the app alone is tests, a build and a deploy);
+  touched run again (a change to the app alone is its checks, a build and a deploy);
 - every three days, probing the sources again: 路路通's timetable, OpenStreetMap's planet and hourly
   diffs, and the OpenRailwayMap database image.
 
@@ -255,7 +255,10 @@ pnpm vitest run --config vitest.config.js src/gpx.test.ts -t 'name substring'
 pnpm exec playwright test e2e/annotations.spec.ts --project chromium
 ```
 
-CI runs all of them in that order, on pull requests and before every build. The Python tests of the
+They are also steps of the data build (`check-*` in `scripts/build/steps.toml`), so
+`python3 scripts/build/build.py run --checks` runs the ones whose files changed since they last
+passed, several at a time. CI runs all of them on pull requests, and on pushes to `main` the changed
+ones inside the build, where a failing check holds back the deploys of what it tests. The Python tests of the
 relations and routing scripts need the packages in `scripts/requirements.txt`
 (`nix-shell scripts/routing/shell.nix --run ./scripts/test-python.sh`). Unit tests named `*.dom.test.ts` run in happy-dom; end-to-end specs
 named `*.mobile.spec.ts` run only on the mobile profile. Playwright starts its own offline dev server
