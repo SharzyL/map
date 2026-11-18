@@ -74,18 +74,18 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -98,7 +98,7 @@ jobs:
 
       # The newest cache: each run saves its own below
       - name: Restore the build outputs
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .build/out
           key: build-out-${{ github.run_id }}-${{ github.run_attempt }}
@@ -134,7 +134,7 @@ jobs:
       # run the app with locally
       - name: Upload the small outputs
         if: ${{ !cancelled() && !inputs.plan_only }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-outputs
           path: |
@@ -156,7 +156,7 @@ jobs:
       - name: Save the build outputs
         id: save
         if: ${{ !cancelled() && !inputs.plan_only }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .build/out
           key: build-out-${{ github.run_id }}-${{ github.run_attempt }}
