@@ -232,10 +232,22 @@ class Remote:
         self.s3 = self.url.startswith('s3://')
 
     def _aws(self, *args: str) -> subprocess.CompletedProcess:
-        command = ['aws', 's3', 'cp', '--only-show-errors', *args]
+        command = ['aws', 's3', *args]
         if os.environ.get('R2_ENDPOINT'):
             command += ['--endpoint-url', os.environ['R2_ENDPOINT']]
         return subprocess.run(command, capture_output=True, text=True)
+
+    def _has(self, key: str) -> bool:
+        """Asked by listing: reading a missing object answers 404 on some
+        stores and 403 on others (R2 among them), which reads like a refusal"""
+        result = self._aws('ls', f'{self.url}/{key}')
+        if result.returncode == 0:
+            # The listing is by prefix: state.json also lists state.json.bak
+            name = key.rsplit('/', 1)[-1]
+            return any(line.split()[-1:] == [name] for line in result.stdout.splitlines())
+        if result.returncode == 1 and not result.stderr.strip():
+            return False  # nothing there
+        raise BuildError(f'could not look for {self.url}/{key}: {result.stderr.strip()}')
 
     def get(self, key: str, path: Path) -> bool:
         """False when the remote has no such file"""
@@ -246,12 +258,12 @@ class Remote:
                 return False
             shutil.copyfile(source, path)
             return True
-        result = self._aws(f'{self.url}/{key}', str(path))
-        if result.returncode == 0:
-            return True
-        if '404' in result.stderr or 'NoSuchKey' in result.stderr:
+        if not self._has(key):
             return False
-        raise BuildError(f'could not read {self.url}/{key}: {result.stderr.strip()}')
+        result = self._aws('cp', '--only-show-errors', f'{self.url}/{key}', str(path))
+        if result.returncode != 0:
+            raise BuildError(f'could not read {self.url}/{key}: {result.stderr.strip()}')
+        return True
 
     def put(self, path: Path, key: str) -> None:
         if not self.s3:
@@ -259,7 +271,7 @@ class Remote:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, target)
             return
-        result = self._aws(str(path), f'{self.url}/{key}')
+        result = self._aws('cp', '--only-show-errors', str(path), f'{self.url}/{key}')
         if result.returncode != 0:
             raise BuildError(f'could not write {self.url}/{key}: {result.stderr.strip()}')
 

@@ -4,10 +4,12 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import textwrap
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -253,8 +255,6 @@ class BuildTest(unittest.TestCase):
         self.assertGreaterEqual(state['steps']['joined']['duration_s'], 0)
 
         # A build directory lost whole: nothing runs again, deploys included
-        import shutil
-
         shutil.rmtree(self.root / '.build')
         code, _ = self.build('run', '--deploy')
         self.assertEqual((code, self.ran), (0, []))
@@ -262,6 +262,52 @@ class BuildTest(unittest.TestCase):
         self.write('text.txt', 'again\n')
         self.build('run', 'counted')
         self.assertEqual(self.out('counted/count.txt'), 'x\nx\n')
+
+    def test_s3_remote_through_the_aws_cli(self) -> None:
+        # A stand-in for the aws CLI over a directory, answering as R2 does:
+        # 403 to reading a missing object, and listing by prefix
+        bucket = self.remote
+        fake = self.root.parent / 'bin' / 'aws'
+        fake.parent.mkdir()
+        fake.write_text(
+            textwrap.dedent(
+                f"""\
+                #!{sys.executable}
+                import pathlib, shutil, sys
+                args = [a for a in sys.argv[1:] if a != '--only-show-errors']
+                assert args[0] == 's3' and args[-2:] == ['--endpoint-url', 'https://r2.test'], args
+                local = lambda url: pathlib.Path({str(bucket)!r}) / url.removeprefix('s3://bucket/')
+                if args[1] == 'ls':
+                    found = sorted(local(args[2]).parent.glob(local(args[2]).name + '*'))
+                    print(''.join(f'2026-11-18 04:00:00 {{p.stat().st_size:>10}} {{p.name}}\\n' for p in found), end='')
+                    sys.exit(0 if found else 1)
+                source, target = args[2], args[3]
+                if source.startswith('s3://'):
+                    if not local(source).exists():
+                        sys.exit('fatal error: An error occurred (403) when calling the HeadObject operation: Forbidden')
+                    shutil.copyfile(local(source), target)
+                else:
+                    local(target).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, local(target))
+                """
+            )
+        )
+        fake.chmod(0o755)
+        env = {'BUILD_REMOTE': 's3://bucket/build', 'R2_ENDPOINT': 'https://r2.test', 'PATH': f'{fake.parent}:{os.environ["PATH"]}'}
+        with unittest.mock.patch.dict(os.environ, env):
+            # Nothing there yet: not an error
+            code, output = self.build('run', '--deploy')
+            self.assertEqual((code, self.ran), (0, ['upper', 'joined', 'publish', 'announce']), output)
+            self.assertTrue((bucket / 'build' / 'state.json').exists())
+            # A longer name with the same start is not the file
+            (bucket / 'build' / 'state.json').rename(bucket / 'build' / 'state.json.bak')
+            shutil.rmtree(self.root / '.build')
+            self.build('run', '--deploy')
+            self.assertEqual(self.ran, ['upper', 'joined', 'publish', 'announce'])
+            # The state comes back from there
+            shutil.rmtree(self.root / '.build')
+            code, _ = self.build('run', '--deploy')
+            self.assertEqual((code, self.ran), (0, []))
 
     def test_prune_removes_outputs_not_kept_once_read(self) -> None:
         self.write('steps.toml', STEPS.replace('[steps.joined]', '[steps.joined]\nkeep = false'))
