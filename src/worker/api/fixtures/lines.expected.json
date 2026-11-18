@@ -1,0 +1,106 @@
+{
+  "station": {
+    "code": "22715",
+    "name": "渋谷"
+  },
+  "lines": [
+    {
+      "name": "ＪＲ湘南新宿ライン",
+      "directions": [
+        {
+          "direction": "新宿・高崎・宇都宮",
+          "gid": "1051"
+        },
+        {
+          "direction": "横浜・大船",
+          "gid": "1050"
+        }
+      ]
+    },
+    {
+      "name": "ＪＲ埼京線",
+      "directions": [
+        {
+          "direction": "川越・新宿",
+          "gid": "1061"
+        },
+        {
+          "direction": "新木場・海老名",
+          "gid": "1060"
+        }
+      ]
+    },
+    {
+      "name": "ＪＲ山手線外回り",
+      "directions": [
+        {
+          "direction": "新宿・池袋",
+          "gid": "7171"
+        }
+      ]
+    },
+    {
+      "name": "ＪＲ山手線内回り",
+      "directions": [
+        {
+          "direction": "品川・東京",
+          "gid": "7170"
+        }
+      ]
+    },
+    {
+      "name": "京王井の頭線",
+      "directions": [
+        {
+          "direction": "吉祥寺・富士見ケ丘",
+          "gid": "3081"
+        }
+      ]
+    },
+    {
+      "name": "東急東横線",
+      "directions": [
+        {
+          "direction": "横浜・元町・中華街",
+          "gid": "3141"
+        }
+      ]
+    },
+    {
+      "name": "東急田園都市線",
+      "directions": [
+        {
+          "direction": "中央林間・長津田",
+          "gid": "3161"
+        }
+      ]
+    },
+    {
+      "name": "東京メトロ銀座線",
+      "directions": [
+        {
+          "direction": "浅草・上野",
+          "gid": "3270"
+        }
+      ]
+    },
+    {
+      "name": "東京メトロ半蔵門線",
+      "directions": [
+        {
+          "direction": "押上・南栗橋",
+          "gid": "3351"
+        }
+      ]
+    },
+    {
+      "name": "東京メトロ副都心線",
+      "directions": [
+        {
+          "direction": "和光市・小手指",
+          "gid": "3370"
+        }
+      ]
+    }
+  ]
+}

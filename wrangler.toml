@@ -18,3 +18,21 @@ not_found_handling = "none"
 binding = "ORM_BUCKET"
 bucket_name = "orm"
 remote = true
+
+# China Railway timetables and train routes, OSM relations and Japan's route
+# hops for /api/v1, imported by the mapdata repo's builds
+[[d1_databases]]
+binding = "CR_DB"
+database_name = "cr"
+database_id = "26a36e44-21ba-4426-b5ad-fe6b2097ff40"
+remote = true
+
+# The Yahoo! 乗換案内 API (/api/v1/norikae) and 12306 trainsets run in this
+# object, placed in Japan (src/worker/api/runtime.ts)
+[[durable_objects.bindings]]
+name = "NORIKAE"
+class_name = "NorikaeApi"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["NorikaeApi"]

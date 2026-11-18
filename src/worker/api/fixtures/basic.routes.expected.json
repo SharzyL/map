@@ -1,0 +1,314 @@
+{
+  "routes": [
+    {
+      "index": 1,
+      "departure": "08:30",
+      "arrival": "08:47",
+      "duration_min": 17,
+      "ride_min": 16,
+      "transfers": 1,
+      "distance_km": 7.7,
+      "fare": {
+        "label": "IC優先",
+        "total": 209,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "渋谷",
+            "to": "東京",
+            "mode": "train",
+            "amount": 209
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "東京メトロ銀座線",
+          "destination": "上野行",
+          "duration_min": 8,
+          "from": {
+            "name": "渋谷",
+            "id": "22715",
+            "time": "08:30",
+            "platform": "1番線"
+          },
+          "to": {
+            "name": "赤坂見附",
+            "id": "22486",
+            "time": "08:38",
+            "platform": "3番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "表参道",
+              "id": "22588",
+              "time": "08:32"
+            },
+            {
+              "name": "外苑前",
+              "id": "22618",
+              "time": "08:34"
+            },
+            {
+              "name": "青山一丁目",
+              "id": "22484",
+              "time": "08:36"
+            }
+          ]
+        },
+        {
+          "mode": "train",
+          "line": "東京メトロ丸ノ内線",
+          "destination": "池袋行",
+          "duration_min": 8,
+          "from": {
+            "name": "赤坂見附",
+            "id": "22486",
+            "time": "08:39",
+            "platform": "4番線"
+          },
+          "to": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:47",
+            "platform": "2番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "国会議事堂前",
+              "id": "22668",
+              "time": "08:41"
+            },
+            {
+              "name": "霞ケ関(東京都)",
+              "id": "22596",
+              "time": "08:43"
+            },
+            {
+              "name": "銀座",
+              "id": "22641",
+              "time": "08:45"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "departure": "08:31",
+      "arrival": "08:54",
+      "duration_min": 23,
+      "ride_min": 16,
+      "transfers": 1,
+      "distance_km": 7.7,
+      "fare": {
+        "label": "IC優先",
+        "total": 209,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "赤坂見附",
+            "to": "東京",
+            "mode": "train",
+            "amount": 209
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "東京メトロ半蔵門線",
+          "destination": "押上行",
+          "duration_min": 8,
+          "from": {
+            "name": "渋谷",
+            "id": "22715",
+            "time": "08:31",
+            "platform": "2番線"
+          },
+          "to": {
+            "name": "永田町",
+            "id": "22856",
+            "time": "08:39",
+            "platform": "4番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "表参道",
+              "id": "22588",
+              "time": "08:34"
+            },
+            {
+              "name": "青山一丁目",
+              "id": "22484",
+              "time": "08:37"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "永田町",
+            "id": "22856",
+            "time": "08:40",
+            "platform": null
+          },
+          "to": {
+            "name": "赤坂見附",
+            "id": "22486",
+            "time": "08:45",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "train",
+          "line": "東京メトロ丸ノ内線",
+          "destination": "池袋行",
+          "duration_min": 8,
+          "from": {
+            "name": "赤坂見附",
+            "id": "22486",
+            "time": "08:46",
+            "platform": "4番線"
+          },
+          "to": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:54",
+            "platform": "2番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "国会議事堂前",
+              "id": "22668",
+              "time": "08:48"
+            },
+            {
+              "name": "霞ケ関(東京都)",
+              "id": "22596",
+              "time": "08:50"
+            },
+            {
+              "name": "銀座",
+              "id": "22641",
+              "time": "08:52"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "departure": "08:31",
+      "arrival": "08:57",
+      "duration_min": 26,
+      "ride_min": 19,
+      "transfers": 1,
+      "distance_km": 9.3,
+      "fare": {
+        "label": "IC優先",
+        "total": 209,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "渋谷",
+            "to": "東京",
+            "mode": "train",
+            "amount": 209
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "東京メトロ半蔵門線",
+          "destination": "押上行",
+          "duration_min": 18,
+          "from": {
+            "name": "渋谷",
+            "id": "22715",
+            "time": "08:31",
+            "platform": "2番線"
+          },
+          "to": {
+            "name": "大手町(東京都)",
+            "id": "22564",
+            "time": "08:49",
+            "platform": "8番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "表参道",
+              "id": "22588",
+              "time": "08:34"
+            },
+            {
+              "name": "青山一丁目",
+              "id": "22484",
+              "time": "08:37"
+            },
+            {
+              "name": "永田町",
+              "id": "22856",
+              "time": "08:40"
+            },
+            {
+              "name": "半蔵門",
+              "id": "22917",
+              "time": "08:42"
+            },
+            {
+              "name": "九段下",
+              "id": "22645",
+              "time": "08:45"
+            },
+            {
+              "name": "神保町",
+              "id": "22756",
+              "time": "08:47"
+            }
+          ]
+        },
+        {
+          "mode": "train",
+          "line": "東京メトロ丸ノ内線",
+          "destination": "荻窪行",
+          "duration_min": 1,
+          "from": {
+            "name": "大手町(東京都)",
+            "id": "22564",
+            "time": "08:56",
+            "platform": "1番線"
+          },
+          "to": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:57",
+            "platform": "1番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

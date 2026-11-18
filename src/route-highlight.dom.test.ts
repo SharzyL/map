@@ -341,7 +341,7 @@ describe('zoomed-out trace', () => {
     await vi.waitFor(() =>
       expect(fetched.find((url) => url.endsWith('.mvt'))).toBe(`https://tiles.test/7/${x}/${y}.mvt`),
     );
-    expect(fetched[0]).toContain('/v1/relations/900821599');
+    expect(fetched[0]).toContain('/api/v1/relations/900821599');
     expect(container.querySelector('.route-info-status').textContent).toBe('No further details for this one.');
     // The API does not have it: nothing to retry.
     expect(container.querySelector('.route-info-status .panel-retry')).toBeNull();

@@ -2,7 +2,7 @@
   "singleQuote": true,
   "semi": true,
   "printWidth": 120,
-  "ignorePatterns": ["public/orm/**"],
+  "ignorePatterns": ["public/orm/**", "src/worker/api/fixtures/**"],
   "overrides": [
     {
       "files": ["scripts/styles/**/*.mjs"],

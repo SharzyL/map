@@ -1,0 +1,426 @@
+{
+  "routes": [
+    {
+      "index": 1,
+      "departure": "08:30",
+      "arrival": "11:00",
+      "duration_min": 150,
+      "ride_min": 150,
+      "transfers": 0,
+      "distance_km": 552.6,
+      "fare": {
+        "label": "IC優先",
+        "total": 14720,
+        "breakdown": [
+          {
+            "label": "乗車券",
+            "amount": 8910
+          },
+          {
+            "label": "特別料金",
+            "amount": 5810
+          }
+        ],
+        "sections": [
+          {
+            "from": "東京",
+            "to": "新大阪",
+            "mode": "train",
+            "amount": 8910
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "ＪＲ新幹線のぞみ17号",
+          "destination": "博多行",
+          "duration_min": 150,
+          "from": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:30",
+            "platform": "18番線"
+          },
+          "to": {
+            "name": "新大阪",
+            "id": "25978",
+            "time": "11:00",
+            "platform": "22番線"
+          },
+          "surcharges": [
+            {
+              "label": "指定席",
+              "amount": 5810
+            }
+          ],
+          "note": null,
+          "stops": [
+            {
+              "name": "品川",
+              "id": "22709",
+              "time": "08:37"
+            },
+            {
+              "name": "新横浜",
+              "id": "23212",
+              "time": "08:48"
+            },
+            {
+              "name": "名古屋",
+              "id": "25077",
+              "time": "10:10"
+            },
+            {
+              "name": "京都",
+              "id": "25647",
+              "time": "10:46"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "departure": "08:33",
+      "arrival": "11:27",
+      "duration_min": 174,
+      "ride_min": 174,
+      "transfers": 0,
+      "distance_km": 552.6,
+      "fare": {
+        "label": "IC優先",
+        "total": 14400,
+        "breakdown": [
+          {
+            "label": "乗車券",
+            "amount": 8910
+          },
+          {
+            "label": "特別料金",
+            "amount": 5490
+          }
+        ],
+        "sections": [
+          {
+            "from": "東京",
+            "to": "新大阪",
+            "mode": "train",
+            "amount": 8910
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "ＪＲ新幹線ひかり635号",
+          "destination": "新大阪行",
+          "duration_min": 174,
+          "from": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:33",
+            "platform": "15番線"
+          },
+          "to": {
+            "name": "新大阪",
+            "id": "25978",
+            "time": "11:27",
+            "platform": "24番線"
+          },
+          "surcharges": [
+            {
+              "label": "指定席",
+              "amount": 5490
+            }
+          ],
+          "note": null,
+          "stops": [
+            {
+              "name": "品川",
+              "id": "22709",
+              "time": "08:40"
+            },
+            {
+              "name": "新横浜",
+              "id": "23212",
+              "time": "08:51"
+            },
+            {
+              "name": "豊橋",
+              "id": "25063",
+              "time": "10:00"
+            },
+            {
+              "name": "名古屋",
+              "id": "25077",
+              "time": "10:21"
+            },
+            {
+              "name": "岐阜羽島",
+              "id": "24431",
+              "time": "10:35"
+            },
+            {
+              "name": "米原",
+              "id": "25565",
+              "time": "10:53"
+            },
+            {
+              "name": "京都",
+              "id": "25647",
+              "time": "11:14"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "departure": "08:40",
+      "arrival": "12:09",
+      "duration_min": 209,
+      "ride_min": 126,
+      "transfers": 3,
+      "distance_km": 545.9,
+      "fare": {
+        "label": "IC優先",
+        "total": 45798,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京",
+            "to": "浜松町",
+            "mode": "train",
+            "amount": 199
+          },
+          {
+            "from": "浜松町",
+            "to": "羽田空港第２ターミナル(東京モノレール・ＡＮＡ利用)",
+            "mode": "train",
+            "amount": 519
+          },
+          {
+            "from": "羽田空港(東京)",
+            "to": "伊丹空港(大阪)",
+            "mode": "air",
+            "amount": 44480
+          },
+          {
+            "from": "伊丹空港(高速・連絡バス)",
+            "to": "新大阪駅前(高速・連絡バス)",
+            "mode": "bus",
+            "amount": 600
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "ＪＲ山手線外回り",
+          "destination": "品川・渋谷方面",
+          "duration_min": 6,
+          "from": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:40",
+            "platform": "5番線"
+          },
+          "to": {
+            "name": "浜松町",
+            "id": "22914",
+            "time": "08:46",
+            "platform": "3番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "有楽町",
+              "id": "23036",
+              "time": "08:42"
+            },
+            {
+              "name": "新橋",
+              "id": "22751",
+              "time": "08:44"
+            }
+          ]
+        },
+        {
+          "mode": "train",
+          "line": "東京モノレール",
+          "destination": "羽田空港第２ターミナル行",
+          "duration_min": 25,
+          "from": {
+            "name": "浜松町",
+            "id": "22914",
+            "time": "08:52",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港第２ターミナル(東京モノレール・ＡＮＡ利用)",
+            "id": "29510",
+            "time": "09:17",
+            "platform": "1・2番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "天王洲アイル",
+              "id": "22825",
+              "time": "08:57"
+            },
+            {
+              "name": "大井競馬場前",
+              "id": "22554",
+              "time": "09:00"
+            },
+            {
+              "name": "流通センター",
+              "id": "23047",
+              "time": "09:03"
+            },
+            {
+              "name": "昭和島",
+              "id": "22706",
+              "time": "09:05"
+            },
+            {
+              "name": "整備場",
+              "id": "22766",
+              "time": "09:07"
+            },
+            {
+              "name": "天空橋",
+              "id": "22910",
+              "time": "09:09"
+            },
+            {
+              "name": "羽田空港第３ターミナル(東京モノレール)",
+              "id": "29671",
+              "time": "09:11"
+            },
+            {
+              "name": "新整備場",
+              "id": "22744",
+              "time": "09:14"
+            },
+            {
+              "name": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+              "id": "29509",
+              "time": "09:16"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "羽田空港第２ターミナル(東京モノレール・ＡＮＡ利用)",
+            "id": "29510",
+            "time": "09:19",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "09:24",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "air",
+          "line": "ＡＮＡ19便",
+          "destination": null,
+          "duration_min": 70,
+          "from": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "10:00",
+            "platform": null
+          },
+          "to": {
+            "name": "伊丹空港(大阪)",
+            "id": "25856",
+            "time": "11:10",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 7,
+          "from": {
+            "name": "伊丹空港(大阪)",
+            "id": "25856",
+            "time": "11:25",
+            "platform": null
+          },
+          "to": {
+            "name": "伊丹空港(高速・連絡バス)",
+            "id": "307124",
+            "time": "11:32",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "bus",
+          "line": "連絡バス・阪急観光バス・空港リムジンバス",
+          "destination": "新大阪駅前行",
+          "duration_min": 25,
+          "from": {
+            "name": "伊丹空港(高速・連絡バス)",
+            "id": "307124",
+            "time": "11:35",
+            "platform": "南ターミナル8のりば"
+          },
+          "to": {
+            "name": "新大阪駅前(高速・連絡バス)",
+            "id": "304618",
+            "time": "12:00",
+            "platform": "正面口・空港バスのりば1おりば"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 7,
+          "from": {
+            "name": "新大阪駅前(高速・連絡バス)",
+            "id": "304618",
+            "time": "12:02",
+            "platform": null
+          },
+          "to": {
+            "name": "新大阪",
+            "id": "25978",
+            "time": "12:09",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

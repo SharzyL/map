@@ -12,7 +12,7 @@ import {
   timetableRequestFor,
 } from './timetable.js';
 
-const crPath = (path: string) => '/v1/' + path.split('/').map(encodeURIComponent).join('/');
+const crPath = (path: string) => '/api/v1/cr/' + path.split('/').map(encodeURIComponent).join('/');
 const CR_STATION = {
   data_version: '20261114',
   station: { name: '北京西', telecode: 'BXP' },
@@ -165,17 +165,17 @@ const ROUTE: TrainRoute = {
 };
 
 const API: Record<string, unknown> = {
-  [crPath('cr-trains/Z156/Z157/route').replace('/Z157', '%2FZ157')]: ROUTE,
-  '/v1/stations/22715/timetables/1051/trains/33471/route': ROUTE,
-  [crPath('cr-stations/北京西/timetable')]: CR_STATION,
-  [crPath('cr-stations/泰州/timetable')]: { ...CR_STATION, station: { name: '泰州', telecode: 'UTH' } },
-  [crPath('cr-trains/Z156/Z157').replace('/Z157', '%2FZ157')]: CR_TRAIN,
+  [crPath('trains/Z156/Z157/route').replace('/Z157', '%2FZ157')]: ROUTE,
+  '/api/v1/norikae/stations/22715/timetables/1051/trains/33471/route': ROUTE,
+  [crPath('stations/北京西/timetable')]: CR_STATION,
+  [crPath('stations/泰州/timetable')]: { ...CR_STATION, station: { name: '泰州', telecode: 'UTH' } },
+  [crPath('trains/Z156/Z157').replace('/Z157', '%2FZ157')]: CR_TRAIN,
   // 12306 has no trainset for a loco-hauled train.
-  [crPath('cr-trainsets/Z156/Z157').replace('/Z157', '%2FZ157')]: { source_url: '', train: 'Z156', trainset: null },
-  [crPath('cr-trains/G301')]: G301,
-  [crPath('cr-trainsets/G301')]: G301_TRAINSET,
-  '/v1/stations': { results: [{ code: '22715', name: '渋谷', type: 'station', address: '東京' }] },
-  '/v1/stations/22715/timetables': {
+  [crPath('trainsets/Z156/Z157').replace('/Z157', '%2FZ157')]: { source_url: '', train: 'Z156', trainset: null },
+  [crPath('trains/G301')]: G301,
+  [crPath('trainsets/G301')]: G301_TRAINSET,
+  '/api/v1/norikae/stations': { results: [{ code: '22715', name: '渋谷', type: 'station', address: '東京' }] },
+  '/api/v1/norikae/stations/22715/timetables': {
     source_url: 'https://transit.yahoo.co.jp/timetable/22715',
     station: { code: '22715', name: '渋谷' },
     lines: [
@@ -188,7 +188,7 @@ const API: Record<string, unknown> = {
       },
     ],
   },
-  '/v1/stations/22715/timetables/1051': {
+  '/api/v1/norikae/stations/22715/timetables/1051': {
     source_url: 'https://transit.yahoo.co.jp/timetable/22715/1051?kind=1',
     station: { code: '22715', name: '渋谷' },
     line: 'ＪＲ湘南新宿ライン',
@@ -227,7 +227,7 @@ const API: Record<string, unknown> = {
       },
     ],
   },
-  '/v1/stations/22715/timetables/1051/trains/33471': {
+  '/api/v1/norikae/stations/22715/timetables/1051/trains/33471': {
     source_url: 'https://transit.yahoo.co.jp/timetable/22715/1051/33471',
     station: { code: '22715', name: '渋谷' },
     train_id: '33471',
@@ -257,7 +257,7 @@ function setup() {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      const { pathname, search } = new URL(url);
+      const { pathname, search } = new URL(url, 'http://localhost');
       requests.push(pathname + search);
       // A path set to fail answers once with that status, then as usual.
       const failure = failOnce.get(pathname);
@@ -396,14 +396,14 @@ describe('timetable panel', () => {
     const { container, panel, requests } = setup();
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: [] } }));
     await vi.waitFor(() => expect(text(panel.panel, '.timetable-direction')).toHaveLength(2));
-    expect(requests[0]).toBe('/v1/stations?q=%E6%B8%8B%E8%B0%B7');
+    expect(requests[0]).toBe('/api/v1/norikae/stations?q=%E6%B8%8B%E8%B0%B7');
 
     panel.panel.querySelector<HTMLButtonElement>('.timetable-direction').click();
     await vi.waitFor(() => expect(text(panel.panel, '.timetable-time')).toHaveLength(2));
     Array.from(panel.panel.querySelectorAll<HTMLButtonElement>('.timetable-day'))
       .find((button) => button.textContent === 'Saturday')
       .click();
-    await vi.waitFor(() => expect(requests.at(-1)).toBe('/v1/stations/22715/timetables/1051?day=saturday'));
+    await vi.waitFor(() => expect(requests.at(-1)).toBe('/api/v1/norikae/stations/22715/timetables/1051?day=saturday'));
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(panel.isOpen).toBe(false);
@@ -424,7 +424,7 @@ describe('timetable panel', () => {
 
   it('asks again from a Retry button when the API failed', async () => {
     const { container, panel, route } = setup();
-    failOnce.set('/v1/stations/22715/timetables', 502);
+    failOnce.set('/api/v1/norikae/stations/22715/timetables', 502);
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
     const root = panel.panel;
     await vi.waitFor(() =>
@@ -434,7 +434,7 @@ describe('timetable panel', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
 
     // A train whose track failed to load gets its own Retry.
-    failOnce.set('/v1/stations/22715/timetables/1051/trains/33471/route', 503);
+    failOnce.set('/api/v1/norikae/stations/22715/timetables/1051/trains/33471/route', 503);
     root.querySelector<HTMLButtonElement>('.timetable-direction').click();
     await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
@@ -548,7 +548,7 @@ describe('China Railway timetable', () => {
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
       .find((button) => button.title === 'Next day')
       .click();
-    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/北京西/timetable')}?date=2026-11-17`));
+    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['G301']));
     const [nextLineRow, nextBoundRow] = Array.from(
       root.querySelectorAll<HTMLElement>('.timetable-nav .timetable-directions'),
@@ -568,10 +568,7 @@ describe('China Railway timetable', () => {
     const root = panel.panel;
     // Each train under the number it runs as here.
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['Z157', 'G301', 'K2550']));
-    expect(requests.slice(0, 2)).toEqual([
-      crPath('cr-stations/N1,W2/timetable'),
-      crPath('cr-stations/北京西/timetable'),
-    ]);
+    expect(requests.slice(0, 2)).toEqual([crPath('stations/N1,W2/timetable'), crPath('stations/北京西/timetable')]);
     expect(root.querySelector('.timetable-title').textContent).toBe('北京西');
     expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 Mon · 3 trains');
     expect(text(root, '.timetable-hour')).toEqual(['6时', '8时', '9时']);
@@ -594,7 +591,7 @@ describe('China Railway timetable', () => {
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
       .find((button) => button.title === 'Next day')
       .click();
-    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/北京西/timetable')}?date=2026-11-17`));
+    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
     expect(root.querySelector('.timetable-back')).toBeNull();
 
@@ -603,15 +600,15 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toEqual(['泰州', '北京西Z156→Z157', '哈尔滨西']));
     // Its number changes at 北京西.
     expect(text(root, '.timetable-number-change')).toEqual(['Z156→Z157']);
-    expect(requests).toContain('/v1/cr-trains/Z156%2FZ157?date=2026-11-15');
+    expect(requests).toContain('/api/v1/cr/trains/Z156%2FZ157?date=2026-11-15');
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '北京西', expect.anything()));
-    expect(requests).toContain('/v1/cr-trains/Z156%2FZ157/route?date=2026-11-15');
+    expect(requests).toContain('/api/v1/cr/trains/Z156%2FZ157/route?date=2026-11-15');
     expect(root.querySelector('.timetable-summary').textContent).toBe(
       'Z156/Z157 · 泰州 → 哈尔滨西 · from 2026-11-15 Sun',
     );
     // 12306 has no trainset for it, so that row goes.
     await vi.waitFor(() => expect(root.querySelector('.timetable-trainset')).toBeNull());
-    expect(requests).toContain('/v1/cr-trainsets/Z156%2FZ157?date=2026-11-15');
+    expect(requests).toContain('/api/v1/cr/trainsets/Z156%2FZ157?date=2026-11-15');
     // The train and its first stop are in the header: the facts say the rest.
     expect(text(root, '.timetable-meta dt')).toEqual(['Stops', 'In service', 'Rolling stock']);
     expect(text(root, '.timetable-meta dd')).toEqual(['3 · 2400 km', '2024-04-02 – 2026-11-24', '25T · 上局南京段']);
@@ -637,7 +634,7 @@ describe('China Railway timetable', () => {
 
     // A stop opens that station's trains on the day the train is there.
     root.querySelector<HTMLButtonElement>('.timetable-stop-name').click();
-    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('cr-stations/泰州/timetable')}?date=2026-11-15`));
+    await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/泰州/timetable')}?date=2026-11-15`));
   });
 
   it('shows the trainset 12306 assigns, and why a track is missing', async () => {
@@ -668,7 +665,7 @@ describe('China Railway timetable', () => {
 
   it('asks for the trainset again from its row when it failed', async () => {
     const { container, panel } = setup();
-    failOnce.set(crPath('cr-trainsets/G301'), 504);
+    failOnce.set(crPath('trainsets/G301'), 504);
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['北京西'] } }));
     const root = panel.panel;
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));

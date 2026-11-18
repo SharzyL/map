@@ -9,3 +9,7 @@
 # background after that.
 /orm/*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+# The API's documentation (the rest of /api/v1 is the Worker's)
+/api/v1/doc.md
+  Content-Type: text/markdown; charset=utf-8

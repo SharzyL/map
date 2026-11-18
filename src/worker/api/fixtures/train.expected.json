@@ -1,0 +1,168 @@
+{
+  "station": {
+    "code": "22715",
+    "name": "渋谷"
+  },
+  "train_id": "33471",
+  "name": "快速",
+  "line": "ＪＲ湘南新宿ライン",
+  "comments": ["大宮−小山間快速。"],
+  "stops": [
+    {
+      "code": "23096",
+      "name": "大船",
+      "arrival": null,
+      "departure": "08:16"
+    },
+    {
+      "code": "23251",
+      "name": "戸塚",
+      "arrival": "08:21",
+      "departure": "08:21"
+    },
+    {
+      "code": "23291",
+      "name": "東戸塚",
+      "arrival": "08:25",
+      "departure": "08:25"
+    },
+    {
+      "code": "23316",
+      "name": "保土ケ谷",
+      "arrival": "08:30",
+      "departure": "08:30"
+    },
+    {
+      "code": "23368",
+      "name": "横浜",
+      "arrival": "08:33",
+      "departure": "08:35"
+    },
+    {
+      "code": "23204",
+      "name": "新川崎",
+      "arrival": "08:44",
+      "departure": "08:44"
+    },
+    {
+      "code": "23345",
+      "name": "武蔵小杉",
+      "arrival": "08:47",
+      "departure": "08:48"
+    },
+    {
+      "code": "22865",
+      "name": "西大井",
+      "arrival": "08:53",
+      "departure": "08:53"
+    },
+    {
+      "code": "22559",
+      "name": "大崎",
+      "arrival": "08:57",
+      "departure": "08:57"
+    },
+    {
+      "code": "22548",
+      "name": "恵比寿",
+      "arrival": "09:01",
+      "departure": "09:02"
+    },
+    {
+      "code": "22715",
+      "name": "渋谷",
+      "arrival": "09:03",
+      "departure": "09:04"
+    },
+    {
+      "code": "22741",
+      "name": "新宿",
+      "arrival": "09:09",
+      "departure": "09:12"
+    },
+    {
+      "code": "22513",
+      "name": "池袋",
+      "arrival": "09:17",
+      "departure": "09:17"
+    },
+    {
+      "code": "22487",
+      "name": "赤羽",
+      "arrival": "09:27",
+      "departure": "09:27"
+    },
+    {
+      "code": "21982",
+      "name": "浦和",
+      "arrival": "09:35",
+      "departure": "09:35"
+    },
+    {
+      "code": "21987",
+      "name": "大宮(埼玉県)",
+      "arrival": "09:41",
+      "departure": "09:42"
+    },
+    {
+      "code": "22110",
+      "name": "東大宮",
+      "arrival": "09:47",
+      "departure": "09:48"
+    },
+    {
+      "code": "22100",
+      "name": "蓮田",
+      "arrival": "09:51",
+      "departure": "09:52"
+    },
+    {
+      "code": "22028",
+      "name": "久喜",
+      "arrival": "09:59",
+      "departure": "09:59"
+    },
+    {
+      "code": "21631",
+      "name": "古河",
+      "arrival": "10:11",
+      "departure": "10:12"
+    },
+    {
+      "code": "21746",
+      "name": "小山",
+      "arrival": "10:23",
+      "departure": "10:25"
+    },
+    {
+      "code": "21767",
+      "name": "小金井",
+      "arrival": "10:30",
+      "departure": "10:31"
+    },
+    {
+      "code": "21783",
+      "name": "自治医大",
+      "arrival": "10:34",
+      "departure": "10:34"
+    },
+    {
+      "code": "21730",
+      "name": "石橋(栃木県)",
+      "arrival": "10:38",
+      "departure": "10:39"
+    },
+    {
+      "code": "21784",
+      "name": "雀宮",
+      "arrival": "10:44",
+      "departure": "10:44"
+    },
+    {
+      "code": "21736",
+      "name": "宇都宮",
+      "arrival": "10:51",
+      "departure": null
+    }
+  ]
+}

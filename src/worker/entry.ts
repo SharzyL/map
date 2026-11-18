@@ -1,4 +1,7 @@
+import { handleApiRequest } from './api/runtime.js';
 import { handleTileRequest } from './tiles.js';
+
+export { NorikaeApi } from './api/runtime.js';
 
 export default {
   async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext): Promise<Response> {
@@ -13,6 +16,9 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // The doc (/api/v1/doc.md) is a static asset, served before the Worker runs
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return handleApiRequest(request, env);
 
     if (url.pathname.startsWith('/tiles/')) {
       try {

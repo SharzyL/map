@@ -1,0 +1,338 @@
+{
+  "routes": [
+    {
+      "index": 1,
+      "departure": "08:26",
+      "arrival": "10:20",
+      "duration_min": 114,
+      "ride_min": 105,
+      "transfers": 0,
+      "distance_km": 124.8,
+      "fare": {
+        "label": "IC優先",
+        "total": 9980,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京港(竹芝客船ターミナル)",
+            "to": "岡田港(大島)",
+            "mode": "ferry",
+            "amount": 9980
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 2,
+          "from": {
+            "name": "竹芝",
+            "id": "29051",
+            "time": "08:26",
+            "platform": null
+          },
+          "to": {
+            "name": "東京港(竹芝客船ターミナル)",
+            "id": null,
+            "time": "08:28",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "ferry",
+          "line": "東海汽船・セブンアイランド",
+          "destination": null,
+          "duration_min": 105,
+          "from": {
+            "name": "東京港(竹芝客船ターミナル)",
+            "id": null,
+            "time": "08:35",
+            "platform": null
+          },
+          "to": {
+            "name": "岡田港(大島)",
+            "id": null,
+            "time": "10:20",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": "最新の運航状況は事業者へお問い合わせください",
+          "stops": []
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "departure": "08:26",
+      "arrival": "10:50",
+      "duration_min": 144,
+      "ride_min": 122,
+      "transfers": 1,
+      "distance_km": 140.5,
+      "fare": {
+        "label": "IC優先",
+        "total": 10420,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京港(竹芝客船ターミナル)",
+            "to": "元町港(大島)",
+            "mode": "ferry",
+            "amount": 9980
+          },
+          {
+            "from": "元町港",
+            "to": "岡田港",
+            "mode": "bus",
+            "amount": 440
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 2,
+          "from": {
+            "name": "竹芝",
+            "id": "29051",
+            "time": "08:26",
+            "platform": null
+          },
+          "to": {
+            "name": "東京港(竹芝客船ターミナル)",
+            "id": null,
+            "time": "08:28",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "ferry",
+          "line": "東海汽船・セブンアイランド",
+          "destination": null,
+          "duration_min": 105,
+          "from": {
+            "name": "東京港(竹芝客船ターミナル)",
+            "id": null,
+            "time": "08:35",
+            "platform": null
+          },
+          "to": {
+            "name": "元町港(大島)",
+            "id": null,
+            "time": "10:20",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": "最新の運航状況は事業者へお問い合わせください",
+          "stops": []
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 1,
+          "from": {
+            "name": "元町港(大島)",
+            "id": null,
+            "time": "10:27",
+            "platform": null
+          },
+          "to": {
+            "name": "元町港",
+            "id": "1371539",
+            "time": "10:28",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "bus",
+          "line": "大島バス・大島公園ライン(元町港−岡田港−公園)",
+          "destination": "大島公園行",
+          "duration_min": 17,
+          "from": {
+            "name": "元町港",
+            "id": "1371539",
+            "time": "10:30",
+            "platform": "2のりば"
+          },
+          "to": {
+            "name": "岡田港",
+            "id": "1371493",
+            "time": "10:47",
+            "platform": "1おりば"
+          },
+          "surcharges": [],
+          "note": "岡田港出帆の日のみ運行",
+          "stops": [
+            {
+              "name": "町役場前(大島バス)",
+              "id": "1371533",
+              "time": "10:31"
+            },
+            {
+              "name": "元町北口(大島バス)",
+              "id": "1371538",
+              "time": "10:32"
+            },
+            {
+              "name": "支庁前(大島バス)",
+              "id": "1371510",
+              "time": "10:34"
+            },
+            {
+              "name": "大島高校前(大島バス)",
+              "id": "1371489",
+              "time": "10:35"
+            },
+            {
+              "name": "郷土資料館入口(大島バス)",
+              "id": "1371499",
+              "time": "10:36"
+            },
+            {
+              "name": "地の岡(大島バス)",
+              "id": "1371511",
+              "time": "10:37"
+            },
+            {
+              "name": "大島空港入口(大島バス)",
+              "id": "1371485",
+              "time": "10:38"
+            },
+            {
+              "name": "ふるさと体験館入口(大島バス)",
+              "id": "1371532",
+              "time": "10:39"
+            },
+            {
+              "name": "北の山(大島バス)",
+              "id": "1371498",
+              "time": "10:39"
+            },
+            {
+              "name": "桜通り(大島バス)",
+              "id": "1371503",
+              "time": "10:41"
+            },
+            {
+              "name": "さくら小学校入口(大島バス)",
+              "id": "1371501",
+              "time": "10:41"
+            },
+            {
+              "name": "岡田郵便局前(大島バス)",
+              "id": "1371495",
+              "time": "10:42"
+            },
+            {
+              "name": "岡田出張所前(大島バス)",
+              "id": "1371494",
+              "time": "10:44"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 1,
+          "from": {
+            "name": "岡田港",
+            "id": "1371493",
+            "time": "10:49",
+            "platform": null
+          },
+          "to": {
+            "name": "岡田港(大島)",
+            "id": null,
+            "time": "10:50",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "departure": "13:16",
+      "arrival": "15:10",
+      "duration_min": 114,
+      "ride_min": 105,
+      "transfers": 0,
+      "distance_km": 124.8,
+      "fare": {
+        "label": "IC優先",
+        "total": 9980,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京港(竹芝客船ターミナル)",
+            "to": "岡田港(大島)",
+            "mode": "ferry",
+            "amount": 9980
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 2,
+          "from": {
+            "name": "竹芝",
+            "id": "29051",
+            "time": "13:16",
+            "platform": null
+          },
+          "to": {
+            "name": "東京港(竹芝客船ターミナル)",
+            "id": null,
+            "time": "13:18",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "ferry",
+          "line": "東海汽船・セブンアイランド",
+          "destination": null,
+          "duration_min": 105,
+          "from": {
+            "name": "東京港(竹芝客船ターミナル)",
+            "id": null,
+            "time": "13:25",
+            "platform": null
+          },
+          "to": {
+            "name": "岡田港(大島)",
+            "id": null,
+            "time": "15:10",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": "最新の運航状況は事業者へお問い合わせください",
+          "stops": []
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

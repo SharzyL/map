@@ -54,8 +54,8 @@ test.describe('POI search in a real browser', () => {
   test('finds China Railway trains by number and opens one in the timetable', async ({ page }) => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
-    // The norikae API: two trains for G1, G1's stops, and nothing else (its track, trainset).
-    await page.route(/https:\/\/norikae\.shz\.al\/v1\/.*/, (route) => {
+    // The API: two trains for G1, G1's stops, and nothing else (its track, trainset).
+    await page.route(/\/api\/v1\/.*/, (route) => {
       const url = new URL(route.request().url());
       const json = (status: number, body: unknown) =>
         route.fulfill({
@@ -64,7 +64,7 @@ test.describe('POI search in a real browser', () => {
           headers: { 'access-control-allow-origin': '*' },
           body: JSON.stringify(body),
         });
-      if (url.pathname === '/v1/search') {
+      if (url.pathname === '/api/v1/search') {
         return json(200, {
           data_version: '20261120',
           query: 'G1',
@@ -86,7 +86,7 @@ test.describe('POI search in a real browser', () => {
           ],
         });
       }
-      if (url.pathname === '/v1/cr-trains/G1') {
+      if (url.pathname === '/api/v1/cr/trains/G1') {
         const stop = (name: string, km: number, arrival: string | null, departure: string | null) => ({
           name,
           telecode: '',

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Match OSM railway stations in Japan to Yahoo! 乗換案内 station codes, the ids
-the norikae API (https://norikae.shz.al/v1/doc.md) uses for timetables.
+the map's API (https://map.shz.al/api/v1/doc.md) uses for timetables.
 
 Usage: jp-station-codes.py [--osm stations.json] [--cache search-cache.json]
                            [--out data/jp-station-codes.csv]
 
 OSM has no Yahoo codes and Wikidata has no property for them, so stations are
-matched by name through the API's station search (/v1/stations?q=). Yahoo
-names a station shared by several prefectures 府中(東京都), 府中(広島県), and
-one shared within a prefecture by line or company, 宇治(奈良線), 宇治(京阪線),
-新宿(東京メトロ). For each OSM station (name:ja, else name):
+matched by name through the API's station search
+(/api/v1/norikae/stations?q=). Yahoo names a station shared by several
+prefectures 府中(東京都), 府中(広島県), and one shared within a prefecture by
+line or company, 宇治(奈良線), 宇治(京阪線), 新宿(東京メトロ). For each OSM station (name:ja, else name):
 
 1. Results whose name, without the parenthesised suffix, equals the OSM name
    (NFKC, ケ/ヶ alike, no trailing 駅) are candidates. The search returns at
@@ -44,7 +44,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-API = 'https://norikae.shz.al/v1/stations'
+API = 'https://map.shz.al/api/v1/norikae/stations'
 OVERPASS = 'https://overpass-api.de/api/interpreter'
 OVERPASS_QUERY = (
     '[out:json][timeout:280];area["ISO3166-1"="JP"]->.jp;'

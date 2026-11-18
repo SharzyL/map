@@ -151,8 +151,8 @@ python3 scripts/tiles/cr-station-trains.py lulutong-timetable-csv-<date>
 
 It matches the stations to OSM through Overpass and reports any it could not match.
 
-Stations in Japan open a timetable from Yahoo! 乗換案内 through the
-[norikae API](https://norikae.shz.al/v1/doc.md), and China Railway stations one from China Railway's
+Stations in Japan open a timetable from Yahoo! 乗換案内 through the map's own API
+([`/api/v1/doc.md`](public/api/v1/doc.md)), and China Railway stations one from China Railway's
 timetable through the same API, which finds them by their OSM elements, so those need no data file
 here. `data/jp-station-codes.csv` maps OSM stations to Yahoo's station codes, which the export writes
 to the station layers as `yahoo_codes`; a Japanese station without codes gets no Timetable button. To

@@ -1,0 +1,242 @@
+[
+  {
+    "code": "22715",
+    "name": "渋谷",
+    "type": "station",
+    "address": "東京",
+    "yahoo_lat": 35.658516,
+    "yahoo_lon": 139.701773
+  },
+  {
+    "code": "35654",
+    "name": "渋谷駅西口/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.65996,
+    "yahoo_lon": 139.700828
+  },
+  {
+    "code": "35655",
+    "name": "渋谷駅東口/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.660266,
+    "yahoo_lon": 139.702217
+  },
+  {
+    "code": "35656",
+    "name": "渋谷駅前(東側)/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.65893,
+    "yahoo_lon": 139.702159
+  },
+  {
+    "code": "35657",
+    "name": "渋谷区役所前/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.664127,
+    "yahoo_lon": 139.699217
+  },
+  {
+    "code": "35658",
+    "name": "渋谷三丁目/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.658294,
+    "yahoo_lon": 139.70755
+  },
+  {
+    "code": "35659",
+    "name": "渋谷車庫前/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.65402,
+    "yahoo_lon": 139.707831
+  },
+  {
+    "code": "35660",
+    "name": "渋谷二丁目/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.660488,
+    "yahoo_lon": 139.7068
+  },
+  {
+    "code": "35661",
+    "name": "渋谷橋/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.64899,
+    "yahoo_lon": 139.7113
+  },
+  {
+    "code": "36688",
+    "name": "渋谷駅前(西側)/都営バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.659202,
+    "yahoo_lon": 139.700323
+  },
+  {
+    "code": "59084",
+    "name": "渋谷駅/京王バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.65896,
+    "yahoo_lon": 139.70029
+  },
+  {
+    "code": "59085",
+    "name": "渋谷区役所/京王バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.664238,
+    "yahoo_lon": 139.698206
+  },
+  {
+    "code": "52735",
+    "name": "渋谷駅(西口)/東急バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.65838,
+    "yahoo_lon": 139.700576
+  },
+  {
+    "code": "52736",
+    "name": "渋谷駅(東口)/東急バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.658691,
+    "yahoo_lon": 139.702964
+  },
+  {
+    "code": "53482",
+    "name": "渋谷インフォスタワー/東急バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.655153,
+    "yahoo_lon": 139.701209
+  },
+  {
+    "code": "54330",
+    "name": "渋谷中学校前/阪急バス",
+    "type": "bus",
+    "address": "大阪",
+    "yahoo_lat": 34.829768,
+    "yahoo_lon": 135.439223
+  },
+  {
+    "code": "101453",
+    "name": "渋谷ケ原/神奈川中央交通",
+    "type": "bus",
+    "address": "神奈川",
+    "yahoo_lat": 35.401547,
+    "yahoo_lon": 139.461629
+  },
+  {
+    "code": "101455",
+    "name": "渋谷ノ里/神奈川中央交通",
+    "type": "bus",
+    "address": "神奈川",
+    "yahoo_lat": 35.406563,
+    "yahoo_lon": 139.46141
+  },
+  {
+    "code": "101565",
+    "name": "渋谷中学校/神奈川中央交通",
+    "type": "bus",
+    "address": "神奈川",
+    "yahoo_lat": 35.429805,
+    "yahoo_lon": 139.471754
+  },
+  {
+    "code": "56018",
+    "name": "渋谷駅/小田急バス",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.657961,
+    "yahoo_lon": 139.70077
+  },
+  {
+    "code": "306070",
+    "name": "渋谷駅(高速・連絡バス)",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.657802,
+    "yahoo_lon": 139.700462
+  },
+  {
+    "code": "306084",
+    "name": "渋谷駅西口(高速・連絡バス)",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.657891,
+    "yahoo_lon": 139.701037
+  },
+  {
+    "code": "304510",
+    "name": "渋谷マークシティ(高速・連絡バス)",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.658302,
+    "yahoo_lon": 139.698698
+  },
+  {
+    "code": "150974",
+    "name": "渋谷/奈良交通",
+    "type": "bus",
+    "address": "奈良",
+    "yahoo_lat": 34.553904,
+    "yahoo_lon": 135.846429
+  },
+  {
+    "code": "611565",
+    "name": "渋谷地/ＪＲバス東北",
+    "type": "bus",
+    "address": "岩手",
+    "yahoo_lat": 39.989895,
+    "yahoo_lon": 141.392968
+  },
+  {
+    "code": "76845",
+    "name": "渋谷６号公園/神奈川県大和市",
+    "type": "bus",
+    "address": "神奈川",
+    "yahoo_lat": 35.434043,
+    "yahoo_lon": 139.466287
+  },
+  {
+    "code": "86013",
+    "name": "渋谷インフォスタワー/東京都渋谷区",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.655083,
+    "yahoo_lon": 139.701148
+  },
+  {
+    "code": "83393",
+    "name": "渋谷駅(西口)/東京都渋谷区",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.659988,
+    "yahoo_lon": 139.700651
+  },
+  {
+    "code": "83394",
+    "name": "渋谷駅(東口)/東京都渋谷区",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.658588,
+    "yahoo_lon": 139.702284
+  },
+  {
+    "code": "83395",
+    "name": "渋谷区役所/東京都渋谷区",
+    "type": "bus",
+    "address": "東京",
+    "yahoo_lat": 35.664668,
+    "yahoo_lon": 139.698887
+  }
+]

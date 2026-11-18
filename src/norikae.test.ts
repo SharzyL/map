@@ -41,7 +41,7 @@ describe('station names', () => {
   it('searches again with 駅 when a full result list misses the name', async () => {
     const longer = Array.from({ length: 10 }, (_, index) => station(String(index), `長${index}`));
     const fetchMock = vi.fn(async (url: string) => {
-      const q = new URL(url).searchParams.get('q');
+      const q = new URL(url, 'http://localhost').searchParams.get('q');
       const results = q === '長' ? longer : [station('26307', '長', '兵庫')];
       return new Response(JSON.stringify({ results }), { status: 200 });
     });

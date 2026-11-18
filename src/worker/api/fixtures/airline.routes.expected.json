@@ -1,0 +1,716 @@
+{
+  "routes": [
+    {
+      "index": 1,
+      "departure": "09:19",
+      "arrival": "14:10",
+      "duration_min": 291,
+      "ride_min": 203,
+      "transfers": 3,
+      "distance_km": 1712.5,
+      "fare": {
+        "label": "IC優先",
+        "total": 68158,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京",
+            "to": "浜松町",
+            "mode": "train",
+            "amount": 199
+          },
+          {
+            "from": "浜松町",
+            "to": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+            "mode": "train",
+            "amount": 519
+          },
+          {
+            "from": "羽田空港(東京)",
+            "to": "那覇空港(沖縄)",
+            "mode": "air",
+            "amount": 67150
+          },
+          {
+            "from": "那覇空港(鉄道)",
+            "to": "旭橋",
+            "mode": "train",
+            "amount": 290
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "ＪＲ山手線外回り",
+          "destination": "品川・渋谷方面",
+          "duration_min": 7,
+          "from": {
+            "name": "東京",
+            "id": "22828",
+            "time": "09:19",
+            "platform": "5番線"
+          },
+          "to": {
+            "name": "浜松町",
+            "id": "22914",
+            "time": "09:26",
+            "platform": "3番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "有楽町",
+              "id": "23036",
+              "time": "09:21"
+            },
+            {
+              "name": "新橋",
+              "id": "22751",
+              "time": "09:23"
+            }
+          ]
+        },
+        {
+          "mode": "train",
+          "line": "東京モノレール空港快速",
+          "destination": "羽田空港第２ターミナル行",
+          "duration_min": 16,
+          "from": {
+            "name": "浜松町",
+            "id": "22914",
+            "time": "09:32",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+            "id": "29509",
+            "time": "09:48",
+            "platform": "2番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "羽田空港第３ターミナル(東京モノレール)",
+              "id": "29671",
+              "time": "09:45"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+            "id": "29509",
+            "time": "09:50",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "09:55",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "air",
+          "line": "ＪＡＬ913便",
+          "destination": null,
+          "duration_min": 170,
+          "from": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "10:30",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇空港(沖縄)",
+            "id": "29657",
+            "time": "13:20",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "那覇空港(沖縄)",
+            "id": "29657",
+            "time": "13:40",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇空港(鉄道)",
+            "id": "29031",
+            "time": "13:45",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "train",
+          "line": "ゆいレール",
+          "destination": "てだこ浦西行",
+          "duration_min": 10,
+          "from": {
+            "name": "那覇空港(鉄道)",
+            "id": "29031",
+            "time": "13:48",
+            "platform": "1・2番線"
+          },
+          "to": {
+            "name": "旭橋",
+            "id": "29461",
+            "time": "13:58",
+            "platform": "1番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "赤嶺",
+              "id": "29457",
+              "time": "13:51"
+            },
+            {
+              "name": "小禄",
+              "id": "29458",
+              "time": "13:53"
+            },
+            {
+              "name": "奥武山公園",
+              "id": "29459",
+              "time": "13:54"
+            },
+            {
+              "name": "壺川",
+              "id": "29460",
+              "time": "13:56"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 10,
+          "from": {
+            "name": "旭橋",
+            "id": "29461",
+            "time": "14:00",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇港",
+            "id": null,
+            "time": "14:10",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "departure": "08:56",
+      "arrival": "14:10",
+      "duration_min": 314,
+      "ride_min": 211,
+      "transfers": 3,
+      "distance_km": 1713.7,
+      "fare": {
+        "label": "IC優先",
+        "total": 67976,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京",
+            "to": "品川",
+            "mode": "train",
+            "amount": 209
+          },
+          {
+            "from": "品川",
+            "to": "羽田空港第１・第２ターミナル(京急)",
+            "mode": "train",
+            "amount": 327
+          },
+          {
+            "from": "羽田空港(東京)",
+            "to": "那覇空港(沖縄)",
+            "mode": "air",
+            "amount": 67150
+          },
+          {
+            "from": "那覇空港(鉄道)",
+            "to": "旭橋",
+            "mode": "train",
+            "amount": 290
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "ＪＲ東海道本線",
+          "destination": "平塚行",
+          "duration_min": 8,
+          "from": {
+            "name": "東京",
+            "id": "22828",
+            "time": "08:56",
+            "platform": "10番線"
+          },
+          "to": {
+            "name": "品川",
+            "id": "22709",
+            "time": "09:04",
+            "platform": "12番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "新橋",
+              "id": "22751",
+              "time": "08:59"
+            }
+          ]
+        },
+        {
+          "mode": "train",
+          "line": "京急本線急行",
+          "destination": "羽田空港第１・第２ターミナル行",
+          "duration_min": 23,
+          "from": {
+            "name": "品川",
+            "id": "22709",
+            "time": "09:13",
+            "platform": "1番線"
+          },
+          "to": {
+            "name": "羽田空港第１・第２ターミナル(京急)",
+            "id": "22911",
+            "time": "09:36",
+            "platform": "1・2番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "青物横丁",
+              "id": "22483",
+              "time": "09:16"
+            },
+            {
+              "name": "立会川",
+              "id": "22798",
+              "time": "09:19"
+            },
+            {
+              "name": "平和島",
+              "id": "22967",
+              "time": "09:22"
+            },
+            {
+              "name": "京急蒲田",
+              "id": "22660",
+              "time": "09:25"
+            },
+            {
+              "name": "糀谷",
+              "id": "22674",
+              "time": "09:27"
+            },
+            {
+              "name": "大鳥居",
+              "id": "22565",
+              "time": "09:29"
+            },
+            {
+              "name": "穴守稲荷",
+              "id": "22498",
+              "time": "09:31"
+            },
+            {
+              "name": "天空橋",
+              "id": "22910",
+              "time": "09:32"
+            },
+            {
+              "name": "羽田空港第３ターミナル(京急)",
+              "id": "29672",
+              "time": "09:34"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "羽田空港第１・第２ターミナル(京急)",
+            "id": "22911",
+            "time": "09:38",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "09:43",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "air",
+          "line": "ＪＡＬ913便",
+          "destination": null,
+          "duration_min": 170,
+          "from": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "10:30",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇空港(沖縄)",
+            "id": "29657",
+            "time": "13:20",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "那覇空港(沖縄)",
+            "id": "29657",
+            "time": "13:40",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇空港(鉄道)",
+            "id": "29031",
+            "time": "13:45",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "train",
+          "line": "ゆいレール",
+          "destination": "てだこ浦西行",
+          "duration_min": 10,
+          "from": {
+            "name": "那覇空港(鉄道)",
+            "id": "29031",
+            "time": "13:48",
+            "platform": "1・2番線"
+          },
+          "to": {
+            "name": "旭橋",
+            "id": "29461",
+            "time": "13:58",
+            "platform": "1番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "赤嶺",
+              "id": "29457",
+              "time": "13:51"
+            },
+            {
+              "name": "小禄",
+              "id": "29458",
+              "time": "13:53"
+            },
+            {
+              "name": "奥武山公園",
+              "id": "29459",
+              "time": "13:54"
+            },
+            {
+              "name": "壺川",
+              "id": "29460",
+              "time": "13:56"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 10,
+          "from": {
+            "name": "旭橋",
+            "id": "29461",
+            "time": "14:00",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇港",
+            "id": null,
+            "time": "14:10",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "departure": "09:19",
+      "arrival": "14:16",
+      "duration_min": 297,
+      "ride_min": 203,
+      "transfers": 3,
+      "distance_km": 1711.0,
+      "fare": {
+        "label": "IC優先",
+        "total": 68148,
+        "breakdown": [],
+        "sections": [
+          {
+            "from": "東京",
+            "to": "浜松町",
+            "mode": "train",
+            "amount": 199
+          },
+          {
+            "from": "浜松町",
+            "to": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+            "mode": "train",
+            "amount": 519
+          },
+          {
+            "from": "羽田空港(東京)",
+            "to": "那覇空港(沖縄)",
+            "mode": "air",
+            "amount": 67150
+          },
+          {
+            "from": "那覇空港",
+            "to": "旭橋・那覇バスターミナル",
+            "mode": "bus",
+            "amount": 280
+          }
+        ]
+      },
+      "legs": [
+        {
+          "mode": "train",
+          "line": "ＪＲ山手線外回り",
+          "destination": "品川・渋谷方面",
+          "duration_min": 7,
+          "from": {
+            "name": "東京",
+            "id": "22828",
+            "time": "09:19",
+            "platform": "5番線"
+          },
+          "to": {
+            "name": "浜松町",
+            "id": "22914",
+            "time": "09:26",
+            "platform": "3番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "有楽町",
+              "id": "23036",
+              "time": "09:21"
+            },
+            {
+              "name": "新橋",
+              "id": "22751",
+              "time": "09:23"
+            }
+          ]
+        },
+        {
+          "mode": "train",
+          "line": "東京モノレール空港快速",
+          "destination": "羽田空港第２ターミナル行",
+          "duration_min": 16,
+          "from": {
+            "name": "浜松町",
+            "id": "22914",
+            "time": "09:32",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+            "id": "29509",
+            "time": "09:48",
+            "platform": "2番線"
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "羽田空港第３ターミナル(東京モノレール)",
+              "id": "29671",
+              "time": "09:45"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 5,
+          "from": {
+            "name": "羽田空港第１ターミナル(東京モノレール・ＪＡＬ利用)",
+            "id": "29509",
+            "time": "09:50",
+            "platform": null
+          },
+          "to": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "09:55",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "air",
+          "line": "ＪＡＬ913便",
+          "destination": null,
+          "duration_min": 170,
+          "from": {
+            "name": "羽田空港(東京)",
+            "id": "22827",
+            "time": "10:30",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇空港(沖縄)",
+            "id": "29657",
+            "time": "13:20",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 3,
+          "from": {
+            "name": "那覇空港(沖縄)",
+            "id": "29657",
+            "time": "13:40",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇空港",
+            "id": "728312",
+            "time": "13:43",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        },
+        {
+          "mode": "bus",
+          "line": "琉球バス交通・１９０知花空港線(牧志経由)",
+          "destination": "具志川バスターミナル行",
+          "duration_min": 10,
+          "from": {
+            "name": "那覇空港",
+            "id": "728312",
+            "time": "13:50",
+            "platform": null
+          },
+          "to": {
+            "name": "旭橋・那覇バスターミナル",
+            "id": "727818",
+            "time": "14:00",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": [
+            {
+              "name": "フリーゾーン前(沖縄県路線バス)",
+              "id": "727783",
+              "time": "13:53"
+            },
+            {
+              "name": "軍桟橋前(沖縄県路線バス)",
+              "id": "728186",
+              "time": "13:55"
+            },
+            {
+              "name": "公園前(沖縄県路線バス)",
+              "id": "728253",
+              "time": "13:56"
+            }
+          ]
+        },
+        {
+          "mode": "walk",
+          "line": null,
+          "destination": null,
+          "duration_min": 14,
+          "from": {
+            "name": "旭橋・那覇バスターミナル",
+            "id": "727818",
+            "time": "14:02",
+            "platform": null
+          },
+          "to": {
+            "name": "那覇港",
+            "id": null,
+            "time": "14:16",
+            "platform": null
+          },
+          "surcharges": [],
+          "note": null,
+          "stops": []
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

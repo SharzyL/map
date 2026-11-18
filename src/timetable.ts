@@ -1,4 +1,4 @@
-// Station timetables from the norikae API (norikae.ts), in a panel opened by
+// Station timetables from the API (norikae.ts), in a panel opened by
 // the Timetable button (timetableButton) of a station's info box through
 // TIMETABLE_OPEN_EVENT on the map container.
 //

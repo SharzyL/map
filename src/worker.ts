@@ -1,1 +1,1 @@
-export { default } from './worker/entry.js';
+export { default, NorikaeApi } from './worker/entry.js';

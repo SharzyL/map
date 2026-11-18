@@ -2,7 +2,7 @@ import { chinaNow, crTrainHitDate, searchCrTrains, type CrTrainHit } from './nor
 import { TIMETABLE_OPEN_EVENT, type TimetableRequest } from './timetable.js';
 
 // Places come from Photon; China Railway trains, for text that could start a
-// train number, from the norikae API's search, listed first.
+// train number, from the API's search, listed first.
 const PHOTON_API_URL = 'https://photon.komoot.io/api/';
 const SEARCH_SOURCE_ID = 'search';
 const MIN_QUERY_LENGTH = 2;

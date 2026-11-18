@@ -16,6 +16,8 @@ declare global {
     interface Env {
       ASSETS: Fetcher;
       ORM_BUCKET: R2Bucket;
+      CR_DB: D1Database;
+      NORIKAE: DurableObjectNamespace<import('./worker/api/runtime.js').NorikaeApi>;
     }
   }
 }
