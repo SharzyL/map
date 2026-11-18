@@ -760,14 +760,17 @@ class Runner:
                 continue
             # Its inputs must be there as recorded; the steps that made the
             # ones that are not run again first
-            gone = [(other, out) for other, out in step.needs if not self.input_present(other, out)]
+            gone: dict[str, str] = {}  # step → its first output that is gone
+            for other, out in step.needs:
+                if not self.input_present(other, out):
+                    gone.setdefault(other, out)
             if gone:
-                for other, out in gone:
+                for other, out in gone.items():
                     self.rebuilt[other] = self.rebuilt.get(other, 0) + 1
                     if self.rebuilt[other] > MAX_REBUILDS:
                         raise BuildError(f'the outputs of {other} keep changing when rebuilt; it is not reproducible')
                     self.wanted[other] = f'its output {out} is gone and {name} reads it'
-                    del self.results[other]
+                    self.results.pop(other, None)
                 moved = True
                 continue
             if self.fits(step):

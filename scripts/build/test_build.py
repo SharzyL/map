@@ -210,6 +210,16 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(self.ran, ['upper', 'joined', 'publish'])
         self.assertEqual(self.out('joined/joined.txt'), 'HELLO\n3 initial\n')
 
+    def test_lost_outputs_of_one_step_read_twice(self) -> None:
+        # joined reads two outputs of upper, both gone: upper runs once
+        self.write('steps.toml', STEPS.replace('needs = ["upper/upper.txt"]', 'needs = ["upper/upper.txt", "upper/notes.txt"]'))
+        self.build('run')
+        shutil.rmtree(self.root / '.build' / 'out' / 'upper')
+        self.write('feed-version', '4\n')
+        code, output = self.build('run', '--refresh', 'feed')
+        self.assertEqual((code, self.ran), (0, ['upper', 'joined']), output)
+        self.assertIn('its output upper.txt is gone and joined reads it', output)
+
     def test_output_that_is_not_the_recorded_one_is_rebuilt(self) -> None:
         self.build('run')
         (self.root / '.build' / 'out' / 'upper' / 'upper.txt').write_text('stale\n')
