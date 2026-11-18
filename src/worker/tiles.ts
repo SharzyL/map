@@ -10,16 +10,18 @@ import {
 
 const TILE_RE = /^\/tiles\/(?<name>[0-9a-zA-Z/!\-_.*'()]+)\/(?<z>\d+)\/(?<x>\d+)\/(?<y>\d+)\.(?<ext>[a-z]+)$/;
 const TILEJSON_RE = /^\/tiles\/(?<name>[0-9a-zA-Z/!\-_.*'()]+)\.json$/;
+const VERSION_RE = /^\/tiles\/(?<name>[0-9a-zA-Z/!\-_.*'()]+)\/version$/;
 
 type TileRequestPath =
   | { ok: true; name: string; tile: [number, number, number]; ext: string }
-  | { ok: true; name: string; tile: null; ext: 'json' }
+  | { ok: true; name: string; tile: null; ext: 'json' | 'version' }
   | { ok: false };
 
-// The map's tile URLs carry the archive version (?v=TILE_VERSION in main.ts),
-// which changes with every new archive, so a versioned tile, empty or not,
-// never changes: browsers keep it for a year and ask the Worker only for tiles
-// they have not seen. Unversioned requests may outlive an archive, so a day.
+// The map's tile URLs carry the archive version (?v=, which main.ts asks
+// /tiles/<archive>/version for), which changes with every new archive, so a
+// versioned tile, empty or not, never changes: browsers keep it for a year and
+// ask the Worker only for tiles they have not seen. Unversioned requests may
+// outlive an archive, so a day.
 export function tileCacheControl(url: URL) {
   return url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'public, max-age=86400';
 }
@@ -30,11 +32,36 @@ export function parseTilePath(pathname: string): TileRequestPath {
     const { name, z, x, y, ext } = tileMatch.groups;
     return { ok: true, name, tile: [+z, +x, +y], ext };
   }
+  const versionMatch = pathname.match(VERSION_RE);
+  if (versionMatch?.groups) {
+    return { ok: true, name: versionMatch.groups.name, tile: null, ext: 'version' };
+  }
   const jsonMatch = pathname.match(TILEJSON_RE);
   if (jsonMatch?.groups) {
     return { ok: true, name: jsonMatch.groups.name, tile: null, ext: 'json' };
   }
   return { ok: false };
+}
+
+// An archive's version is the start of its R2 ETag: a new upload, a new
+// version, with nothing to bump by hand.
+export function archiveVersion(etag: string) {
+  return etag.replace(/[^0-9a-zA-Z]/g, '').slice(0, 12);
+}
+
+// The version of the archive in the bucket now. Answered fresh (a minute in
+// browsers, never from the Worker's cache), so the map picks up a new archive
+// on its next load.
+async function versionResponse(env: Cloudflare.Env, name: string) {
+  const object = await env.ORM_BUCKET.head(`${name}.pmtiles`);
+  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  if (!object) return new Response(JSON.stringify({ error: 'no such archive' }), { status: 404, headers });
+  return new Response(
+    JSON.stringify({ version: archiveVersion(object.etag), uploaded: object.uploaded.toISOString() }),
+    {
+      headers: { ...headers, 'Cache-Control': 'public, max-age=60' },
+    },
+  );
 }
 
 export async function nativeDecompress(buf: ArrayBuffer, compression: number): Promise<ArrayBuffer> {
@@ -126,6 +153,7 @@ export async function handleTileRequest(
   const url = new URL(request.url);
   const parsed = parseTilePath(url.pathname);
   if (!parsed.ok) return null;
+  if (parsed.ext === 'version') return versionResponse(env, parsed.name);
 
   const cache = (caches as CacheStorage & { default: Cache }).default;
   const cached = await cache.match(request.url);

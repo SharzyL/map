@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTilePath, tileCacheControl } from './tiles.js';
+import { archiveVersion, parseTilePath, tileCacheControl } from './tiles.js';
 
 describe('tileCacheControl', () => {
   it('keeps versioned tiles for a year and others for a day', () => {
@@ -26,6 +26,18 @@ describe('parseTilePath', () => {
       tile: null,
       ext: 'json',
     });
+    expect(parseTilePath('/tiles/openrailwaymap/version')).toEqual({
+      ok: true,
+      name: 'openrailwaymap',
+      tile: null,
+      ext: 'version',
+    });
     expect(parseTilePath('/assets/index.js')).toEqual({ ok: false });
+  });
+});
+
+describe('archiveVersion', () => {
+  it('is the start of the ETag, safe in a URL', () => {
+    expect(archiveVersion('"0f3c2a9b7d41e8aa55c0-412"')).toBe('0f3c2a9b7d41');
   });
 });
