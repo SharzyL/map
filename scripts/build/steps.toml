@@ -3,12 +3,12 @@
 #   timetable ─ lltskb ─┬─ cr-timetable ─────────────────── deploy-timetable ─┐
 #                       ├─ cr-station-trains ─┬─ station-coords ──────────────┤
 #   planet ──── planet-extract ┬ (box)        │                               │
-#   diffs ───── box-extract ───┴┬─────────────┼─ osm-stations                 │
+#   diffs ───── hourly-diffs ──┴ box-extract ┬┼─ osm-stations                 │
 #                               │             ├─ relations ── deploy-relations┤
 #                               │             └─ routing-graph ─┬─ cr-routes ─┬ deploy-routes
 #                               │                               └─ jp-hops ───┘
 #   N02 ─────── n02 ────────────┴─ line-groups ──┐                            │
-#   diffs ───── railway-extract (world) ─────────┤                            │
+#   (diffs, world) railway-extract ──────────────┤                            │
 #   Yahoo ───── jp-station-codes                 │                            │
 #   image ────────────────────────────────── tiles ──────── deploy-tiles ─────┤
 #   this repository ───────────────────────────────────────── deploy-worker ──┘
@@ -93,34 +93,42 @@ files = ["scripts/extract/filter-planet.sh", "scripts/extract/meter.py", "script
 sources = ["planet"]
 outs = ["world.osm.pbf", "box.osm.pbf"]
 
-[steps.railway-extract]
-about = "The worldwide railway objects brought up to the pinned hourly diff: line relations and tagged ways as text, for the tiles"
+# Fetched once for both extracts, which were cut from the same planet
+[steps.hourly-diffs]
+about = "OSM's hourly diffs since the planet, up to the pinned one, filtered to the railway objects"
 cpus = 2
-memory = 2
+# Filtering a diff takes 1-2 GB, four at a time
+memory = 8
 run = """
-scripts/extract/update.sh "$BUILD/planet-extract/world.osm.pbf" "$OUT/lines.osm.pbf" "$SRC_OSM_DIFFS"
+scripts/extract/fetch-diffs.sh "$BUILD/planet-extract/world.osm.pbf" "$OUT/diffs" "$SRC_OSM_DIFFS"
+"""
+files = ["scripts/extract/fetch-diffs.sh", "scripts/extract/railway-extract.filter"]
+sources = ["osm-diffs"]
+needs = ["planet-extract/world.osm.pbf"]
+outs = ["diffs"]
+
+[steps.railway-extract]
+about = "The worldwide railway objects brought up to date: line relations and tagged ways as text, for the tiles"
+run = """
+osmium apply-changes "$BUILD/planet-extract/world.osm.pbf" "$BUILD/hourly-diffs/diffs"/*.osc.gz -O -o "$OUT/lines.osm.pbf"
 osmium tags-filter "$OUT/lines.osm.pbf" r/route=railway w/tracks w/start_date w/opening_date -R -O -o "$OUT/tagged.osm.pbf"
 osmium cat "$OUT/tagged.osm.pbf" -f opl,add_metadata=false -O -o "$OUT/lines.opl"
 rm "$OUT/tagged.osm.pbf" "$OUT/lines.osm.pbf"
 """
-files = ["scripts/extract/update.sh", "scripts/extract/railway-extract.filter"]
-sources = ["osm-diffs"]
-needs = ["planet-extract/world.osm.pbf"]
+needs = ["planet-extract/world.osm.pbf", "hourly-diffs/diffs"]
 outs = ["lines.opl"]
 
 [steps.box-extract]
-about = "The box extract brought up to the pinned hourly diff and cut to China and Japan with what lies between"
+about = "The box brought up to date and cut to China and Japan with what lies between"
 run = """
-scripts/extract/update.sh "$BUILD/planet-extract/box.osm.pbf" "$OUT/updated.osm.pbf" "$SRC_OSM_DIFFS"
-ts="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "$OUT/updated.osm.pbf")"
+ts="$(cat "$BUILD/hourly-diffs/diffs/timestamp")"
+osmium apply-changes "$BUILD/planet-extract/box.osm.pbf" "$BUILD/hourly-diffs/diffs"/*.osc.gz -O -o "$OUT/updated.osm.pbf"
 osmium extract -b 73,17,146,54 -s smart "$OUT/updated.osm.pbf" -O -o "$OUT/cnjp.osm.pbf" \
   --output-header="osmosis_replication_timestamp=$ts"
 rm "$OUT/updated.osm.pbf"
 echo "$ts" > "$OUT/timestamp"
 """
-files = ["scripts/extract/update.sh", "scripts/extract/railway-extract.filter"]
-sources = ["osm-diffs"]
-needs = ["planet-extract/box.osm.pbf"]
+needs = ["planet-extract/box.osm.pbf", "hourly-diffs/diffs"]
 outs = ["cnjp.osm.pbf", "timestamp"]
 
 [steps.n02]

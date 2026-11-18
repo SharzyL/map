@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
-# Brings the railway extract (filter-planet.sh) up to date with OSM's hourly
-# replication diffs, so it matches the (nightly) import database rather than
-# the weekly planet it was cut from. Ways added to a line since then would
-# otherwise miss the line in the tiles.
+# Fetches OSM's hourly replication diffs since an extract was cut, each
+# filtered with railway-extract.filter as it comes in, so the extracts
+# (filter-planet.sh) can be brought up to date with osmium apply-changes and
+# match the (nightly) import database rather than the weekly planet they were
+# cut from. Ways added to a line since then would otherwise miss the line in
+# the tiles.
 #
-# Usage: ./scripts/extract/update.sh <in.osm.pbf> <out.osm.pbf> [sequence]
+# Usage: ./scripts/extract/fetch-diffs.sh <extract.osm.pbf> <out-dir> [sequence]
 #
-# Diffs are applied up to the replication sequence number given (default: the
-# latest), and the output's osmosis_replication_timestamp is that sequence's
-# time, so the same input and sequence give the same file.
+# Writes the filtered diffs (<out-dir>/<sequence>.osc.gz) from the extract's
+# time up to the replication sequence number given (default: the latest),
+# and <out-dir>/timestamp, that sequence's time, for the updated extract's
+# osmosis_replication_timestamp: the same extract and sequence give the same
+# diffs.
 #
-# Each diff is filtered with railway-extract.filter as it comes in, so memory
-# stays small, and keeps the nodes of the ways it adds or changes. An object
+# A filtered diff keeps the nodes of the ways it adds or changes. An object
 # that lost its tag or was deleted since the planet is kept as it was, and so
-# is a node moved without a change to its way. Needs curl and osmium.
+# is a node moved without a change to its way.
+#
+# Filtering a diff takes 1-2 GB of memory, and PARALLEL of them run at
+# once. Needs curl and osmium.
 #
 # Environment variables:
 #   REPLICATION_SERVER - default https://planet.openstreetmap.org/replication/hour
-#   PARALLEL           - concurrent downloads (default: 8)
+#   PARALLEL           - diffs fetched and filtered at once (default: 4)
 
 set -euo pipefail
 
@@ -29,7 +35,7 @@ IN="$1"
 OUT="$2"
 SEQUENCE="${3:-}"
 SERVER="${REPLICATION_SERVER:-https://planet.openstreetmap.org/replication/hour}"
-PARALLEL="${PARALLEL:-8}"
+PARALLEL="${PARALLEL:-4}"
 FILTER="$(cd "$(dirname "$0")" && pwd)/railway-extract.filter"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
@@ -82,7 +88,7 @@ if [ "${behind}" -lt 0 ]; then
   exit 1
 fi
 first_sequence="$(( latest_sequence - behind - 2 ))"
-echo "Extract from ${file_time}; applying diffs ${first_sequence}..${latest_sequence} (${latest_time})"
+echo "Extract from ${file_time}; fetching diffs ${first_sequence}..${latest_sequence} (${latest_time})"
 
 fetch_diff() {
   local sequence="$1"
@@ -104,6 +110,7 @@ export SERVER WORK TOTAL FILTER
 
 seq "${first_sequence}" "${latest_sequence}" | xargs -P "${PARALLEL}" -I{} bash -c 'fetch_diff {}'
 
-osmium apply-changes "${IN}" "${WORK}"/*.osc.gz -O -o "${OUT}" \
-  --output-header="osmosis_replication_timestamp=${latest_time}"
-echo "Updated line relations written to ${OUT}"
+mkdir -p "${OUT}"
+mv "${WORK}"/*.osc.gz "${OUT}/"
+echo "${latest_time}" > "${OUT}/timestamp"
+echo "${TOTAL} filtered diffs up to ${latest_time} written to ${OUT}"

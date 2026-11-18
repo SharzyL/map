@@ -16,7 +16,7 @@
 # box, nodes included, on disk, which is then filtered with references
 # followed. Ways crossing the box's edge end at it, so give a box a little
 # larger than what is used. The pass takes ~25 min, as long as the download.
-# The results are as old as the planet; update.sh brings them up to date with
+# The results are as old as the planet; fetch-diffs.sh brings them up to date with
 # hourly diffs.
 #
 # Usage: ./scripts/extract/filter-planet.sh <.osm.pbf URL> <world.osm.pbf> <box.osm.pbf> <bbox>
