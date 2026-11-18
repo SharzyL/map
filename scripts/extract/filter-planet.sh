@@ -19,7 +19,10 @@
 # Give a dated planet (planet-YYMMDD.osm.pbf) rather than planet-latest, so
 # the same URL is the same file every time.
 #
-# Needs curl, osmium and awk.
+# Each pass says every three minutes how much it has read and how fast
+# (meter.py), so a slow or stalled download shows in the log.
+#
+# Needs curl, osmium, awk and python3.
 
 set -euo pipefail
 
@@ -38,8 +41,12 @@ minutes() { echo "$(( ($(date +%s) - start) / 60 ))"; }
 
 # Both passes read the same file, even if a newer one is published meanwhile.
 URL="$(curl -sSfIL -o /dev/null -w '%{url_effective}' "${URL}")"
+# Its size, so the passes can say how far they are (meter.py, every 3 min)
+SIZE="$(curl -sSfIL "${URL}" | tr -d '\r' | sed -n 's/^content-length: *//Ip' | tail -n 1)"
+METER="$(dirname "$0")/meter.py"
 echo "Streaming ${URL} through osmium (1/2: the filtered objects)"
-curl -sSfL "${URL}" | osmium tags-filter -F pbf - -e "${FILTER}" -R -O -f pbf -o "${WORK}/selected.osm.pbf"
+curl -sSfL "${URL}" | python3 -I "${METER}" "pass 1/2" ${SIZE} \
+  | osmium tags-filter -F pbf - -e "${FILTER}" -R -O -f pbf -o "${WORK}/selected.osm.pbf"
 echo "Filtered after $(minutes) min"
 # The nodes of the kept ways and the node members of the kept relations, as
 # "n<id>" lines (OPL fields: N<node>,... on ways, M<type><id>@<role>,... on
@@ -51,7 +58,8 @@ osmium cat "${WORK}/selected.osm.pbf" -f opl,add_metadata=false -o - | awk '
 echo "$(wc -l < "${WORK}/node-ids.txt") node references; streaming again (2/2: their nodes)"
 # getid exits with 1 when some ids are not in the input: nodes across the
 # border of a regional extract. That is fine; 2 is an error.
-curl -sSfL "${URL}" | { osmium getid -F pbf - -i "${WORK}/node-ids.txt" -O -f pbf -o "${WORK}/nodes.osm.pbf" || [ $? -eq 1 ]; }
+curl -sSfL "${URL}" | python3 -I "${METER}" "pass 2/2" ${SIZE} \
+  | { osmium getid -F pbf - -i "${WORK}/node-ids.txt" -O -f pbf -o "${WORK}/nodes.osm.pbf" || [ $? -eq 1 ]; }
 # Written beside the output first, so an interrupted run leaves none.
 osmium merge "${WORK}/selected.osm.pbf" "${WORK}/nodes.osm.pbf" -O -f pbf -o "${WORK}/merged.osm.pbf"
 mv "${WORK}/merged.osm.pbf" "${OUT}"

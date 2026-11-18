@@ -80,7 +80,7 @@ memory = 4
 run = """
 scripts/extract/filter-planet.sh "https://planet.openstreetmap.org/pbf/$SRC_PLANET" "$OUT/planet.osm.pbf"
 """
-files = ["scripts/extract/filter-planet.sh", "scripts/extract/railway-extract.filter"]
+files = ["scripts/extract/filter-planet.sh", "scripts/extract/meter.py", "scripts/extract/railway-extract.filter"]
 sources = ["planet"]
 outs = ["planet.osm.pbf"]
 
@@ -352,6 +352,12 @@ files = [
   "package.json",
   "pnpm-lock.yaml",
 ]
+check = true
+
+[steps.check-extract]
+about = "Tests of the extract scripts"
+run = "python3 -m unittest discover -s scripts/extract -p 'test_*.py'"
+files = ["scripts/extract/meter.py", "scripts/extract/test_meter.py"]
 check = true
 
 [steps.check-build]
