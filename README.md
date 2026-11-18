@@ -66,9 +66,9 @@ gh run list -R "$REPO" -w build.yml -L 1                      # the new run's ID
 gh run watch <run-id> -R "$REPO" --interval 60 --exit-status
 ```
 
-A first run takes about two and a half hours, most of it two passes over OpenStreetMap's planet file
-(about 80 minutes; they come back with every new weekly planet) and the tile export (about 30
-minutes). After that the workflow runs by itself:
+A first run takes about two hours, most of it a pass over OpenStreetMap's planet file (about 25
+minutes; it comes back with every new weekly planet), Geofabrik's extracts of Asia and Russia's east
+(17.5 GB) and the tile export (about 40 minutes). After that the workflow runs by itself:
 
 `/build-dashboard` on the deployed site shows the build as it stands: the graph of sources and steps,
 when each data source last changed, how long each step took, and the recent runs. It reads the state
@@ -182,24 +182,25 @@ which is the workflow's business: on CI the state of the build (what was built f
 how long it took) lives in the bucket under `build/`, and locally in `.build/state.json`, so a local
 run never knows what is deployed.
 
-| Step                                                    | Makes                                                         | From                                                                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `lltskb`                                                | China Railway's timetable, unpacked and as CSV                | 路路通's `an.db` (`scripts/lltskb/`)                                                                      |
-| `planet-extract`                                        | the railway objects of the weekly planet, with their nodes    | OpenStreetMap's planet, streamed twice (`scripts/extract/`)                                               |
-| `railway-extract`                                       | that extract brought up to date (`lines.osm.pbf`)             | `planet-extract`, the hourly diffs                                                                        |
-| `box-extract`                                           | the extract cut to China, Japan and what lies between         | `railway-extract`                                                                                         |
-| `n02`, `line-groups`                                    | Japan's railway ways grouped into their official lines        | MLIT's 国土数値情報 N02, `railway-extract` (`scripts/lines/`)                                             |
-| `osm-stations`                                          | the extract's stations in China and in Japan                  | `box-extract` (`scripts/stations/`)                                                                       |
-| `cr-station-trains`                                     | China Railway's stations matched to OSM, with trains per day  | `lltskb`, `osm-stations`                                                                                  |
-| `jp-station-codes`                                      | Japan's OSM stations matched to Yahoo! 乗換案内 station codes | `osm-stations`, the API's station search                                                                  |
-| `station-coords`                                        | the position of every matched station                         | the two station files, `osm-stations`                                                                     |
-| `cr-timetable`                                          | station timetables and trains, as SQL for D1                  | `lltskb`, `cr-station-trains`                                                                             |
-| `relations`                                             | routes, lines and Japan's official lines, as SQL for D1       | `box-extract`, `line-groups`, `n02` (`scripts/relations/`)                                                |
-| `routing-graph`, `cr-routes`, `jp-hops`                 | trains' routes on OSM track, as SQL for D1                    | `box-extract`, `lltskb`, the station files (`scripts/routing/`)                                           |
-| `tiles`                                                 | the railway tile archive                                      | the OpenRailwayMap database image, `railway-extract`, `line-groups`, the station files (`scripts/tiles/`) |
-| `deploy-timetable`, `deploy-relations`, `deploy-routes` | the D1 database `cr`                                          | the SQL above                                                                                             |
-| `deploy-tiles`                                          | `openrailwaymap.pmtiles` in the bucket                        | `tiles`                                                                                                   |
-| `deploy-worker`                                         | the Worker and the app, last                                  | `src/`, `public/`, the Japanese station files                                                             |
+| Step                                                    | Makes                                                                                 | From                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `lltskb`                                                | China Railway's timetable, unpacked and as CSV                                        | 路路通's `an.db` (`scripts/lltskb/`)                                                                      |
+| `planet-extract`                                        | the railway objects of the weekly planet, worldwide, without coordinates              | OpenStreetMap's planet, streamed once (`scripts/extract/`)                                                |
+| `railway-extract`                                       | that brought up to date: line relations and way tags for the tiles                    | `planet-extract`, the hourly diffs                                                                        |
+| `region-extract`                                        | the railway objects of Asia and Russia's east, with their nodes' coordinates          | Geofabrik's extracts (`scripts/extract/filter-region.sh`)                                                 |
+| `box-extract`                                           | the regional extract brought up to date and cut to China, Japan and what lies between | `region-extract`, the hourly diffs                                                                        |
+| `n02`, `line-groups`                                    | Japan's railway ways grouped into their official lines                                | MLIT's 国土数値情報 N02, `box-extract` (`scripts/lines/`)                                                 |
+| `osm-stations`                                          | the extract's stations in China and in Japan                                          | `box-extract` (`scripts/stations/`)                                                                       |
+| `cr-station-trains`                                     | China Railway's stations matched to OSM, with trains per day                          | `lltskb`, `osm-stations`                                                                                  |
+| `jp-station-codes`                                      | Japan's OSM stations matched to Yahoo! 乗換案内 station codes                         | `osm-stations`, the API's station search                                                                  |
+| `station-coords`                                        | the position of every matched station                                                 | the two station files, `osm-stations`                                                                     |
+| `cr-timetable`                                          | station timetables and trains, as SQL for D1                                          | `lltskb`, `cr-station-trains`                                                                             |
+| `relations`                                             | routes, lines and Japan's official lines, as SQL for D1                               | `box-extract`, `line-groups`, `n02` (`scripts/relations/`)                                                |
+| `routing-graph`, `cr-routes`, `jp-hops`                 | trains' routes on OSM track, as SQL for D1                                            | `box-extract`, `lltskb`, the station files (`scripts/routing/`)                                           |
+| `tiles`                                                 | the railway tile archive                                                              | the OpenRailwayMap database image, `railway-extract`, `line-groups`, the station files (`scripts/tiles/`) |
+| `deploy-timetable`, `deploy-relations`, `deploy-routes` | the D1 database `cr`                                                                  | the SQL above                                                                                             |
+| `deploy-tiles`                                          | `openrailwaymap.pmtiles` in the bucket                                                | `tiles`                                                                                                   |
+| `deploy-worker`                                         | the Worker and the app, last                                                          | `src/`, `public/`, the Japanese station files                                                             |
 
 Things to know:
 

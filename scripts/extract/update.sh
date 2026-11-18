@@ -47,8 +47,7 @@ sequence_path() {
 }
 
 # The extract's time: its header's, else its newest object's, which is within
-# minutes of the planet's cut (filter-planet.sh merges its two passes with
-# osmium merge, which writes no header timestamp).
+# minutes of the planet's cut (in case osmium left the header's out).
 file_time="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "${IN}" 2>/dev/null || true)"
 [ -n "${file_time}" ] || file_time="$(osmium fileinfo -g header.option.timestamp "${IN}" 2>/dev/null || true)"
 [ -n "${file_time}" ] || file_time="$(osmium fileinfo -e -g data.timestamp.last "${IN}")"

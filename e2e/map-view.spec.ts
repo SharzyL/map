@@ -31,9 +31,11 @@ test.describe('the map’s starting view', () => {
     await page.waitForFunction(() => Boolean((window as unknown as { _mlmap?: ViewMap })._mlmap));
     expect(await view(page)).toEqual({ lng: 116.38, lat: 39.87, zoom: 11 });
 
-    // A URL with a view opens at it.
+    // A URL with a view opens at it. Loaded afresh: changing only the fragment
+    // and reloading races MapLibre, which rewrites the fragment a moment after
+    // a move, and may write the view before back.
+    await page.goto('about:blank');
     await page.goto('/#9/34.7/135.5');
-    await page.reload();
     await page.waitForFunction(() => Boolean((window as unknown as { _mlmap?: ViewMap })._mlmap));
     expect(await view(page)).toEqual({ lng: 135.5, lat: 34.7, zoom: 9 });
     errors.assertNoErrors();

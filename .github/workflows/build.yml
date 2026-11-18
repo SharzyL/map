@@ -93,6 +93,13 @@ jobs:
           sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
 
+      # Room for Geofabrik's Asia (16.5 GB, filtered then deleted) and the
+      # tile export, beside the cached outputs
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
       # The newest cache: each run saves its own below
       - name: Restore the build outputs
         uses: actions/cache/restore@v6

@@ -1,16 +1,25 @@
 # The map's data build: what build.py runs (see its docstring for the keys).
 #
-#   timetable ── lltskb ─┬─ cr-timetable ───────────────── deploy-timetable ─┐
-#                        ├─ cr-station-trains ─┬─ station-coords ────────────┤
-#   planet ── planet-extract                   │                             │
-#   diffs ─── railway-extract ─┬─ box-extract ─┼─ osm-stations               │
-#                              │               ├─ relations ── deploy-relations
-#                              │               └─ routing-graph ─┬─ cr-routes ─┬ deploy-routes
-#                              │                                 └─ jp-hops ───┘             │
-#   N02 ───── n02 ─────────────┴─ line-groups                                │
-#   Yahoo ─── jp-station-codes                                               │
-#   image ─── tiles ──────────────────────────────────── deploy-tiles ───────┤
-#   this repository ───────────────────────────────────── deploy-worker ─────┘
+#   timetable ─ lltskb ─┬─ cr-timetable ─────────────────── deploy-timetable ─┐
+#                       ├─ cr-station-trains ─┬─ station-coords ──────────────┤
+#   Geofabrik ─ region-extract                │                               │
+#   diffs ───── box-extract ─┬────────────────┼─ osm-stations                 │
+#                            │                ├─ relations ── deploy-relations┤
+#                            │                └─ routing-graph ─┬─ cr-routes ─┬ deploy-routes
+#                            │                                  └─ jp-hops ───┘
+#   N02 ─────── n02 ─────────┴─ line-groups ──┐                               │
+#   planet ──── planet-extract                │                               │
+#   diffs ───── railway-extract ──────────────┤                               │
+#   Yahoo ───── jp-station-codes              │                               │
+#   image ──────────────────────────────── tiles ─────────── deploy-tiles ────┤
+#   this repository ───────────────────────────────────────── deploy-worker ──┘
+#
+# OpenStreetMap comes in twice, both brought to the same hourly diff: the
+# planet worldwide, for what the tiles add to the import database's railways
+# (line relations, way tags), which needs no coordinates; and Geofabrik's
+# extracts of Asia and Russia's east, which fit on disk, for what needs them
+# (relations, routes, stations, official lines), in the box around China and
+# Japan.
 #
 # and the checks (check-*: formatting, types, unit and end-to-end tests, the
 # scripts' tests), which the deploys of what they test come after.
@@ -29,6 +38,11 @@ about = "OpenStreetMap's weekly planet file: the dated file planet-latest points
 probe = """
 basename "$(curl -sSfIL -o /dev/null -w '%{url_effective}' https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf)"
 """
+
+# Geofabrik cuts its regions daily and keeps each day's files about a week
+[sources.geofabrik]
+about = "Geofabrik's extracts of Asia and of Russia's Far East and Siberia: the date of the newest cut of all three"
+probe = "scripts/extract/geofabrik-date.sh asia russia/far-eastern-fed-district russia/siberian-fed-district"
 
 [sources.osm-diffs]
 about = "OpenStreetMap's hourly replication diffs: the latest sequence number"
@@ -74,7 +88,7 @@ keep = false
 # ── OpenStreetMap's railways ────────────────────────────
 
 [steps.planet-extract]
-about = "The railway objects of the weekly planet: two passes over ~95 GB, about 80 minutes"
+about = "The railway objects of the weekly planet, worldwide, without coordinates: one pass over ~95 GB, about 30 minutes"
 cpus = 2
 memory = 4
 run = """
@@ -85,29 +99,48 @@ sources = ["planet"]
 outs = ["planet.osm.pbf"]
 
 [steps.railway-extract]
-about = "The railway extract brought up to the pinned hourly diff, and its line relations and tagged ways as text"
+about = "The worldwide railway objects brought up to the pinned hourly diff: line relations and tagged ways as text, for the tiles"
 cpus = 2
 memory = 2
 run = """
 scripts/extract/update.sh "$BUILD/planet-extract/planet.osm.pbf" "$OUT/lines.osm.pbf" "$SRC_OSM_DIFFS"
 osmium tags-filter "$OUT/lines.osm.pbf" r/route=railway w/tracks w/start_date w/opening_date -R -O -o "$OUT/tagged.osm.pbf"
 osmium cat "$OUT/tagged.osm.pbf" -f opl,add_metadata=false -O -o "$OUT/lines.opl"
-rm "$OUT/tagged.osm.pbf"
-osmium fileinfo -g header.option.osmosis_replication_timestamp "$OUT/lines.osm.pbf" > "$OUT/timestamp"
+rm "$OUT/tagged.osm.pbf" "$OUT/lines.osm.pbf"
 """
 files = ["scripts/extract/update.sh", "scripts/extract/railway-extract.filter"]
 sources = ["osm-diffs"]
 needs = ["planet-extract/planet.osm.pbf"]
-outs = ["lines.osm.pbf", "lines.opl", "timestamp"]
+outs = ["lines.opl"]
+
+[steps.region-extract]
+about = "The railway objects of Asia and Russia's east with the coordinates of their nodes, from Geofabrik's extracts (17.5 GB)"
+cpus = 2
+memory = 2
+run = """
+d="$SRC_GEOFABRIK"
+g=https://download.geofabrik.de
+scripts/extract/filter-region.sh "$OUT/region.osm.pbf" "$g/asia-$d.osm.pbf" \
+  "$g/russia/far-eastern-fed-district-$d.osm.pbf" "$g/russia/siberian-fed-district-$d.osm.pbf"
+"""
+files = ["scripts/extract/filter-region.sh", "scripts/extract/meter.py", "scripts/extract/railway-extract.filter"]
+sources = ["geofabrik"]
+outs = ["region.osm.pbf"]
 
 [steps.box-extract]
-about = "The extract cut to China and Japan with what lies between, for relations, routing and stations"
+about = "The regional extract brought up to the pinned hourly diff and cut to China and Japan with what lies between"
 run = """
-osmium extract -b 73,17,146,54 -s smart "$BUILD/railway-extract/lines.osm.pbf" -O -o "$OUT/cnjp.osm.pbf" \
-  --output-header="osmosis_replication_timestamp=$(cat "$BUILD/railway-extract/timestamp")"
+scripts/extract/update.sh "$BUILD/region-extract/region.osm.pbf" "$OUT/updated.osm.pbf" "$SRC_OSM_DIFFS"
+ts="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "$OUT/updated.osm.pbf")"
+osmium extract -b 73,17,146,54 -s smart "$OUT/updated.osm.pbf" -O -o "$OUT/cnjp.osm.pbf" \
+  --output-header="osmosis_replication_timestamp=$ts"
+rm "$OUT/updated.osm.pbf"
+echo "$ts" > "$OUT/timestamp"
 """
-needs = ["railway-extract/lines.osm.pbf", "railway-extract/timestamp"]
-outs = ["cnjp.osm.pbf"]
+files = ["scripts/extract/update.sh", "scripts/extract/railway-extract.filter"]
+sources = ["osm-diffs"]
+needs = ["region-extract/region.osm.pbf"]
+outs = ["cnjp.osm.pbf", "timestamp"]
 
 [steps.n02]
 about = "MLIT's railway data (国土数値情報 N02, 2025 edition): Japan's official lines and their stations"
@@ -122,10 +155,10 @@ about = "Japan's railway ways grouped into their official lines"
 cpus = 1
 memory = 4
 run = """
-N02_DIR="$BUILD/n02/n02" scripts/lines/line-groups.sh "$BUILD/railway-extract/lines.osm.pbf" "$OUT"
+N02_DIR="$BUILD/n02/n02" scripts/lines/line-groups.sh "$BUILD/box-extract/cnjp.osm.pbf" "$OUT"
 """
 files = ["scripts/lines/line-groups.sh", "scripts/lines/line-groups.py"]
-needs = ["railway-extract/lines.osm.pbf", "n02/n02"]
+needs = ["box-extract/cnjp.osm.pbf", "n02/n02"]
 outs = ["line_groups.csv", "line_group_ways.csv", "review.csv", "unmatched.csv"]
 
 [steps.relations]
@@ -134,7 +167,7 @@ cpus = 1
 memory = 5
 run = """
 N02_DIR="$BUILD/n02/n02" scripts/relations/relations.sh "$BUILD/box-extract/cnjp.osm.pbf" "$BUILD/line-groups" "$OUT/relations.sql"
-cp "$BUILD/railway-extract/timestamp" "$OUT/version"
+cp "$BUILD/box-extract/timestamp" "$OUT/version"
 """
 files = ["scripts/relations/relations.sh", "scripts/relations/build_relations.py", "scripts/relations/relations_sql.py"]
 needs = [
@@ -142,7 +175,7 @@ needs = [
   "line-groups/line_groups.csv",
   "line-groups/line_group_ways.csv",
   "n02/n02",
-  "railway-extract/timestamp",
+  "box-extract/timestamp",
 ]
 outs = ["relations.sql", "version"]
 
@@ -222,7 +255,7 @@ memory = 10
 run = """
 cd scripts/routing
 ver="$(cat "$BUILD/lltskb/an/ver.txt")"
-ts="$(cat "$BUILD/railway-extract/timestamp")"
+ts="$(cat "$BUILD/box-extract/timestamp")"
 python3 cr_stations.py "$BUILD/routing-graph/graph.pkl" "$BUILD/lltskb/csv" \
   "$BUILD/cr-station-trains/cr-station-trains.csv" "$OUT/cr-stations.csv"
 python3 cr_lines.py "$BUILD/routing-graph/graph.pkl" "$BUILD/lltskb/csv" "$OUT/cr-stations.csv" "$OUT/cr-lines.json"
@@ -246,7 +279,7 @@ needs = [
   "lltskb/csv",
   "lltskb/an/ver.txt",
   "cr-station-trains/cr-station-trains.csv",
-  "railway-extract/timestamp",
+  "box-extract/timestamp",
 ]
 outs = ["cr-routes.sql", "version", "cr-osm-issues.csv", "cr-stop-issues.csv", "cr-retraces.csv"]
 keep = false
@@ -257,11 +290,11 @@ cpus = 1
 memory = 4
 run = """
 cd scripts/routing
-ts="$(cat "$BUILD/railway-extract/timestamp")"
+ts="$(cat "$BUILD/box-extract/timestamp")"
 python3 jp_store.py build "$BUILD/routing-graph/graph.pkl" "$BUILD/jp-station-codes/jp-station-codes.csv" "$OUT/paths.sqlite"
 python3 export_d1.py jp "$OUT/paths.sqlite" "$ts" "$OUT/jp.sql"
 rm "$OUT/paths.sqlite"
-cp "$BUILD/railway-extract/timestamp" "$OUT/version"
+cp "$BUILD/box-extract/timestamp" "$OUT/version"
 """
 files = [
   "scripts/routing",
@@ -271,7 +304,7 @@ files = [
   "!scripts/routing/*.html",
   "!scripts/routing/*.nix",
 ]
-needs = ["routing-graph/graph.pkl", "jp-station-codes/jp-station-codes.csv", "railway-extract/timestamp"]
+needs = ["routing-graph/graph.pkl", "jp-station-codes/jp-station-codes.csv", "box-extract/timestamp"]
 outs = ["jp.sql", "version"]
 
 # ── Tiles ───────────────────────────────────────────────

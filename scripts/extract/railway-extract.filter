@@ -1,6 +1,7 @@
-# The OSM objects the railway extract keeps (osmium tags-filter expressions),
-# read by filter-planet.sh and update.sh; the nodes the kept ways and
-# relations refer to come along.
+# The OSM objects the railway extracts keep (osmium tags-filter expressions),
+# read by filter-planet.sh, filter-region.sh and update.sh. In the regional
+# extract the nodes the kept ways and relations refer to come along; the
+# planet's, only streamed, goes without them.
 
 # Railway lines, transit routes and their route masters, and stop areas.
 r/route=railway,train,subway,light_rail,tram,monorail,funicular
