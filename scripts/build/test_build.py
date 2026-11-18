@@ -337,6 +337,36 @@ class BuildTest(unittest.TestCase):
             code, _ = self.build('run', '--force', 'a,b', *limits)
             self.assertEqual(code, 1)
 
+    def test_says_what_is_running_and_for_how_long(self) -> None:
+        self.write(
+            'steps.toml',
+            """
+            [steps.slow]
+            run = "sleep 0.7; touch $OUT/slow"
+            outs = ["slow"]
+
+            [steps.slower]
+            run = "sleep 0.9; touch $OUT/slower"
+            outs = ["slower"]
+
+            [steps.last]
+            run = "cp $BUILD/slow/slow $OUT/last"
+            needs = ["slow/slow"]
+            outs = ["last"]
+            """,
+        )
+        code, output = self.build('run', '--cpus', '2', '--report', '0.25')
+        self.assertEqual(code, 0, output)
+        self.assertRegex(output, r'(?m)^ +\| running: slow 0 s, slower 0 s; 1 more to go$')
+        # Later only the one still running, and nothing left to start
+        self.assertRegex(output, r'(?m)^ +\| running: slower 0 s$')
+        self.assertEqual(build.elapsed(59.9), '59 s')
+        self.assertEqual(build.elapsed(725), '12 min')
+        self.assertEqual(build.elapsed(4830), '1 h 20 min')
+        # Not at all when told so
+        code, output = self.build('run', '--force', 'slow', '--report', '0')
+        self.assertNotIn('running:', output)
+
     def test_deploys_run_one_at_a_time(self) -> None:
         alone = '[ ! -e deploying ]; touch deploying; sleep 0.2; rm deploying'
         self.write(

@@ -3,7 +3,7 @@
 
 Usage: build.py plan [target ...] [--checks] [--refresh SOURCES]
        build.py run [target ...] [--checks] [--refresh SOURCES] [--force STEPS]
-                    [--deploy] [--cpus N] [--memory GB]
+                    [--deploy] [--cpus N] [--memory GB] [--report SECONDS]
        build.py prune
        build.py adopt step ...
 
@@ -50,7 +50,9 @@ comes after are done and the machine holds it. A step says what it takes with
 `cpus` and `memory` (GB; 1 each when unsaid), and the steps running together
 stay within --cpus and --memory (the machine's own by default); a step that
 takes more than that runs alone, and deploys go one at a time. Every line a
-step prints is passed on with the step's name in front.
+step prints is passed on with the step's name in front, and every minute
+(--report) a line says which steps are running, for how long, and how many
+are left.
 
 A command runs from the repository root under `bash -euo pipefail` with:
 
@@ -96,6 +98,8 @@ STEP_KEYS = {
 LOG_TAIL = 30
 # Reasons for running a step shown in a line; the state has them all
 MAX_REASONS = 3
+# Seconds between the lines saying what is running
+REPORT_EVERY = 60
 # How a step that ran well is reported, by kind
 RAN = {'build': 'built', 'check': 'passed', 'deploy': 'deployed'}
 # Times a step is run again for lost outputs before its outputs are taken to
@@ -604,12 +608,15 @@ class Runner:
     says what it takes; deploys go one at a time). One thread per running step
     reads its output; everything else happens on the caller's thread."""
 
-    def __init__(self, build: Build, deploy: bool, force: set[str], cpus: float, memory: float) -> None:
+    def __init__(
+        self, build: Build, deploy: bool, force: set[str], cpus: float, memory: float, report: float = REPORT_EVERY
+    ) -> None:
         self.build = build
         self.deploy = deploy
         self.force = set(force)
         self.cpus = cpus
         self.memory = memory
+        self.report = report  # seconds between lines on what is running; 0 for none
         self.results: dict[str, tuple[str, str]] = {}  # settled steps → (outcome, detail)
         self.ran: set[str] = set()
         self.results_before: dict[str, str] = {}  # what a step built in this run was built for
@@ -626,11 +633,17 @@ class Runner:
     def run(self, targets: list[str]) -> bool:
         order = self.build.order(targets)
         self.width = max((len(name) for name in order), default=0)
+        due = time.monotonic() + self.report
         try:
             while True:
                 moved = self.schedule(order)
                 if self.running:
-                    self.finish(*self.events.get())
+                    try:
+                        wait = max(0.0, due - time.monotonic()) if self.report else None
+                        self.finish(*self.events.get(timeout=wait))
+                    except queue.Empty:
+                        self.say('', self.progress(order))
+                        due += self.report
                 elif not moved:
                     break
         finally:
@@ -638,6 +651,13 @@ class Runner:
                 job['process'].kill()
         self.results = {name: self.results[name] for name in order if name in self.results}
         return not any(outcome == 'failed' for outcome, _ in self.results.values())
+
+    def progress(self, order: list[str]) -> str:
+        """The steps running now with how long each has run, and how many are left"""
+        now = time.monotonic()
+        running = ', '.join(f'{name} {elapsed(now - job["clock"])}' for name, job in self.running.items())
+        left = sum(1 for name in order if name not in self.results and name not in self.running)
+        return f'running: {running}' + (f'; {left} more to go' if left else '')
 
     def say(self, name: str, text: str) -> None:
         with self.output:
@@ -759,7 +779,15 @@ class Runner:
             text=True,
             errors='replace',
         )
-        job = {'process': process, 'inputs': inputs, 'reasons': reasons, 'started': started, 'store': store, 'tmp': tmp}
+        job = {
+            'process': process,
+            'inputs': inputs,
+            'reasons': reasons,
+            'started': started,
+            'clock': time.monotonic(),
+            'store': store,
+            'tmp': tmp,
+        }
         self.running[step.name] = job
         threading.Thread(target=self.follow, args=(step.name, process), daemon=True).start()
 
@@ -871,6 +899,14 @@ def machine_memory() -> float:
         return 8.0
 
 
+def elapsed(seconds: float) -> str:
+    """How long a step has run, to the unit that matters: 42 s, 12 min, 1 h 20 min"""
+    if seconds < 60:
+        return f'{int(seconds)} s'
+    minutes = int(seconds // 60)
+    return f'{minutes} min' if minutes < 60 else f'{minutes // 60} h {minutes % 60:02d} min'
+
+
 def told(reasons: list[str]) -> str:
     """The reasons in a line; the first few when there are many"""
     if len(reasons) <= MAX_REASONS:
@@ -923,6 +959,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument('--deploy', action='store_true', help='run the deploy steps too')
     run.add_argument('--cpus', type=float, default=os.cpu_count() or 1, help='CPUs steps may take together')
     run.add_argument('--memory', type=float, default=machine_memory(), help='GB of memory they may take together')
+    run.add_argument(
+        '--report', type=float, default=REPORT_EVERY, metavar='SECONDS', help='how often to say what is running (0: never)'
+    )
     commands.add_parser('prune')
     commands.add_parser('adopt').add_argument('names', nargs='+', metavar='step')
     args = parser.parse_args(argv)
@@ -968,7 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         build.save_state()
-        runner = Runner(build, args.deploy, force, args.cpus, args.memory)
+        runner = Runner(build, args.deploy, force, args.cpus, args.memory, args.report)
         ok = runner.run(targets)
         text = summary(build, runner, started)
         print('\n' + text)
