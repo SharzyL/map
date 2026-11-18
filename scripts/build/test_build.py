@@ -86,7 +86,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(self.out('joined/joined.txt'), 'HELLO\n1 initial\n')
         code, output = self.build('run')
         self.assertEqual((code, self.ran), (0, []))
-        self.assertIn('| upper | up to date |', output)
+        self.assertIn('| upper | up to date |  | 12 B |', output)
         self.assertIn('| publish | not deployed |', output)
 
     def test_changed_file_rebuilds_its_step_and_what_changes_after(self) -> None:
@@ -157,9 +157,9 @@ class BuildTest(unittest.TestCase):
         code, output = self.build('run', '--deploy')
         self.assertEqual((code, self.ran), (1, ['upper']))
         self.assertIn('| upper | failed |', output)
-        self.assertIn('| joined | blocked |  | needs upper |', output)
+        self.assertIn('| joined | blocked |  | 16 B | needs upper |', output)
         # A deploy waits for the deploys before it
-        self.assertIn('| announce | blocked |  | needs publish |', output)
+        self.assertIn('| announce | blocked |  |  | needs publish |', output)
         self.assertEqual(self.out('upper/upper.txt'), 'HELLO\n')
         attempt = self.state()['steps']['upper']['attempt']
         self.assertEqual((attempt['status'], attempt['error']), ('failed', 'exit code 1'))
@@ -177,13 +177,13 @@ class BuildTest(unittest.TestCase):
         self.write('notes.txt', 'new\n')
         code, output = self.build('run', '--deploy', '--refresh', 'all')
         self.assertEqual((code, self.ran), (1, ['upper', 'joined', 'announce']))
-        self.assertIn('| publish | blocked |  | needs joined |', output)
+        self.assertIn('| publish | blocked |  |  | needs joined |', output)
         # ... but not when the failing step's command changed with it
         self.write('steps.toml', steps.replace('!= bad', '!= bad '))
         self.write('notes.txt', 'newer\n')
         code, output = self.build('run', '--deploy')
         self.assertEqual((code, self.ran), (1, ['upper', 'joined']))
-        self.assertIn('| announce | blocked |  | needs publish |', output)
+        self.assertIn('| announce | blocked |  |  | needs publish |', output)
 
     def test_missing_output_is_a_failure(self) -> None:
         self.write('steps.toml', STEPS.replace('cp notes.txt $OUT/notes.txt', 'true'))
@@ -315,6 +315,12 @@ class BuildTest(unittest.TestCase):
         )
         self.build('run')
         self.assertEqual(self.ran, ['first', 'both'])
+        # The state has the hash and size of every output, and of each file of a directory
+        parts = self.state()['steps']['split']['outputs']['parts']
+        self.assertEqual((parts['size'], parts['files']['a.txt']['size'], parts['files']['b.txt']['size']), (12, 6, 6))
+        self.assertEqual(len(parts['hash']), 32)
+        self.assertEqual(self.state()['steps']['first']['inputs']['needs'], {'split/parts/a.txt': parts['files']['a.txt']['hash']})
+        self.assertEqual(self.state()['steps']['first']['outputs']['first.txt']['size'], 6)
         self.write('notes.txt', 'changed\n')
         self.build('run')
         self.assertEqual(self.ran, ['both'])

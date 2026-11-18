@@ -30,9 +30,9 @@ in their `after`. When one of those cannot be brought up to date, the deploy
 waits, unless only data from outside holds it back (its command and files are
 the ones it was last built with): then what is deployed still fits the code.
 
-The state (state.json: the pins, and for each step the hashes of what it read
-and wrote, when, and how long it took) is what tells whether a step is up to
-date, not the output files. A step whose outputs are gone, for instance from a
+The state (state.json: the pins, and for each step the hashes of what it read,
+the hash and size of each output it wrote, when, and how long it took) is what
+tells whether a step is up to date, not the output files. A step whose outputs are gone, for instance from a
 lost CI cache, runs again only when a step that has to run reads them. With
 BUILD_REMOTE set (s3://bucket/prefix, or a directory) the state is read from
 there and written back after every step, with a copy per run under runs/, and
@@ -397,7 +397,7 @@ class Build:
             return outputs[out]['hash']
         for name, record in outputs.items():
             if out.startswith(name + '/'):
-                return record.get('files', {}).get(out[len(name) + 1 :])
+                return record.get('files', {}).get(out[len(name) + 1 :], {}).get('hash')
         return None
 
     def inputs(self, step: Step) -> dict:
@@ -437,10 +437,19 @@ class Build:
     # What a step wrote
 
     def describe_output(self, path: Path) -> dict:
+        """An output's hash and size; for a directory, of each file in it too,
+        its own hash being that of its files' names and hashes"""
         if path.is_dir():
-            files = {p.relative_to(path).as_posix(): file_digest(p) for p in sorted(path.rglob('*')) if p.is_file()}
-            size = sum(p.stat().st_size for p in path.rglob('*') if p.is_file())
-            return {'hash': digest_json(files), 'size': size, 'files': files}
+            files = {
+                p.relative_to(path).as_posix(): {'hash': file_digest(p), 'size': p.stat().st_size}
+                for p in sorted(path.rglob('*'))
+                if p.is_file()
+            }
+            return {
+                'hash': digest_json({name: f['hash'] for name, f in files.items()}),
+                'size': sum(f['size'] for f in files.values()),
+                'files': files,
+            }
         return {'hash': file_digest(path), 'size': path.stat().st_size}
 
     def output_present(self, step: str, out: str) -> bool:
@@ -449,8 +458,7 @@ class Build:
         if not path.exists():
             return False
         if path.is_dir():
-            files = {p.relative_to(path).as_posix(): file_digest(p) for p in sorted(path.rglob('*')) if p.is_file()}
-            return digest_json(files) == self.need_hash(step, out)
+            return self.describe_output(path)['hash'] == self.need_hash(step, out)
         return file_digest(path) == self.need_hash(step, out)
 
     def adopt(self, step: Step) -> None:
@@ -729,11 +737,15 @@ def print_plan(build: Build, plan: dict[str, list[str]]) -> None:
 
 def summary(build: Build, runner: Runner, started: str) -> str:
     """A Markdown table of what the run did"""
-    lines = ['| Step | Result | Time | Why |', '| --- | --- | --- | --- |']
+    lines = ['| Step | Result | Time | Output | Why |', '| --- | --- | --- | --- | --- |']
     for name, (outcome, detail) in runner.results.items():
         record = build.state['steps'].get(name, {})
         seconds = record.get('attempt', {}).get('duration_s') if name in runner.ran or outcome == 'failed' else None
-        lines.append(f'| {name} | {outcome} | {f"{seconds} s" if seconds is not None else ""} | {detail} |')
+        size = sum(o['size'] for o in record.get('outputs', {}).values())
+        lines.append(
+            f'| {name} | {outcome} | {f"{seconds} s" if seconds is not None else ""} '
+            f'| {f"{size:,} B" if record.get("outputs") else ""} | {detail} |'
+        )
     pins = ['', '| Source | Version | Changed |', '| --- | --- | --- |']
     for name, pin in build.state['sources'].items():
         pins.append(f'| {name} | `{pin["version"]}` | {pin["changed_at"]}{" (this run)" if pin["changed_at"] >= started else ""} |')
