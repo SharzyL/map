@@ -278,7 +278,9 @@ outs = ["jp.sql", "version"]
 
 [steps.tiles]
 about = "The railway tile archive, from the OpenRailwayMap import database and what the build adds to it"
-cpus = 4
+# Takes four CPUs when it has them, but declares two so it can start beside
+# the routing instead of waiting for the whole machine
+cpus = 2
 memory = 8
 run = """
 LINE_RELATIONS_OPL="$BUILD/railway-extract/lines.opl" LINE_GROUPS_DIR="$BUILD/line-groups" \

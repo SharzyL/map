@@ -19,11 +19,17 @@ type TileRequestPath =
 
 // The map's tile URLs carry the archive version (?v=, which main.ts asks
 // /tiles/<archive>/version for), which changes with every new archive, so a
-// versioned tile, empty or not, never changes: browsers keep it for a year and
-// ask the Worker only for tiles they have not seen. Unversioned requests may
-// outlive an archive, so a day.
-export function tileCacheControl(url: URL) {
-  return url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'public, max-age=86400';
+// tile of the version asked for, empty or not, never changes: browsers keep it
+// for a year and ask the Worker only for tiles they have not seen.
+// Unversioned requests may outlive an archive, so a day. So may a page opened
+// before an archive was replaced, which still asks for the old version: the
+// archive has its new tiles only, so those answers are not kept long either,
+// or a browser would hold a new tile under the old version for good.
+export function tileCacheControl(url: URL, current?: string) {
+  const asked = url.searchParams.get('v');
+  if (asked === null) return 'public, max-age=86400';
+  if (current !== undefined && asked !== current) return 'public, max-age=300';
+  return 'public, max-age=31536000, immutable';
 }
 
 export function parseTilePath(pathname: string): TileRequestPath {
@@ -178,26 +184,39 @@ export async function handleTileRequest(
   }
 
   const [z, x, y] = parsed.tile;
-  const cacheControl = tileCacheControl(url);
+  // How long an answer may be kept depends on whether the version asked for
+  // is the archive's. The header read first may be of an archive replaced
+  // since (it is cached); reading the tile notices that and reads it again.
+  const caching = async () => {
+    const latest = await p.getHeader();
+    const cacheControl = tileCacheControl(url, latest.etag ? archiveVersion(latest.etag) : undefined);
+    // Only tiles of the version asked for go into the Worker's cache, which
+    // is keyed by the URL, version included
+    return { latest, cacheControl, keep: cacheControl.includes('immutable') || !url.searchParams.has('v') };
+  };
   // Areas without railways (oceans, deserts) have no tile. Browsers cache that
   // answer like a tile, or every view of them would reach the Worker again;
   // the Worker's own cache would not help there (it runs inside the Worker,
   // which is invoked either way), and it refuses responses without a body.
-  const noTile = (status: number) =>
-    new Response(null, { status, headers: { 'Cache-Control': cacheControl, 'Access-Control-Allow-Origin': '*' } });
+  const noTile = async (status: number) =>
+    new Response(null, {
+      status,
+      headers: { 'Cache-Control': (await caching()).cacheControl, 'Access-Control-Allow-Origin': '*' },
+    });
 
   if (z < header.minZoom || z > header.maxZoom) return noTile(404);
 
   const tiledata = await p.getZxy(z, x, y);
   if (!tiledata) return noTile(204);
 
-  const contentType = CONTENT_TYPES[header.tileType] || 'application/octet-stream';
+  const { latest, cacheControl, keep } = await caching();
+  const contentType = CONTENT_TYPES[latest.tileType] || 'application/octet-stream';
   const headers: Record<string, string> = {
     'Content-Type': contentType,
     'Cache-Control': cacheControl,
     'Access-Control-Allow-Origin': '*',
   };
-  if (header.tileCompression === Compression.Gzip) headers['Content-Encoding'] = 'gzip';
-  ctx.waitUntil(cache.put(request.url, gzipTileResponse(tiledata.data, { headers })));
+  if (latest.tileCompression === Compression.Gzip) headers['Content-Encoding'] = 'gzip';
+  if (keep) ctx.waitUntil(cache.put(request.url, gzipTileResponse(tiledata.data, { headers })));
   return gzipTileResponse(tiledata.data, { headers });
 }

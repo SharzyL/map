@@ -10,6 +10,13 @@ describe('tileCacheControl', () => {
       'public, max-age=86400',
     );
   });
+
+  it('keeps a tile for good only when it is of the version asked for', () => {
+    const url = new URL('https://map.shz.al/tiles/openrailwaymap/7/108/49.mvt?v=0f3c2a9b7d41');
+    expect(tileCacheControl(url, '0f3c2a9b7d41')).toBe('public, max-age=31536000, immutable');
+    // A page opened before the archive was replaced
+    expect(tileCacheControl(url, '9af4a742fbb8')).toBe('public, max-age=300');
+  });
 });
 
 describe('parseTilePath', () => {
