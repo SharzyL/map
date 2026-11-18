@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Builds the map's data and deploys what changed.
 
-Usage: build.py plan [target ...] [--checks] [--refresh SOURCES]
+Usage: build.py plan [target ...] [--checks] [--refresh SOURCES] [--force STEPS]
+                     [--deploy] [--cpus N] [--memory GB]
        build.py run [target ...] [--checks] [--refresh SOURCES] [--force STEPS]
                     [--deploy] [--cpus N] [--memory GB] [--report SECONDS]
        build.py prune
@@ -52,7 +53,10 @@ stay within --cpus and --memory (the machine's own by default); a step that
 takes more than that runs alone, and deploys go one at a time. Every line a
 step prints is passed on with the step's name in front, and every minute
 (--report) a line says which steps are running, for how long, and how many
-are left.
+are left. A run starts by saying how many steps it has to run and, when each
+of them has run before, about how long they will take: the times they took
+last, put through the same scheduling (a step whose input comes out
+unchanged will not run, so it is the most it should take).
 
 A command runs from the repository root under `bash -euo pipefail` with:
 
@@ -602,6 +606,63 @@ class Build:
         return {name: runs[name] for name in order if name in runs}
 
 
+def fits(step: Step, running: list[Step], cpus: float, memory: float) -> bool:
+    """Whether the step may start beside the ones running"""
+    if not running:
+        return True  # alone, whatever it takes
+    if step.deploy and any(other.deploy for other in running):
+        return False
+    return (
+        sum(other.cpus for other in running) + step.cpus <= cpus
+        and sum(other.memory for other in running) + step.memory <= memory
+    )
+
+
+def simulate(steps: dict[str, Step], seconds: dict[str, float], cpus: float, memory: float) -> float:
+    """How long the steps of `seconds` (each with the time it takes, in the
+    order they are looked at) take together, started as the runner starts
+    them: when the ones they wait for are done and the machine holds them"""
+    waiting = list(seconds)
+    running: dict[str, float] = {}  # step → when it ends
+    done: set[str] = set()
+    clock = 0.0
+    while waiting or running:
+        for name in list(waiting):
+            # Steps outside the plan are up to date: nothing to wait for
+            if any(other in seconds and other not in done for other in steps[name].upstream):
+                continue
+            if fits(steps[name], [steps[r] for r in running], cpus, memory):
+                running[name] = clock + seconds[name]
+                waiting.remove(name)
+        first = min(running, key=running.get)
+        clock = running.pop(first)
+        done.add(first)
+    return clock
+
+
+def forecast(build: Build, plan: dict[str, list[str]], deploy: bool, cpus: float, memory: float) -> list[str]:
+    """What a run is about to do, in a line or two: how many steps, and how
+    long they should take by the time each took when it last ran"""
+    names = [name for name in plan if deploy or not build.steps[name].deploy]
+    if not names:
+        return ['nothing to run']
+    kinds = [build.steps[name].kind for name in names]
+    words = {'build': ('build', 'builds'), 'check': ('check', 'checks'), 'deploy': ('deploy', 'deploys')}
+    counts = ', '.join(f'{kinds.count(k)} {words[k][kinds.count(k) > 1]}' for k in words if k in kinds)
+    lines = [f'{len(names)} step{"s" if len(names) > 1 else ""} to run: {counts}']
+    seconds = {name: build.state['steps'].get(name, {}).get('duration_s') for name in names}
+    unknown = [name for name, took in seconds.items() if took is None]
+    if unknown:
+        lines.append(f'no estimate of the time: {told(unknown, ", ")} {"has" if len(unknown) == 1 else "have"} not run before')
+    else:
+        together = simulate(build.steps, seconds, cpus, memory)
+        lines.append(
+            f'about {elapsed(together)} if all of them run, by the time each took last '
+            f'({elapsed(sum(seconds.values()))} one after another)'
+        )
+    return lines
+
+
 class Runner:
     """Runs the steps that are not up to date, several at a time where their
     dependencies allow and the machine's CPUs and memory hold them (each step
@@ -633,6 +694,8 @@ class Runner:
     def run(self, targets: list[str]) -> bool:
         order = self.build.order(targets)
         self.width = max((len(name) for name in order), default=0)
+        for line in forecast(self.build, self.build.plan(targets, self.force), self.deploy, self.cpus, self.memory):
+            self.say('', line)
         due = time.monotonic() + self.report
         try:
             while True:
@@ -716,13 +779,7 @@ class Runner:
         # Never while a step reading its outputs runs: they are replaced whole
         if any(step.name in {other for other, _ in self.build.steps[r].needs} for r in self.running):
             return False
-        if not self.running:
-            return True  # alone, whatever it takes
-        if step.deploy and any(self.build.steps[r].deploy for r in self.running):
-            return False
-        cpus = sum(self.build.steps[r].cpus for r in self.running)
-        memory = sum(self.build.steps[r].memory for r in self.running)
-        return cpus + step.cpus <= self.cpus and memory + step.memory <= self.memory
+        return fits(step, [self.build.steps[r] for r in self.running], self.cpus, self.memory)
 
     def held_back_from_outside(self, name: str) -> bool:
         """Whether the step, and every step before it that could not be brought
@@ -907,11 +964,11 @@ def elapsed(seconds: float) -> str:
     return f'{minutes} min' if minutes < 60 else f'{minutes // 60} h {minutes % 60:02d} min'
 
 
-def told(reasons: list[str]) -> str:
+def told(reasons: list[str], between: str = '; ') -> str:
     """The reasons in a line; the first few when there are many"""
     if len(reasons) <= MAX_REASONS:
-        return '; '.join(reasons)
-    return '; '.join(reasons[:MAX_REASONS]) + f'; and {len(reasons) - MAX_REASONS} more'
+        return between.join(reasons)
+    return between.join(reasons[:MAX_REASONS]) + f'{between}and {len(reasons) - MAX_REASONS} more'
 
 
 def split(values: list[str] | None) -> list[str]:
@@ -955,10 +1012,12 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument('--refresh', action='append', help='sources to probe again: names, or all')
         command.add_argument('--force', action='append', help='steps to run even if up to date')
         command.add_argument('--checks', action='store_true', help='the check steps (with any targets named)')
+        command.add_argument('--deploy', action='store_true', help='the deploy steps too')
+        command.add_argument('--cpus', type=float, default=os.cpu_count() or 1, help='CPUs steps may take together')
+        command.add_argument(
+            '--memory', type=float, default=machine_memory(), help='GB of memory they may take together'
+        )
     run = commands.choices['run']
-    run.add_argument('--deploy', action='store_true', help='run the deploy steps too')
-    run.add_argument('--cpus', type=float, default=os.cpu_count() or 1, help='CPUs steps may take together')
-    run.add_argument('--memory', type=float, default=machine_memory(), help='GB of memory they may take together')
     run.add_argument(
         '--report', type=float, default=REPORT_EVERY, metavar='SECONDS', help='how often to say what is running (0: never)'
     )
@@ -1003,7 +1062,10 @@ def main(argv: list[str] | None = None) -> int:
         build.refresh(split(args.refresh), targets)
         if args.command == 'plan':
             # Nothing is written: the pins a plan refreshed are for the plan only
-            print_plan(build, build.plan(targets, force))
+            plan = build.plan(targets, force)
+            print_plan(build, plan)
+            if plan:
+                print('\n'.join(forecast(build, plan, args.deploy, args.cpus, args.memory)))
             return 0
 
         build.save_state()

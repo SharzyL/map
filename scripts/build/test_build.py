@@ -367,6 +367,60 @@ class BuildTest(unittest.TestCase):
         code, output = self.build('run', '--force', 'slow', '--report', '0')
         self.assertNotIn('running:', output)
 
+    def test_a_run_starts_with_what_it_has_to_do_and_how_long_it_should_take(self) -> None:
+        code, output = self.build('run')
+        self.assertIn('| 2 steps to run: 2 builds\n', output)
+        self.assertIn('| no estimate of the time: upper, joined have not run before\n', output)
+        _, output = self.build('run')
+        self.assertIn('| nothing to run\n', output)
+        # Every step has a time now; the deploys count when they are to run
+        _, output = self.build('plan', '--force', 'upper,joined')
+        self.assertIn('\n2 steps to run: 2 builds\nabout 0 s if all of them run, by the time each took last', output)
+        _, output = self.build('run', '--deploy', '--force', 'upper')
+        self.assertIn('| 4 steps to run: 2 builds, 2 deploys\n', output)
+        self.assertIn('| no estimate of the time: publish, announce have not run before\n', output)
+
+    def test_estimate_follows_the_scheduling(self) -> None:
+        self.write(
+            'steps.toml',
+            """
+            [steps.a]
+            run = "true"
+            outs = ["a"]
+
+            [steps.b]
+            run = "true"
+            outs = ["b"]
+            memory = 6
+
+            [steps.c]
+            run = "true"
+            needs = ["a/a"]
+            outs = ["c"]
+
+            [steps.d1]
+            run = "true"
+            needs = ["c/c"]
+            deploy = true
+
+            [steps.d2]
+            run = "true"
+            needs = ["c/c"]
+            deploy = true
+            """,
+        )
+        _, steps = build.load_steps(self.root / 'steps.toml')
+        seconds = {'a': 60.0, 'b': 120.0, 'c': 30.0}
+        # a then c beside b; one at a time on one CPU, or when b's memory leaves no room
+        self.assertEqual(build.simulate(steps, seconds, cpus=2, memory=8), 120)
+        self.assertEqual(build.simulate(steps, seconds, cpus=1, memory=8), 210)
+        self.assertEqual(build.simulate(steps, seconds, cpus=2, memory=6), 210)
+        # Deploys one after another, however many CPUs
+        seconds = {'a': 60.0, 'b': 50.0, 'c': 30.0, 'd1': 10.0, 'd2': 10.0}
+        self.assertEqual(build.simulate(steps, seconds, cpus=8, memory=8), 110)
+        # Steps outside the plan are not waited for
+        self.assertEqual(build.simulate(steps, {'c': 30.0, 'd1': 10.0}, cpus=8, memory=8), 40)
+
     def test_deploys_run_one_at_a_time(self) -> None:
         alone = '[ ! -e deploying ]; touch deploying; sleep 0.2; rm deploying'
         self.write(
@@ -394,7 +448,10 @@ class BuildTest(unittest.TestCase):
         steps = steps.replace('after = ["publish"]', 'after = ["publish", "tested"]')
         self.write('steps.toml', steps)
         code, output = self.build('plan', '--checks')
-        self.assertEqual(output, 'check  tested: never built\n')
+        self.assertEqual(
+            output,
+            'check  tested: never built\n1 step to run: 1 check\nno estimate of the time: tested has not run before\n',
+        )
         self.build('run', '--checks')
         self.assertEqual(self.ran, ['tested'])
         # Checks need no --deploy, and pass once for the files they read
