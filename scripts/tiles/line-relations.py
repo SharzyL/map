@@ -3,8 +3,8 @@
 
 Usage: line-relations.py <relations.opl> <out_dir>
 
-The input comes from fetch-line-relations.sh (osmium tags-filter ... -R, then
-osmium cat -f opl,add_metadata=false) and holds one relation or way per line.
+The input comes from the railway extract (scripts/extract: osmium tags-filter
+... -R, then osmium cat -f opl,add_metadata=false) and holds one relation or way per line.
 Writes:
   line_relations.csv         osm_id,name,ref,color,operator
   line_relation_members.csv  relation_id,way_id

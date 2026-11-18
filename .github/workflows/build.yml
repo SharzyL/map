@@ -1,0 +1,169 @@
+name: Build
+
+# Brings the map's data and the Worker up to date and deploys what changed
+# (scripts/build/build.py, steps in scripts/build/steps.toml):
+#
+# - on a push to main, with the data sources as pinned, so only what the
+#   commit touched is rebuilt;
+# - every three days, probing the sources again (the timetable, OSM, the
+#   OpenRailwayMap database);
+# - by hand, to refresh a source (yahoo-stations has no version and is only
+#   refreshed this way), force steps, or just print the plan.
+#
+# Pushes and the schedule deploy only once the repository variable
+# BUILD_DEPLOY is `true`; until then they build and say what they would deploy.
+#
+# The outputs worth keeping are cached between runs; the state (what was built
+# from what, and when) is in R2 under build/, next to what the steps store.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 18 */3 * *'
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: 'Sources to probe again: all, or names (lltskb planet osm-diffs orm-db yahoo-stations); empty for none'
+        required: false
+        default: ''
+      force:
+        description: 'Steps to run even if up to date'
+        required: false
+        default: ''
+      targets:
+        description: 'Steps to bring up to date (empty: all)'
+        required: false
+        default: ''
+      deploy:
+        description: 'Run the deploy steps'
+        type: boolean
+        default: true
+      plan_only:
+        description: 'Only print what would run'
+        type: boolean
+        default: false
+
+# One build at a time; a newer one waits for the one running
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # To delete the caches a run's own replaces
+  actions: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  build:
+    name: Build and deploy
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      BUILD_REMOTE: s3://orm/build
+      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the data scripts' tools
+        run: |
+          pip install -q -r scripts/requirements.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool
+          osmium --version | head -1
+
+      # The newest cache: each run saves its own below
+      - name: Restore the build outputs
+        uses: actions/cache/restore@v4
+        with:
+          path: .build/out
+          key: build-out-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: build-out-
+
+      - name: Build
+        env:
+          EVENT: ${{ github.event_name }}
+          REFRESH: ${{ inputs.refresh }}
+          FORCE: ${{ inputs.force }}
+          TARGETS: ${{ inputs.targets }}
+          DEPLOY: ${{ inputs.deploy }}
+          PLAN_ONLY: ${{ inputs.plan_only }}
+          AUTO_DEPLOY: ${{ vars.BUILD_DEPLOY }}
+        run: |
+          case "${EVENT}" in
+            schedule) REFRESH=all; DEPLOY="${AUTO_DEPLOY}" ;;
+            push) DEPLOY="${AUTO_DEPLOY}" ;;
+          esac
+          args=()
+          if [ -n "${REFRESH}" ]; then args+=(--refresh "${REFRESH}"); fi
+          if [ -n "${FORCE}" ]; then args+=(--force "${FORCE}"); fi
+          # shellcheck disable=SC2086
+          if [ "${PLAN_ONLY}" = "true" ]; then
+            python3 scripts/build/build.py plan ${TARGETS} "${args[@]}"
+            exit 0
+          fi
+          if [ "${DEPLOY}" = "true" ]; then args+=(--deploy); fi
+          # shellcheck disable=SC2086
+          python3 scripts/build/build.py run ${TARGETS} "${args[@]}"
+
+      # The matched stations and the official lines' review, to look at or to
+      # run the app with locally
+      - name: Upload the small outputs
+        if: ${{ !cancelled() && !inputs.plan_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-outputs
+          path: |
+            .build/out/cr-station-trains/
+            .build/out/jp-station-codes/
+            .build/out/station-coords/
+            .build/out/line-groups/review.csv
+            .build/out/line-groups/unmatched.csv
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Leave out what is not kept
+        if: ${{ !cancelled() && !inputs.plan_only }}
+        run: |
+          python3 scripts/build/build.py prune
+          du -sh .build/out/* 2>/dev/null || true
+
+      # Also after a failed step: what the others built is kept
+      - name: Save the build outputs
+        id: save
+        if: ${{ !cancelled() && !inputs.plan_only }}
+        uses: actions/cache/save@v4
+        with:
+          path: .build/out
+          key: build-out-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Delete the caches this one replaces
+        if: ${{ !cancelled() && steps.save.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: build-out-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          gh cache list --repo "${GITHUB_REPOSITORY}" --key build-out- --limit 100 --json id,key \
+            --jq ".[] | select(.key != \"${KEEP}\") | .id" \
+            | xargs -r -n1 gh cache delete --repo "${GITHUB_REPOSITORY}"

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Brings an extract of route=railway relations and railway ways up to date
-# with OSM's hourly replication diffs, so it matches the (nightly) import
-# database rather than the weekly planet it was cut from. Ways added to a line
-# since then would otherwise miss the line in the tiles.
+# Brings the railway extract (filter-planet.sh) up to date with OSM's hourly
+# replication diffs, so it matches the (nightly) import database rather than
+# the weekly planet it was cut from. Ways added to a line since then would
+# otherwise miss the line in the tiles.
 #
-# Usage: ./scripts/tiles/update-line-relations.sh <in.osm.pbf> <out.osm.pbf>
+# Usage: ./scripts/extract/update.sh <in.osm.pbf> <out.osm.pbf> [sequence]
+#
+# Diffs are applied up to the replication sequence number given (default: the
+# latest), and the output's osmosis_replication_timestamp is that sequence's
+# time, so the same input and sequence give the same file.
 #
 # Each diff is filtered with railway-extract.filter as it comes in, so memory
 # stays small, and keeps the nodes of the ways it adds or changes. An object
@@ -17,12 +21,13 @@
 
 set -euo pipefail
 
-if [ $# -ne 2 ]; then
-  sed -n '7p' "$0" >&2
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+  grep '^# Usage:' "$0" >&2
   exit 1
 fi
 IN="$1"
 OUT="$2"
+SEQUENCE="${3:-}"
 SERVER="${REPLICATION_SERVER:-https://planet.openstreetmap.org/replication/hour}"
 PARALLEL="${PARALLEL:-8}"
 FILTER="$(cd "$(dirname "$0")" && pwd)/railway-extract.filter"
@@ -42,8 +47,8 @@ sequence_path() {
 }
 
 # The extract's time: its header's, else its newest object's, which is within
-# minutes of the planet's cut (fetch-line-relations.sh merges its two passes
-# with osmium merge, which writes no header timestamp).
+# minutes of the planet's cut (filter-planet.sh merges its two passes with
+# osmium merge, which writes no header timestamp).
 file_time="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "${IN}" 2>/dev/null || true)"
 [ -n "${file_time}" ] || file_time="$(osmium fileinfo -g header.option.timestamp "${IN}" 2>/dev/null || true)"
 [ -n "${file_time}" ] || file_time="$(osmium fileinfo -e -g data.timestamp.last "${IN}")"
@@ -51,11 +56,20 @@ if [ -z "${file_time}" ]; then
   echo "No timestamp in ${IN}; cannot tell which diffs to apply" >&2
   exit 1
 fi
-latest_state="$(curl -sSfL "${SERVER}/state.txt")"
+# The sequence to stop at and its time: the one asked for, else the latest.
+if [ -n "${SEQUENCE}" ]; then
+  latest_state="$(curl -sSfL --retry 5 --retry-all-errors "${SERVER}/$(sequence_path "${SEQUENCE}").state.txt")"
+else
+  latest_state="$(curl -sSfL --retry 5 --retry-all-errors "${SERVER}/state.txt")"
+fi
 latest_sequence="$(state_value "${latest_state}" sequenceNumber)"
 latest_time="$(state_value "${latest_state}" timestamp)"
+if [ -z "${latest_sequence}" ] || [ -z "${latest_time}" ] || { [ -n "${SEQUENCE}" ] && [ "${latest_sequence}" != "${SEQUENCE}" ]; }; then
+  echo "No state for sequence ${SEQUENCE:-(latest)} at ${SERVER}" >&2
+  exit 1
+fi
 
-# Diffs are one per interval, so count back from the latest one. Start a
+# Diffs are one per interval, so count back from the last one. Start a
 # couple of diffs early; applying a change the file already has is harmless
 # because apply-changes keeps the newest version of each object.
 case "${SERVER}" in
@@ -64,6 +78,10 @@ case "${SERVER}" in
   *) interval=3600 ;;
 esac
 behind="$(( ($(date -d "${latest_time}" +%s) - $(date -d "${file_time}" +%s)) / interval ))"
+if [ "${behind}" -lt 0 ]; then
+  echo "${IN} (${file_time}) is newer than sequence ${latest_sequence} (${latest_time})" >&2
+  exit 1
+fi
 first_sequence="$(( latest_sequence - behind - 2 ))"
 echo "Extract from ${file_time}; applying diffs ${first_sequence}..${latest_sequence} (${latest_time})"
 

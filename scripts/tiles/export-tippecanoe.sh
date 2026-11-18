@@ -14,13 +14,14 @@
 #                   each update becomes a log line in CI)
 #   LINE_RELATIONS_OPL - optional OPL file of route=railway relations (see
 #                   line-relations.py); adds line_relations to railway_line_high
-#   LINE_GROUPS_DIR - optional output of line-groups.sh: Japan's official lines,
-#                   which replace the line relations of the ways on them
-#   CR_STATION_TRAINS - China Railway trains per day by OSM station (default:
-#                   data/cr-station-trains.csv, see cr-station-trains.py); sizes
+#   LINE_GROUPS_DIR - optional output of scripts/lines/line-groups.sh: Japan's
+#                   official lines, which replace the line relations of the
+#                   ways on them
+#   CR_STATION_TRAINS - optional China Railway trains per day by OSM station
+#                   (scripts/stations/cr-station-trains.py's output); sizes
 #                   those stations by timetable instead of mapped routes
-#   JP_STATION_CODES - Yahoo! 乗換案内 station codes by OSM station in Japan
-#                   (default: data/jp-station-codes.csv, see jp-station-codes.py);
+#   JP_STATION_CODES - optional Yahoo! 乗換案内 station codes by OSM station in
+#                   Japan (scripts/stations/jp-station-codes.py's output);
 #                   become the stations' yahoo_codes, which open their timetable
 
 set -euo pipefail
@@ -34,8 +35,8 @@ LAYERS="${LAYERS:-standard}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 LINE_RELATIONS_OPL="${LINE_RELATIONS_OPL:-}"
 LINE_GROUPS_DIR="${LINE_GROUPS_DIR:-}"
-CR_STATION_TRAINS="${CR_STATION_TRAINS:-$(dirname "$0")/../../data/cr-station-trains.csv}"
-JP_STATION_CODES="${JP_STATION_CODES:-$(dirname "$0")/../../data/jp-station-codes.csv}"
+CR_STATION_TRAINS="${CR_STATION_TRAINS:-}"
+JP_STATION_CODES="${JP_STATION_CODES:-}"
 FGB_DIR="${OUTPUT_DIR}/fgb"
 
 mkdir -p "${FGB_DIR}"
@@ -465,7 +466,7 @@ if [ -f "${CR_STATION_TRAINS}" ]; then
   psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q \
     -c "\\copy cr_station_trains FROM '$(realpath "${CR_STATION_TRAINS}")' WITH (FORMAT csv, HEADER true)"
 else
-  echo "  ${CR_STATION_TRAINS} not found; station sizes stay as mapped"
+  echo "  no CR_STATION_TRAINS file (${CR_STATION_TRAINS:-not set}); station sizes stay as mapped"
 fi
 psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
 SET client_min_messages = warning;
@@ -525,7 +526,7 @@ SQL
 psql "${DATABASE_URL}" -At -c "SELECT '  ' || count(*) FILTER (WHERE cr_size IS NOT NULL) || ' stations sized by timetable (' || count(*) FILTER (WHERE cr_size = 'large') || ' large, ' || count(*) FILTER (WHERE cr_size = 'normal') || ' normal), ' || count(*) FILTER (WHERE cr_size IS NULL) || ' others closer to one' FROM station_overrides"
 
 # Yahoo! 乗換案内 station codes for stations in Japan, the ids the timetable
-# (src/timetable.ts) asks the norikae API for. A station grouped from several
+# (src/timetable.ts) asks the API for. A station grouped from several
 # OSM features gets the codes of all of them.
 psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
 SET client_min_messages = warning;
@@ -536,7 +537,7 @@ if [ -f "${JP_STATION_CODES}" ]; then
   psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q \
     -c "\\copy jp_station_codes FROM '$(realpath "${JP_STATION_CODES}")' WITH (FORMAT csv, HEADER true)"
 else
-  echo "  ${JP_STATION_CODES} not found; timetables look stations up by name"
+  echo "  no JP_STATION_CODES file (${JP_STATION_CODES:-not set}); timetables look stations up by name"
 fi
 psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -q <<SQL
 SET client_min_messages = warning;

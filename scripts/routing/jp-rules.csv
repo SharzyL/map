@@ -1,0 +1,14 @@
+train,prefer,from,via,to,note
+サンダーバード,湖西線,,,,"大阪→敦賀 runs via 湖西線, not 琵琶湖線 through 米原"
+はるか,梅田貨物線|うめきた|大阪環状線|阪和線|関西空港線|関空,,,,"京都→関西空港 via the うめきた tunnel, 大阪環状線 and 阪和線"
+湘南新宿ライン,湘南新宿ライン,,,,"its own routes: OSM maps them over the 山手貨物線 and, 池袋→赤羽, via 田端 on the 東北貨物線 (fares count the shorter 赤羽線)"
+成田エクスプレス,総武快速|総武線快速|成田線|成田空港,,,,東京→成田空港 via the 総武快速線 tunnel and 成田線
+踊り子,東海道線|東海道本線|伊東線|伊豆急,,,,"東京→伊豆急下田 on 東海道線, not 横須賀線"
+ひたち|ときわ,常磐線|上野東京ライン,,,,品川→いわき via 上野東京ライン and 常磐線 (not 東北本線)
+あずさ|かいじ,中央線|中央本線,,,,新宿→松本 on 中央線快速 tracks then 中央本線
+サンライズ出雲,東海道本線|東海道線|JR琵琶湖線|JR京都線|JR神戸線|山陽本線|伯備線|山陰本線,22828,,26925,"東京→出雲市 through 名古屋 and 大阪 without stopping, then 伯備線; no OSM route covers it"
+サンライズ瀬戸,東海道本線|東海道線|JR琵琶湖線|JR京都線|JR神戸線|山陽本線|瀬戸大橋線|本四備讃線|予讃線,22828,,27724,"東京→高松 like サンライズ出雲 to 岡山, then over 瀬戸大橋"
+特急 鎌倉,武蔵野線|武蔵野南線|品鶴線|横須賀,29697,,23116,"吉川美南→鎌倉 over the 武蔵野南線 freight line from 府中本町, then 横須賀線"
+やくも,山陽本線|伯備線|山陰本線,27051,,26925,岡山→出雲市 on 伯備線; OSM's やくも route links only two of its stops
+富士回遊,総武快速;総武緩行;中央線快速|中央線JC|JR中央線（|中央本線|富士急行,22361,22640;22582,23403,"千葉→河口湖: 総武快速線 to 錦糸町, its 緩行線 to 御茶ノ水, then 中央線快速 and 富士急行; no OSM route"
+あずさ,総武快速;総武緩行;中央線快速|中央線JC|JR中央線（|中央本線|篠ノ井線,22361,22640;22582,24325,"千葉→松本, switching tracks at 錦糸町 and 御茶ノ水 like 富士回遊"

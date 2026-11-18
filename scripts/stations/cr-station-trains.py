@@ -2,13 +2,13 @@
 """Count the passenger trains stopping at China Railway stations each day and
 match the stations to OSM, for the export's station sizes.
 
-Usage: cr-station-trains.py <timetable dir> [--osm stations.json] [--from YYYY-MM-DD]
-                            [--out data/cr-station-trains.csv]
+Usage: cr-station-trains.py <timetable dir> --osm china.json --out cr-station-trains.csv
+                            [--from YYYY-MM-DD]
 
 <timetable dir> is a lulutong timetable CSV export (01_车站索引.csv ...); it is
-not committed, only the derived output is. Stations come from OSM through
-Overpass (railway=station/halt in China, `out center tags`), or from a saved
-copy of that response with --osm.
+never committed. The OSM stations (railway=station/halt in and around China,
+in the shape of an Overpass `out center tags` response) come from the railway
+extract through osm-stations.py.
 
 Matching is by name: OSM names without a trailing 站, where a station's own
 name beats one that only lists it in alt_name or old_name (renamed
@@ -33,15 +33,8 @@ import json
 import math
 import re
 import sys
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
-OVERPASS = 'https://overpass-api.de/api/interpreter'
-OVERPASS_QUERY = (
-    '[out:json][timeout:280];area["ISO3166-1"="CN"]->.cn;'
-    'nwr["railway"~"^(station|halt)$"](area.cn);out center tags;'
-)
 URBAN = {'subway', 'light_rail', 'monorail', 'funicular', 'tram'}
 SAME_STATION_KM = 3
 NEIGHBOUR_FIT_KM = 30
@@ -64,15 +57,8 @@ def km(a, b):
 
 
 def osm_stations(path):
-    if path:
-        data = json.load(open(path, encoding='utf-8'))
-    else:
-        request = urllib.request.Request(
-            OVERPASS,
-            data=urllib.parse.urlencode({'data': OVERPASS_QUERY}).encode(),
-            headers={'User-Agent': 'sharzy-map cr-station-trains (https://github.com/SharzyL/map)'},
-        )
-        data = json.load(urllib.request.urlopen(request, timeout=300))
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
     stations = []
     for e in data['elements']:
         t = e.get('tags', {})
@@ -170,9 +156,9 @@ def trains_per_day(timetable, start):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('timetable')
-    parser.add_argument('--osm', help='saved Overpass response (default: query Overpass)')
+    parser.add_argument('--osm', required=True, help="osm-stations.py's china.json")
     parser.add_argument('--from', dest='start', type=dt.date.fromisoformat, default=dt.date.today())
-    parser.add_argument('--out', default=Path(__file__).resolve().parents[2] / 'data' / 'cr-station-trains.csv')
+    parser.add_argument('--out', required=True)
     args = parser.parse_args()
 
     match, status, neighbours = match_stations(args.timetable, osm_stations(args.osm))

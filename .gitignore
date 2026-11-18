@@ -49,3 +49,10 @@ test-results
 /lulutong-timetable-csv-*
 
 .claude
+
+# Python caches, and what the data scripts write when run by hand
+__pycache__
+/scripts/routing/out
+
+# The data build (scripts/build/build.py)
+/.build

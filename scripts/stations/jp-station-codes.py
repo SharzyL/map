@@ -2,32 +2,41 @@
 """Match OSM railway stations in Japan to Yahoo! 乗換案内 station codes, the ids
 the map's API (https://map.shz.al/api/v1/doc.md) uses for timetables.
 
-Usage: jp-station-codes.py [--osm stations.json] [--cache search-cache.json]
-                           [--out data/jp-station-codes.csv]
+Usage: jp-station-codes.py --osm japan.json --cache search-cache.json
+                           --out jp-station-codes.csv
+                           [--exceptions jp-station-exceptions.csv] [--api URL]
 
-OSM has no Yahoo codes and Wikidata has no property for them, so stations are
-matched by name through the API's station search
-(/api/v1/norikae/stations?q=). Yahoo names a station shared by several
+The OSM stations (railway=station/halt in Japan, in the shape of an Overpass
+`out center tags` response) come from the railway extract through
+osm-stations.py. OSM has no Yahoo codes and Wikidata has no property for them,
+so stations are matched by name through the API's station search
+(/api/v1/norikae/stations?q=), then checked against Yahoo's position of each
+result (yahoo_lat, yahoo_lon). Yahoo names a station shared by several
 prefectures 府中(東京都), 府中(広島県), and one shared within a prefecture by
-line or company, 宇治(奈良線), 宇治(京阪線), 新宿(東京メトロ). For each OSM station (name:ja, else name):
+line or company, 宇治(奈良線), 宇治(京阪線), 新宿(東京メトロ). For each OSM
+station (name:ja, else name):
 
-1. Results whose name, without the parenthesised suffix, equals the OSM name
+1. A row in the exceptions file decides ("exception"); empty codes leave the
+   station unmatched. The file is for what the rules below get wrong.
+2. Results whose name, without the parenthesised suffix, equals the OSM name
    (NFKC, ケ/ヶ alike, no trailing 駅) are candidates. The search returns at
    most 10 results, so when none matches and the list was full, the name is
    searched again with 駅 appended. A name with a bracketed subtitle that
    Yahoo leaves out, 押上〈スカイツリー前〉, is searched without it.
-2. One candidate: that code ("unique").
-3. Several: the prefecture decides ("prefecture"). A station's prefecture is
-   the one most of its nearest uniquely matched stations have in Yahoo's
-   `address`, so no boundary data is needed and borders come out right.
-4. Still several: a candidate whose suffix names the OSM operator decides
+3. Candidates farther than NEAR_KM from the OSM station are dropped: they
+   are same-named stations elsewhere. If none is left, the station gets no
+   row and is reported as far, to be looked at and maybe added as an
+   exception.
+4. One left: that code ("unique" if the name had one candidate, "position"
+   if the distance picked it).
+5. Several left: a candidate whose suffix names the OSM operator decides
    ("operator"), e.g. 京阪電気鉄道 for 宇治(京阪線).
-5. Still several: all of them are kept ("several"); a station's timetable
+6. Still several: all of them are kept ("several"); a station's timetable
    view can offer each candidate's lines.
 
-Search responses are cached (--cache), so a rerun only queries new names.
-Writes one row per OSM feature: osm_type (N/W/R), osm_id, name, codes
-(';'-separated), status.
+Search responses are cached (--cache), so a rerun only queries new names and
+names cached without Yahoo's positions. Writes one row per OSM feature:
+osm_type (N/W/R), osm_id, name, codes (';'-separated), status.
 """
 
 import argparse
@@ -45,14 +54,10 @@ import urllib.request
 from pathlib import Path
 
 API = 'https://map.shz.al/api/v1/norikae/stations'
-OVERPASS = 'https://overpass-api.de/api/interpreter'
-OVERPASS_QUERY = (
-    '[out:json][timeout:280];area["ISO3166-1"="JP"]->.jp;'
-    'nwr["railway"~"^(station|halt)$"](area.jp);out center tags;'
-)
 USER_AGENT = 'sharzy-map jp-station-codes (https://github.com/SharzyL/map)'
 SEARCH_LIMIT = 10
-NEIGHBOURS_FOR_PREFECTURE = 5
+# Yahoo's point for a station vs. one operator's OSM node of it
+NEAR_KM = 3
 PARALLEL = 3
 
 # Yahoo's short names for operators whose OSM operator tag is the legal name.
@@ -94,8 +99,8 @@ def split_suffix(name):
     return (match.group(1), match.group(2)) if match else (name, None)
 
 
-def http_json(url, data=None):
-    request = urllib.request.Request(url, data=data, headers={'User-Agent': USER_AGENT})
+def http_json(url):
+    request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
     for attempt in range(4):
         try:
             return json.load(urllib.request.urlopen(request, timeout=120))
@@ -106,10 +111,8 @@ def http_json(url, data=None):
 
 
 def osm_stations(path):
-    if path:
-        data = json.load(open(path, encoding='utf-8'))
-    else:
-        data = http_json(OVERPASS, urllib.parse.urlencode({'data': OVERPASS_QUERY}).encode())
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
     stations = []
     for e in data['elements']:
         t = e.get('tags', {})
@@ -125,17 +128,19 @@ def osm_stations(path):
 
 
 class Search:
-    def __init__(self, cache_path):
+    def __init__(self, cache_path, api):
         self.path = Path(cache_path)
+        self.api = api
         self.cache = json.load(open(self.path, encoding='utf-8')) if self.path.exists() else {}
 
     def fetch(self, queries):
-        missing = sorted({q for q in queries if q not in self.cache})
+        # Results cached before the API returned positions are searched again
+        missing = sorted({q for q in queries if any('yahoo_lat' not in r for r in self.cache.get(q, [{}]))})
         if missing:
             print(f'searching {len(missing)} names ({len(self.cache)} cached)', file=sys.stderr)
 
         def one(q):
-            return q, http_json(f'{API}?{urllib.parse.urlencode({"q": q})}').get('results', [])
+            return q, http_json(f'{self.api}?{urllib.parse.urlencode({"q": q})}').get('results', [])
 
         with concurrent.futures.ThreadPoolExecutor(PARALLEL) as pool:
             for done, (q, results) in enumerate(pool.map(one, missing), 1):
@@ -168,9 +173,17 @@ def km(a, b):
     return 6371 * math.acos(max(-1, min(1, cos)))
 
 
-def prefecture_of(address):
-    # '千葉 【幕張メッセ最寄駅】' -> '千葉'
-    return re.split(r'[\s【(]', address or '', maxsplit=1)[0]
+def yahoo_km(station, result):
+    if result.get('yahoo_lat') is None:
+        return None
+    return km(station, {'lat': result['yahoo_lat'], 'lon': result['yahoo_lon']})
+
+
+def read_exceptions(path):
+    if not Path(path).exists():
+        return {}
+    with open(path, encoding='utf-8') as f:
+        return {(r['osm_type'], int(r['osm_id'])): r['codes'] for r in csv.DictReader(f)}
 
 
 def names_operator(suffix, operator):
@@ -185,14 +198,16 @@ def names_operator(suffix, operator):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--osm', help='saved Overpass response (default: query Overpass)')
-    root = Path(__file__).resolve().parents[2]
-    parser.add_argument('--cache', default=root / 'output' / 'jp-station-search-cache.json')
-    parser.add_argument('--out', default=root / 'data' / 'jp-station-codes.csv')
+    parser.add_argument('--osm', required=True, help="osm-stations.py's japan.json")
+    parser.add_argument('--cache', required=True, help='station searches kept between runs')
+    parser.add_argument('--exceptions', default=Path(__file__).with_name('jp-station-exceptions.csv'))
+    parser.add_argument('--api', default=API, help=f'station search endpoint (default: {API})')
+    parser.add_argument('--out', required=True)
     args = parser.parse_args()
 
     stations = osm_stations(args.osm)
-    search = Search(args.cache)
+    exceptions = read_exceptions(args.exceptions)
+    search = Search(args.cache, args.api)
     search.fetch(norm(s['name']) for s in stations)
     # Second round: names whose exact match fell off a full result list.
     search.fetch(norm(s['name']) + '駅' for s in stations
@@ -203,31 +218,24 @@ def main():
     search.fetch(norm(b) + '駅' for b in bases
                  if b and not search.candidates(b) and len(search.cache.get(norm(b), [])) >= SEARCH_LIMIT)
 
+    rows, status, far = [], collections.Counter(), []
     for s in stations:
-        s['candidates'] = search.candidates(s['name'])
-    unique = [s for s in stations if len(s['candidates']) == 1]
-    grid = collections.defaultdict(list)
-    for s in unique:
-        grid[(int(s['lat']), int(s['lon']))].append(s)
-
-    def nearby_prefecture(s):
-        near = [u for dy in (-1, 0, 1) for dx in (-1, 0, 1) for u in grid[(int(s['lat']) + dy, int(s['lon']) + dx)]]
-        near.sort(key=lambda u: km(s, u))
-        votes = collections.Counter(prefecture_of(u['candidates'][0]['address']) for u in near[:NEIGHBOURS_FOR_PREFECTURE])
-        return votes.most_common(1)[0][0] if votes else None
-
-    rows, status = [], collections.Counter()
-    for s in stations:
-        found = s['candidates']
-        if not found:
+        if (s['type'], s['id']) in exceptions:
+            status['exception'] += 1
+            if exceptions[s['type'], s['id']]:
+                rows.append((s['type'], s['id'], s['name'], exceptions[s['type'], s['id']], 'exception'))
+            continue
+        candidates = search.candidates(s['name'])
+        if not candidates:
             status['no match'] += 1
             continue
-        kind = 'unique'
-        if len(found) > 1:
-            kind = 'prefecture'
-            prefecture = nearby_prefecture(s)
-            in_prefecture = [r for r in found if prefecture_of(r['address']) == prefecture]
-            found = in_prefecture or found
+        # A result Yahoo gives no position for cannot be ruled out
+        found = [r for r in candidates if (yahoo_km(s, r) or 0) <= NEAR_KM]
+        if not found:
+            status['far'] += 1
+            far.append((s, min(candidates, key=lambda r: yahoo_km(s, r))))
+            continue
+        kind = 'unique' if len(candidates) == 1 else 'position'
         if len(found) > 1:
             kind = 'operator'
             by_operator = [r for r in found if names_operator(split_suffix(r['name'])[1], s['operator'])]
@@ -246,6 +254,9 @@ def main():
         writer.writerows(sorted(rows, key=lambda r: (r[0], r[1])))
     print(f'{len(stations)} OSM stations with a name: ' + ', '.join(f'{k} {v}' for k, v in status.most_common()))
     print(f'{len(rows)} rows written to {out}')
+    for s, nearest in sorted(far, key=lambda f: yahoo_km(*f)):
+        print(f"  far: {s['type']},{s['id']} {s['name']} ({s['operator'] or 'no operator'}): "
+              f"nearest {nearest['name']} {nearest['code']} at {yahoo_km(s, nearest):.1f} km")
 
 
 if __name__ == '__main__':

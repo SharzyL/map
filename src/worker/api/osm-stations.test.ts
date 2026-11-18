@@ -1,33 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import coordsCsv from '../../../data/station-coords.csv?raw';
 import { metres } from './geo.js';
-import { csvRows, JP, loadJp, match } from './osm-stations.js';
+import { JP, loadJp, match } from './osm-stations.js';
 
-const SHIBUYA = JP.get('22715');
-
+// The tests run on fixtures/stations/, the stations the other fixtures name;
+// scripts/stations/check-stations.py checks the files the build makes.
 describe('JP', () => {
-  it('gives typed OSM ids', () => {
-    const matches = [...JP.values()];
-    const refs = matches.flatMap((m) => m.osm);
-    expect(refs.length).toBeGreaterThan(9000);
-    expect(refs.every((r) => /^[NWR][0-9]+$/.test(r))).toBe(true);
+  it('gives typed OSM ids at the station', () => {
+    const shibuya = JP.get('22715');
     // One Yahoo code per complex, one OSM node per operator
-    expect(SHIBUYA.osm.length).toBeGreaterThan(1);
-    // Nearly every code gets a position
-    expect(matches.filter((m) => m.lat === null).length).toBeLessThan(matches.length / 100);
-  });
-
-  it('keeps the features of a code in one place', () => {
-    // The builder keeps features within 3 km of Yahoo's point of the code
-    expect(metres(SHIBUYA.lat, SHIBUYA.lon, 35.6585, 139.7018)).toBeLessThan(300);
-    const coords = new Map(csvRows(coordsCsv).map((r) => [r.osm_type + r.osm_id, [+r.lat, +r.lon]]));
-    const spread = [...JP]
-      .filter(([, m]) => m.osm.every((r) => coords.has(r)))
-      .map(([code, m]) => {
-        const pts = m.osm.map((r) => coords.get(r));
-        return [code, Math.max(...pts.flatMap((a) => pts.map((b) => metres(a[0], a[1], b[0], b[1]))))] as const;
-      });
-    expect(spread.filter(([, d]) => d > 6000)).toEqual([]);
+    expect(shibuya.osm.length).toBeGreaterThan(1);
+    expect(shibuya.osm.every((r) => /^[NWR][0-9]+$/.test(r))).toBe(true);
+    expect(metres(shibuya.lat, shibuya.lon, 35.6585, 139.7018)).toBeLessThan(300);
   });
 });
 
