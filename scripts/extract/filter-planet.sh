@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Streams the planet once and makes two railway extracts of it:
 #
-#   <world.osm.pbf>  worldwide, the line relations and railway ways without
-#                    the nodes the ways run through. The tile export joins
-#                    their tags to the import database's ways by id, so it
-#                    needs no coordinates.
+#   <world.osm.pbf>  worldwide, the railway ways and relations without the
+#                    nodes the ways run through. The tile export joins their
+#                    tags to the import database's ways by id, so it needs
+#                    no coordinates.
 #   <box.osm.pbf>    inside <bbox>, the objects railway-extract.filter keeps
 #                    with the nodes their ways run through and their relations
 #                    list: what needs coordinates (relations, routes,
@@ -54,15 +54,29 @@ echo "Streaming ${URL} through osmium"
 mkfifo "${WORK}/box.fifo"
 osmium extract -F pbf - -b "${BBOX}" -s simple -O -f pbf -o "${WORK}/box-all.osm.pbf" < "${WORK}/box.fifo" &
 cut="$!"
-# Worldwide: the line relations and the railway ways, whose tags the tiles
-# take; -R keeps out what they refer to (a stream cannot be read twice)
+# Worldwide: the railway ways, whose tags the tiles take, and the relations
+# railway-extract.filter keeps (the line relations for the tiles, the rest
+# for the box, below). No nodes: skipping them is what keeps this cheap. -R
+# keeps out what they refer to (a stream cannot be read twice).
+{ grep '^r/' "${FILTER}"; echo 'w/railway'; } > "${WORK}/world.filter"
 curl -sSfL "${URL}" | python3 -I "${METER}" "planet" ${SIZE} | tee "${WORK}/box.fifo" \
-  | osmium tags-filter -F pbf - r/route=railway w/railway -R -O -f pbf -o "${WORK}/world.osm.pbf"
+  | osmium tags-filter -F pbf - -e "${WORK}/world.filter" -R -O -f pbf -o "${WORK}/world.osm.pbf"
 wait "${cut}"
 echo "Streamed after $(minutes) min; the box holds $(du -h "${WORK}/box-all.osm.pbf" | cut -f1)"
 
 # From a file osmium follows references: the nodes of the kept ways come along
-osmium tags-filter "${WORK}/box-all.osm.pbf" -e "${FILTER}" -O -o "${WORK}/box.osm.pbf"
+osmium tags-filter "${WORK}/box-all.osm.pbf" -e "${FILTER}" -O -o "${WORK}/box-railway.osm.pbf"
+# A cut of a stream keeps only the relations with a member node in the box:
+# routes made of ways alone, and route masters, which list only routes, are
+# left out. They come from the worldwide extract: the relations listing
+# anything in the box, then those listing one of these (the masters of the
+# routes just added).
+osmium getparents "${WORK}/world.osm.pbf" -I "${WORK}/box-railway.osm.pbf" -O -o "${WORK}/parents.osm.pbf"
+osmium getparents "${WORK}/world.osm.pbf" -I "${WORK}/parents.osm.pbf" -O -o "${WORK}/grandparents.osm.pbf"
+osmium merge "${WORK}/box-railway.osm.pbf" "${WORK}/parents.osm.pbf" "${WORK}/grandparents.osm.pbf" \
+  -O -o "${WORK}/box.osm.pbf"
+echo "$(osmium fileinfo -e -g data.count.relations "${WORK}/box.osm.pbf") relations in the box," \
+  "$(osmium fileinfo -e -g data.count.relations "${WORK}/box-railway.osm.pbf") of them found by the cut"
 # Moved into place last, so an interrupted run leaves neither
 mv "${WORK}/world.osm.pbf" "${WORLD}"
 mv "${WORK}/box.osm.pbf" "${BOX}"
