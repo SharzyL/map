@@ -1,0 +1,519 @@
+/* The build dashboard. Colour says where a step stands and nothing else:
+   green done, amber running, red failed, and unfilled for what has yet to
+   run; what a node is shows in its shape. The bars of the Took column are
+   the one other use of colour. */
+
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --hairline: #e1e0d9;
+  --track: #c3c2b7;
+  --good: #0ca30c;
+  --running: #fab219;
+  --critical: #d03b3b;
+  --series: #2a78d6;
+  --link: #1c5cab;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --hairline: #2c2c2a;
+    --track: #4a4a46;
+    --series: #3987e5;
+    --link: #86b6ef;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font:
+    14px/1.5 Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+
+#app {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 28px 28px 72px;
+}
+
+a {
+  color: var(--link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:focus-visible,
+button:focus-visible,
+.graph-scroll:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+code {
+  font:
+    0.93em ui-monospace,
+    'Cascadia Code',
+    'Source Code Pro',
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+.quiet {
+  color: var(--ink-2);
+}
+
+.flag {
+  color: var(--critical);
+}
+
+/* ── Head ─────────────────────────────────────────────── */
+
+.home {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+h1 {
+  margin: 6px 0 14px;
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.headline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 72ch;
+  margin: 0 0 4px;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+.headline .marker {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+}
+
+header > .quiet {
+  margin: 0;
+}
+
+section {
+  margin-top: 44px;
+}
+
+h2 {
+  margin: 0 0 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+  font-size: 17px;
+  font-weight: 650;
+}
+
+/* ── Markers ──────────────────────────────────────────── */
+
+.marker {
+  flex: none;
+  overflow: visible;
+}
+
+.marker .shape,
+.marker .ring {
+  fill: var(--surface);
+  stroke: var(--ink-2);
+  stroke-width: 1.6;
+}
+
+.marker .sign {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.marker[data-standing='source'] .shape {
+  fill: var(--ink-2);
+}
+
+.marker[data-standing='ok'] .shape {
+  fill: var(--good);
+  stroke: var(--good);
+}
+
+.marker[data-standing='ok'] .ring {
+  stroke: var(--good);
+}
+
+.marker[data-standing='failed'] .shape,
+.marker[data-standing='stopped'] .shape {
+  fill: var(--critical);
+  stroke: var(--critical);
+}
+
+.marker[data-standing='failed'] .ring,
+.marker[data-standing='stopped'] .ring {
+  stroke: var(--critical);
+}
+
+.marker[data-standing='running'] .shape {
+  fill: var(--running);
+  stroke: var(--running);
+}
+
+.marker[data-standing='running'] .ring {
+  stroke: var(--running);
+}
+
+.marker[data-standing='running'] .sign-dot {
+  fill: #0b0b0b;
+}
+
+.marker[data-standing='never'] .shape,
+.marker[data-standing='never'] .ring {
+  stroke: var(--muted);
+  stroke-dasharray: 2.2 2.2;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .marker[data-standing='running'] .shape {
+    animation: working 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes working {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ── The graph ────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend .marker {
+  width: 14px;
+  height: 14px;
+}
+
+.legend-gap {
+  width: 1px;
+  background: var(--hairline);
+}
+
+.graph-scroll {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+}
+
+.graph {
+  position: relative;
+}
+
+.edges {
+  position: absolute;
+  inset: 0;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.edge-after {
+  stroke-dasharray: 3 4;
+}
+
+.graph.tracing .edge {
+  opacity: 0.2;
+}
+
+.graph.tracing .edge.lit {
+  opacity: 1;
+  stroke: var(--ink);
+}
+
+.node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 136px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  /* The marker's centre sits on the node's point */
+  transform: translate(-50%, -9px);
+}
+
+.node .marker {
+  /* Tracks end under the marker, not through it */
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.node-name {
+  margin-top: 4px;
+  padding: 0 3px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 550;
+  line-height: 1.25;
+}
+
+.node-note {
+  padding: 0 3px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.graph.tracing .node {
+  opacity: 0.3;
+}
+
+.graph.tracing .node.lit {
+  opacity: 1;
+}
+
+.node.focus .node-name,
+.node[aria-pressed='true'] .node-name {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.detail {
+  margin-top: 14px;
+  max-width: 96ch;
+}
+
+.detail h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.detail p {
+  margin: 0 0 10px;
+}
+
+.detail dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 18px;
+  margin: 0;
+}
+
+.detail dt {
+  color: var(--ink-2);
+}
+
+.detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Tables ───────────────────────────────────────────── */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 0 14px 6px 0;
+  border-bottom: 1px solid var(--track);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+tbody th,
+tbody td {
+  padding: 8px 14px 8px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+}
+
+tbody th {
+  min-width: 260px;
+}
+
+.name {
+  display: flex;
+  gap: 9px;
+}
+
+.name .marker {
+  margin-top: 2px;
+}
+
+tbody th a {
+  color: var(--ink);
+  font-weight: 550;
+}
+
+tbody th small {
+  display: block;
+  max-width: 62ch;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+tbody tr.selected th a {
+  text-decoration-thickness: 2px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+th.num,
+td.num {
+  text-align: right;
+}
+
+td.took {
+  white-space: nowrap;
+}
+
+/* The bars grow from one baseline, flat there and rounded at the far end */
+.bar-track {
+  display: inline-block;
+  width: 150px;
+  height: 10px;
+  margin-right: 10px;
+  border-left: 1px solid var(--track);
+  vertical-align: middle;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--series);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.chip {
+  padding: 3px 12px;
+  border: 1px solid var(--track);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--page);
+}
+
+.runs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  columns: 2 380px;
+}
+
+.runs li {
+  padding: 3px 0;
+}
+
+@media (max-width: 640px) {
+  #app {
+    padding: 20px 16px 56px;
+  }
+
+  h1 {
+    font-size: 25px;
+  }
+
+  .headline {
+    font-size: 17px;
+  }
+
+  .bar-track {
+    width: 80px;
+  }
+}

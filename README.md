@@ -70,6 +70,10 @@ A first run takes about two and a half hours, most of it two passes over OpenStr
 (about 80 minutes; they come back with every new weekly planet) and the tile export (about 30
 minutes). After that the workflow runs by itself:
 
+`/build-dashboard` on the deployed site shows the build as it stands: the graph of sources and steps,
+when each data source last changed, how long each step took, and the recent runs. It reads the state
+the build keeps in the bucket, so it follows a run while it is under way.
+
 - on every push to `main`, with the data sources as they were last pinned, so only the steps the commit
   touched run again (a change to the app alone is its checks, a build and a deploy);
 - every three days, probing the sources again: 路路通's timetable, OpenStreetMap's planet and hourly

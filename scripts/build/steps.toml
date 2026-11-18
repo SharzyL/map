@@ -458,6 +458,7 @@ files = [
   "src",
   "public",
   "index.html",
+  "build-dashboard",
   "package.json",
   "pnpm-lock.yaml",
   "tsconfig.json",

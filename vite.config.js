@@ -23,7 +23,9 @@ const STYLE_HASH = fileHash('public/orm/style/standard.json');
 function mapResourceHints() {
   return {
     name: 'map-resource-hints',
-    transformIndexHtml() {
+    transformIndexHtml(_html, context) {
+      // For the map's page only, not the build dashboard's
+      if (context.path !== '/index.html') return [];
       const link = (attrs) => ({ tag: 'link', attrs, injectTo: 'head-prepend' });
       return [
         link({ rel: 'preconnect', href: 'https://tiles.openfreemap.org', crossorigin: '' }),
@@ -65,6 +67,17 @@ export default defineConfig({
       remoteBindings: process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0',
     }),
   ],
+  // Two pages: the map, and the build dashboard (/build-dashboard). For the
+  // browser's build only; the Worker's has its own entry.
+  environments: {
+    client: {
+      build: {
+        rollupOptions: {
+          input: { main: 'index.html', 'build-dashboard': 'build-dashboard/index.html' },
+        },
+      },
+    },
+  },
   define: {
     __STYLE_HASH__: JSON.stringify(STYLE_HASH),
     __SCREENSHOT_FIXTURES__: JSON.stringify(process.env.SCREENSHOT_FIXTURES === '1'),

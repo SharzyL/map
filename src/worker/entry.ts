@@ -1,4 +1,5 @@
 import { handleApiRequest } from './api/runtime.js';
+import { handleBuildDashboardRequest } from './build-dashboard.js';
 import { handleTileRequest } from './tiles.js';
 
 export { NorikaeApi } from './api/runtime.js';
@@ -19,6 +20,12 @@ export default {
 
     // The doc (/api/v1/doc.md) is a static asset, served before the Worker runs
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return handleApiRequest(request, env);
+
+    // The build dashboard's page is a static asset; its data comes from the bucket
+    if (url.pathname.startsWith('/build-dashboard/')) {
+      const resp = await handleBuildDashboardRequest(request, env);
+      if (resp) return resp;
+    }
 
     if (url.pathname.startsWith('/tiles/')) {
       try {
