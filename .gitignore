@@ -33,7 +33,7 @@ test-results
 !.env.example
 .freeman
 
-# Tile export output (scripts/tiles/export-tippecanoe.sh)
+# Tile export output (scripts/tiles/export.py)
 /output
 
 # Generated style JSON (build artifacts from scripts/styles/styles.mjs)

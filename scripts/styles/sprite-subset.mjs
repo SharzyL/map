@@ -20,7 +20,7 @@ const UNKNOWN = '\u0000'
 
 // An icon name taken whole from feature data (POI symbols use the feature's
 // `feature` value) cannot be resolved from the style. The export only ships
-// POIs from the general/ family (export-tippecanoe.sh, standard_railway_symbols),
+// POIs from the general/ family (scripts/tiles/layers.py, standard_railway_symbols),
 // so such names resolve to every general/ icon.
 const UNCONSTRAINED_ICON_PREFIX = 'general/'
 

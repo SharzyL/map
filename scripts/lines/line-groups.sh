@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Groups Japan's railway ways into their official lines (line-groups.py) for
-# export-tippecanoe.sh (LINE_GROUPS_DIR) and relations.sh: OSM lacks
+# the tile export (LINE_GROUPS_DIR) and relations.sh: OSM lacks
 # route=railway relations for about a quarter of Japan's mainline track, and
 # its way names vary too much to tell lines apart by name. The reference is
 # MLIT's railway data (国土数値情報 N02, CC BY 4.0; the map credits it), as

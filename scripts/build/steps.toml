@@ -311,7 +311,13 @@ JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
 MAX_ZOOM=15 LAYERS=standard CONCURRENCY=4 \
   scripts/tiles/export-from-image.sh "ghcr.io/hiddewie/openrailwaymap-import-db@$SRC_ORM_DB" "$OUT/openrailwaymap.pmtiles"
 """
-files = ["scripts/tiles/export-from-image.sh", "scripts/tiles/export-tippecanoe.sh", "scripts/tiles/line-relations.py"]
+files = [
+  "scripts/tiles/export-from-image.sh",
+  "scripts/tiles/export.py",
+  "scripts/tiles/tables.py",
+  "scripts/tiles/layers.py",
+  "scripts/tiles/line-relations.py",
+]
 sources = ["orm-db"]
 needs = [
   "railway-extract/lines.opl",
@@ -404,6 +410,12 @@ run = "python3 -m unittest discover -s scripts/relations -p 'test_*.py'"
 files = ["scripts/relations", "!scripts/relations/*.md"]
 check = true
 
+[steps.check-tiles]
+about = "Tests of the tile export"
+run = "python3 -m unittest discover -s scripts/tiles -p 'test_*.py'"
+files = ["scripts/tiles/layers.py", "scripts/tiles/tables.py", "scripts/tiles/test_layers.py"]
+check = true
+
 [steps.check-routing]
 about = "Tests of the routing scripts"
 run = "python3 -m unittest discover -s scripts/routing -p 'test_*.py'"
@@ -465,6 +477,7 @@ aws s3 cp "$BUILD/tiles/openrailwaymap.pmtiles" s3://orm/openrailwaymap.pmtiles 
   --endpoint-url "$R2_ENDPOINT" --checksum-algorithm SHA256 --no-progress
 """
 needs = ["tiles/openrailwaymap.pmtiles"]
+after = ["check-tiles"]
 deploy = true
 
 # Last: the Worker's code may read what the deploys before it publish, and

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Builds the railway tile archive from an OpenRailwayMap import database
-# image: starts the database from the image, runs export-tippecanoe.sh against
-# it and stops it again.
+# image: starts the database from the image, runs export.py against it and
+# stops it again.
 #
 # Usage: ./scripts/tiles/export-from-image.sh <image reference> <out.pmtiles>
 #
 # The image reference may be pinned by digest
-# (ghcr.io/hiddewie/openrailwaymap-import-db@sha256:...). export-tippecanoe.sh's
+# (ghcr.io/hiddewie/openrailwaymap-import-db@sha256:...). export.py's
 # environment variables pass through (LINE_RELATIONS_OPL, LINE_GROUPS_DIR,
 # CR_STATION_TRAINS, JP_STATION_CODES, MAX_ZOOM, LAYERS, BBOX, ...).
 #
-# Needs docker, ogr2ogr, tippecanoe and pmtiles; on CI (CI=true) it installs
+# Needs docker, psql, python3, ogr2ogr, tippecanoe and pmtiles; on CI (CI=true) it installs
 # the last three when missing and first frees the runner's disk, which the
 # image and the export's intermediate files would otherwise fill.
 
@@ -68,7 +68,7 @@ docker exec "${CONTAINER}" psql -U postgres -d gis -At -c "
   UNION ALL SELECT 'stations ' || count(*) FROM stations"
 
 DATABASE_URL="postgresql://postgres@127.0.0.1:${PORT}/gis" OUTPUT_DIR="${WORK}/output" \
-  "$(dirname "$0")/export-tippecanoe.sh"
+  python3 "$(dirname "$0")/export.py"
 
 pmtiles show "${WORK}/output/openrailwaymap.pmtiles"
 mkdir -p "$(dirname "${OUT}")"

@@ -218,7 +218,7 @@ Things to know:
 #### The tile export
 
 `scripts/tiles/export-from-image.sh` starts the OpenRailwayMap import database from its image
-(`ghcr.io/hiddewie/openrailwaymap-import-db`) and runs `scripts/tiles/export-tippecanoe.sh` against it,
+(`ghcr.io/hiddewie/openrailwaymap-import-db`) and runs `scripts/tiles/export.py` against it,
 which writes the archive (several GB, worldwide, zoom 0-15). Railway line relations (`route=railway`)
 and the track counts and opening dates of railway ways are not in that database, so they come from
 the railway extract (`LINE_RELATIONS_OPL`); in Japan, where OSM lacks line relations for much of the
@@ -227,15 +227,15 @@ track, the ways' lines are the official lines of `line-groups` (`LINE_GROUPS_DIR
 To run it by hand, for instance on a small area, start the database yourself (`docker run -p 5432:5432
 -e POSTGRES_HOST_AUTH_METHOD=trust -e PGDATA=/data/postgresql --shm-size=2g
 ghcr.io/hiddewie/openrailwaymap-import-db:latest`; podman rejects the image's empty `ENV` entries) and
-run `export-tippecanoe.sh` with `DATABASE_URL`, `MAX_ZOOM` and optionally `BBOX`
-(`minlon,minlat,maxlon,maxlat`) set; it needs GDAL (`ogr2ogr`) and tippecanoe and writes to `output/`.
+run `export.py` with `DATABASE_URL`, `MAX_ZOOM` and optionally `BBOX`
+(`minlon,minlat,maxlon,maxlat`) set; it needs psql, GDAL (`ogr2ogr`) and tippecanoe and writes to `output/`.
 Upload the result under another name with an S3 client against
 `https://<account-id>.r2.cloudflarestorage.com` (`wrangler r2 object put` stops at 300 MiB), open it
 with `?tileset=<archive name>`, and remove archives named `openrailwaymap-test-*` with
 `gh workflow run cleanup-r2-test-files.yml`.
 
 The tile export and the frontend share layer names and attributes: the style, the railway filter and
-line colors, the info boxes and the highlight read what `export-tippecanoe.sh` writes, and its
+line colors, the info boxes and the highlight read what the export writes (`layers.py`), and its
 per-layer zoom filters mirror the zooms the style draws each layer at. Change them together and test
 with a `BBOX` export. A commit that changes both reaches the map in order: the build uploads the new
 archive before it deploys the Worker.
