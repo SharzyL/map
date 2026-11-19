@@ -1,4 +1,5 @@
 import { handleApiRequest } from './api/runtime.js';
+import { serveAsset } from './assets.js';
 import { handleBuildDashboardRequest } from './build-dashboard.js';
 import { handleTileRequest } from './tiles.js';
 
@@ -37,9 +38,6 @@ export default {
       }
     }
 
-    const assetResponse = await env.ASSETS.fetch(request);
-    if (assetResponse.status !== 404) return assetResponse;
-    const spaResponse = await env.ASSETS.fetch(new Request(new URL('/', request.url), request));
-    return spaResponse.status !== 404 ? spaResponse : new Response('Not Found', { status: 404 });
+    return serveAsset(request, env.ASSETS);
   },
 } satisfies ExportedHandler<Cloudflare.Env>;
