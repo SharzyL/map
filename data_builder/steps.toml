@@ -1,0 +1,526 @@
+# The map's data build: what builder.py runs (see its docstring for the keys).
+#
+#   timetable ─ lltskb ─┬─ cr-timetable ─────────────────── deploy-timetable ─┐
+#                       ├─ cr-station-trains ─┬─ station-coords ──────────────┤
+#   planet ──── planet-extract ┬ (box)        │                               │
+#   diffs ───── hourly-diffs ──┴ box-extract ┬┼─ osm-stations                 │
+#                               │             ├─ relations ── deploy-relations┤
+#                               │             └─ routing-graph ─┬─ cr-routes ─┬ deploy-routes
+#                               │                               └─ jp-hops ───┘
+#   N02 ─────── n02 ────────────┴─ line-groups ──┐                            │
+#   (diffs, world) railway-extract ──────────────┤                            │
+#   Yahoo ───── jp-station-codes                 │                            │
+#   image ────────────────────────────────── tiles ──────── deploy-tiles ─────┤
+#   this repository ───────────────────────────────────────── deploy-worker ──┘
+#
+# One pass over the planet makes two extracts, both brought to the same
+# hourly diff: worldwide, the line relations and railway ways the tiles add to
+# the import database's railways, by id, without coordinates; and the box
+# around China and Japan with coordinates, for relations, routes, stations
+# and official lines.
+
+# and the checks (check-*: formatting, types, unit and end-to-end tests, the
+# scripts' tests), which the deploys of what they test come after.
+#
+# In `files`, a directory stands for every file in it, and an exclusion's `*`
+# also crosses directories.
+
+# ── Sources ─────────────────────────────────────────────
+
+[sources.lltskb]
+about = "路路通 (lulutong)'s China Railway timetable data: the data version in its android.ver"
+probe = "python3 -I data_builder/cr-timetable/fetch.py --check"
+
+[sources.planet]
+about = "OpenStreetMap's weekly planet file: the dated file planet-latest points at"
+probe = """
+basename "$(curl -sSfIL -o /dev/null -w '%{url_effective}' https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf)"
+"""
+
+[sources.osm-diffs]
+about = "OpenStreetMap's hourly replication diffs: the latest sequence number"
+probe = "curl -sSfL https://planet.openstreetmap.org/replication/hour/state.txt | sed -n 's/^sequenceNumber=//p'"
+
+[sources.orm-db]
+about = "The OpenRailwayMap import database image, rebuilt nightly: its digest"
+probe = "data_builder/tiles/image-digest.sh ghcr.io/hiddewie/openrailwaymap-import-db:latest"
+
+# Yahoo's codes have no version to watch. jp-station-codes searches the names
+# it has not searched before; refreshing this source makes it search them all.
+[sources.yahoo-stations]
+about = "Yahoo! 乗換案内's station codes, searched by station name"
+
+# ── China Railway's timetable ───────────────────────────
+
+# The data is third-party and not for publishing, so no output holding it is
+# kept in the CI cache (keep = false); an.db itself stays in the store.
+[steps.lltskb]
+about = "The timetable: an.db of the pinned version unpacked, and exported as CSV"
+run = """
+mkdir -p "$STORE/lltskb/$SRC_LLTSKB"
+python3 -I data_builder/cr-timetable/fetch.py --version "$SRC_LLTSKB" --db "$STORE/lltskb/$SRC_LLTSKB/an.db" --out "$OUT/an"
+python3 -I data_builder/cr-timetable/export_csv.py "$OUT/an" "$OUT/csv"
+"""
+files = ["data_builder/cr-timetable/fetch.py", "data_builder/cr-timetable/export_csv.py"]
+sources = ["lltskb"]
+store = ["lltskb/${SRC_LLTSKB}/an.db"]
+outs = ["an", "csv"]
+keep = false
+
+[steps.cr-timetable]
+about = "Station timetables and trains as prefilled answers, for D1 (cr_*)"
+run = """
+python3 -I data_builder/cr-timetable/build_d1.py "$BUILD/lltskb/an" "$BUILD/cr-station-trains/cr-station-trains.csv" "$OUT/cr.sql"
+cp "$BUILD/lltskb/an/ver.txt" "$OUT/version"
+"""
+files = ["data_builder/cr-timetable/build_d1.py", "data_builder/cr-timetable/lulutong_parse.py"]
+needs = ["lltskb/an", "cr-station-trains/cr-station-trains.csv"]
+outs = ["cr.sql", "version"]
+keep = false
+
+# ── OpenStreetMap's railways ────────────────────────────
+
+[steps.planet-extract]
+about = "One pass over the weekly planet (~95 GB, ~25 min): its railway objects worldwide without coordinates, and with them in the box around China and Japan"
+# Two osmium commands read the stream at once; the checks may run beside it
+cpus = 3
+memory = 4
+run = """
+data_builder/osm-railways/filter-planet.sh "https://planet.openstreetmap.org/pbf/$SRC_PLANET" \
+  "$OUT/world.osm.pbf" "$OUT/box.osm.pbf" 72,16,147,55
+"""
+files = [
+  "data_builder/osm-railways/filter-planet.sh",
+  "data_builder/osm-railways/meter.py",
+  "data_builder/osm-railways/railway-extract.filter",
+]
+sources = ["planet"]
+outs = ["world.osm.pbf", "box.osm.pbf"]
+
+# Fetched once for both extracts, which were cut from the same planet
+[steps.hourly-diffs]
+about = "OSM's hourly diffs since the planet, up to the pinned one, filtered to the railway objects"
+cpus = 2
+# Filtering a diff takes 1-2 GB, four at a time
+memory = 8
+run = """
+data_builder/osm-railways/fetch-diffs.sh "$BUILD/planet-extract/world.osm.pbf" "$OUT/diffs" "$SRC_OSM_DIFFS"
+"""
+files = ["data_builder/osm-railways/fetch-diffs.sh", "data_builder/osm-railways/railway-extract.filter"]
+sources = ["osm-diffs"]
+needs = ["planet-extract/world.osm.pbf"]
+outs = ["diffs"]
+
+[steps.railway-extract]
+about = "The worldwide railway objects brought up to date: line relations and tagged ways as text, for the tiles"
+run = """
+osmium apply-changes "$BUILD/planet-extract/world.osm.pbf" "$BUILD/hourly-diffs/diffs"/*.osc.gz -O -o "$OUT/lines.osm.pbf"
+osmium tags-filter "$OUT/lines.osm.pbf" r/route=railway w/tracks w/start_date w/opening_date -R -O -o "$OUT/tagged.osm.pbf"
+osmium cat "$OUT/tagged.osm.pbf" -f opl,add_metadata=false -O -o "$OUT/lines.opl"
+rm "$OUT/tagged.osm.pbf" "$OUT/lines.osm.pbf"
+"""
+needs = ["planet-extract/world.osm.pbf", "hourly-diffs/diffs"]
+outs = ["lines.opl"]
+
+[steps.box-extract]
+about = "The box brought up to date and cut to China and Japan with what lies between"
+run = """
+ts="$(cat "$BUILD/hourly-diffs/diffs/timestamp")"
+osmium apply-changes "$BUILD/planet-extract/box.osm.pbf" "$BUILD/hourly-diffs/diffs"/*.osc.gz -O -o "$OUT/updated.osm.pbf"
+osmium extract -b 73,17,146,54 -s smart "$OUT/updated.osm.pbf" -O -o "$OUT/cnjp.osm.pbf" \
+  --output-header="osmosis_replication_timestamp=$ts"
+rm "$OUT/updated.osm.pbf"
+echo "$ts" > "$OUT/timestamp"
+"""
+needs = ["planet-extract/box.osm.pbf", "hourly-diffs/diffs"]
+outs = ["cnjp.osm.pbf", "timestamp"]
+
+[steps.n02]
+about = "MLIT's railway data (国土数値情報 N02, 2025 edition): Japan's official lines and their stations"
+run = """
+data_builder/official-lines/fetch-n02.sh https://nlftp.mlit.go.jp/ksj/gml/data/N02/N02-25/N02-25_GML.zip "$OUT/n02"
+"""
+files = ["data_builder/official-lines/fetch-n02.sh"]
+outs = ["n02"]
+
+[steps.line-groups]
+about = "Japan's railway ways grouped into their official lines"
+cpus = 1
+memory = 4
+run = """
+N02_DIR="$BUILD/n02/n02" data_builder/official-lines/line-groups.sh "$BUILD/box-extract/cnjp.osm.pbf" "$OUT"
+"""
+files = ["data_builder/official-lines/line-groups.sh", "data_builder/official-lines/line-groups.py"]
+needs = ["box-extract/cnjp.osm.pbf", "n02/n02"]
+outs = ["line_groups.csv", "line_group_ways.csv", "review.csv", "unmatched.csv"]
+
+[steps.relations]
+about = "Routes, lines, route masters and Japan's official lines as prefilled answers, for D1 (osm_relations)"
+cpus = 1
+memory = 5
+run = """
+N02_DIR="$BUILD/n02/n02" data_builder/relations/relations.sh "$BUILD/box-extract/cnjp.osm.pbf" "$BUILD/line-groups" "$OUT/relations.sql"
+cp "$BUILD/box-extract/timestamp" "$OUT/version"
+"""
+files = [
+  "data_builder/relations/relations.sh",
+  "data_builder/relations/build_relations.py",
+  "data_builder/relations/relations_sql.py",
+]
+needs = [
+  "box-extract/cnjp.osm.pbf",
+  "line-groups/line_groups.csv",
+  "line-groups/line_group_ways.csv",
+  "n02/n02",
+  "box-extract/timestamp",
+]
+outs = ["relations.sql", "version"]
+
+# ── Stations matched to OpenStreetMap ───────────────────
+
+[steps.osm-stations]
+about = "The extract's stations in China and in Japan, as the matchers read them"
+run = """
+python3 data_builder/stations/osm-stations.py "$BUILD/box-extract/cnjp.osm.pbf" "$OUT"
+"""
+files = ["data_builder/stations/osm-stations.py"]
+needs = ["box-extract/cnjp.osm.pbf"]
+outs = ["china.json", "japan.json"]
+
+[steps.cr-station-trains]
+about = "China Railway's stations matched to OSM, with the trains stopping per day"
+run = """
+ver="$(cat "$BUILD/lltskb/an/ver.txt")"
+python3 -I data_builder/stations/cr-station-trains.py "$BUILD/lltskb/csv" --osm "$BUILD/osm-stations/china.json" \
+  --from "${ver:0:4}-${ver:4:2}-${ver:6:2}" --out "$OUT/cr-station-trains.csv"
+python3 -I data_builder/stations/check-stations.py cr "$OUT/cr-station-trains.csv"
+"""
+files = ["data_builder/stations/cr-station-trains.py", "data_builder/stations/check-stations.py"]
+needs = ["lltskb/csv", "lltskb/an/ver.txt", "osm-stations/china.json"]
+outs = ["cr-station-trains.csv"]
+
+[steps.jp-station-codes]
+about = "Japan's OSM stations matched to Yahoo! 乗換案内 station codes, through the API's station search"
+run = """
+mkdir -p "$STORE/yahoo-stations"
+python3 -I data_builder/stations/jp-station-codes.py --osm "$BUILD/osm-stations/japan.json" \
+  --cache "$STORE/yahoo-stations/$SRC_YAHOO_STATIONS.json" \
+  --exceptions data_builder/stations/jp-station-exceptions.csv --out "$OUT/jp-station-codes.csv"
+"""
+files = ["data_builder/stations/jp-station-codes.py", "data_builder/stations/jp-station-exceptions.csv"]
+sources = ["yahoo-stations"]
+needs = ["osm-stations/japan.json"]
+store = ["yahoo-stations/${SRC_YAHOO_STATIONS}.json"]
+outs = ["jp-station-codes.csv"]
+
+[steps.station-coords]
+about = "The position of every matched station feature"
+run = """
+python3 -I data_builder/stations/station-coords.py "$BUILD/cr-station-trains/cr-station-trains.csv" \
+  "$BUILD/jp-station-codes/jp-station-codes.csv" \
+  --osm "$BUILD/osm-stations/china.json" "$BUILD/osm-stations/japan.json" --out "$OUT/station-coords.csv"
+python3 -I data_builder/stations/check-stations.py jp "$BUILD/jp-station-codes/jp-station-codes.csv" "$OUT/station-coords.csv"
+"""
+files = ["data_builder/stations/station-coords.py", "data_builder/stations/check-stations.py"]
+needs = [
+  "cr-station-trains/cr-station-trains.csv",
+  "jp-station-codes/jp-station-codes.csv",
+  "osm-stations/china.json",
+  "osm-stations/japan.json",
+]
+outs = ["station-coords.csv"]
+
+# ── Trains' routes on OSM track ─────────────────────────
+
+[steps.routing-graph]
+about = "The routing graph of the extract: track, junctions, and where stations attach"
+cpus = 1
+memory = 4
+run = """
+cd data_builder/routing
+python3 graph.py "$BUILD/box-extract/cnjp.osm.pbf" "$OUT/graph.pkl"
+"""
+files = ["data_builder/routing/graph.py", "data_builder/routing/geo.py"]
+needs = ["box-extract/cnjp.osm.pbf"]
+outs = ["graph.pkl"]
+keep = false
+
+[steps.cr-routes]
+about = "The route of every China Railway run on OSM track, for D1 (route_cr_*), and what looked wrong on the way"
+cpus = 2
+memory = 10
+run = """
+cd data_builder/routing
+ver="$(cat "$BUILD/lltskb/an/ver.txt")"
+ts="$(cat "$BUILD/box-extract/timestamp")"
+python3 cr_stations.py "$BUILD/routing-graph/graph.pkl" "$BUILD/lltskb/csv" \
+  "$BUILD/cr-station-trains/cr-station-trains.csv" "$OUT/cr-stations.csv"
+python3 cr_lines.py "$BUILD/routing-graph/graph.pkl" "$BUILD/lltskb/csv" "$OUT/cr-stations.csv" "$OUT/cr-lines.json"
+python3 cr_route.py "$BUILD/routing-graph/graph.pkl" "$BUILD/lltskb/csv" "$OUT/cr-stations.csv" "$OUT/cr-lines.json" \
+  "$OUT" --routes "$OUT/cr-routes.jsonl.gz" --jobs 2
+python3 export_d1.py cr "$OUT/cr-routes.jsonl.gz" "$OUT/cr-station-positions.csv" "$ver" "$ts" "$OUT/cr-routes.sql"
+rm "$OUT/cr-routes.jsonl.gz" "$OUT"/cr-*-route.json
+printf '%s %s\\n' "$ver" "$ts" > "$OUT/version"
+"""
+files = [
+  "data_builder/routing",
+  "data_builder/stations/cr-station-trains.py",
+  "!data_builder/routing/jp*",
+  "!data_builder/routing/test_*",
+  "!data_builder/routing/*.md",
+  "!data_builder/routing/*.html",
+  "!data_builder/routing/*.nix",
+]
+needs = [
+  "routing-graph/graph.pkl",
+  "lltskb/csv",
+  "lltskb/an/ver.txt",
+  "cr-station-trains/cr-station-trains.csv",
+  "box-extract/timestamp",
+]
+outs = ["cr-routes.sql", "version", "cr-osm-issues.csv", "cr-stop-issues.csv", "cr-retraces.csv"]
+keep = false
+
+[steps.jp-hops]
+about = "Japan's OSM service routes cut into stop-to-stop hops, for D1 (jp_*)"
+cpus = 1
+memory = 4
+run = """
+cd data_builder/routing
+ts="$(cat "$BUILD/box-extract/timestamp")"
+python3 jp_store.py build "$BUILD/routing-graph/graph.pkl" "$BUILD/jp-station-codes/jp-station-codes.csv" "$OUT/paths.sqlite"
+python3 export_d1.py jp "$OUT/paths.sqlite" "$ts" "$OUT/jp.sql"
+rm "$OUT/paths.sqlite"
+cp "$BUILD/box-extract/timestamp" "$OUT/version"
+"""
+files = [
+  "data_builder/routing",
+  "!data_builder/routing/cr*",
+  "!data_builder/routing/test_*",
+  "!data_builder/routing/*.md",
+  "!data_builder/routing/*.html",
+  "!data_builder/routing/*.nix",
+]
+needs = ["routing-graph/graph.pkl", "jp-station-codes/jp-station-codes.csv", "box-extract/timestamp"]
+outs = ["jp.sql", "version"]
+
+# ── Tiles ───────────────────────────────────────────────
+
+[steps.tiles]
+about = "The railway tile archive, from the OpenRailwayMap import database and what the build adds to it"
+# Takes four CPUs when it has them, but declares two so it can start beside
+# the routing instead of waiting for the whole machine
+cpus = 2
+memory = 8
+run = """
+LINE_RELATIONS_OPL="$BUILD/railway-extract/lines.opl" LINE_GROUPS_DIR="$BUILD/line-groups" \
+CR_STATION_TRAINS="$BUILD/cr-station-trains/cr-station-trains.csv" \
+JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
+MAX_ZOOM=15 LAYERS=standard CONCURRENCY=4 \
+  data_builder/tiles/export-from-image.sh "ghcr.io/hiddewie/openrailwaymap-import-db@$SRC_ORM_DB" "$OUT/openrailwaymap.pmtiles"
+"""
+files = [
+  "data_builder/tiles/export-from-image.sh",
+  "data_builder/tiles/export.py",
+  "data_builder/tiles/tables.py",
+  "data_builder/tiles/layers.py",
+  "data_builder/tiles/line-relations.py",
+]
+sources = ["orm-db"]
+needs = [
+  "railway-extract/lines.opl",
+  "line-groups/line_groups.csv",
+  "line-groups/line_group_ways.csv",
+  "cr-station-trains/cr-station-trains.csv",
+  "jp-station-codes/jp-station-codes.csv",
+]
+outs = ["openrailwaymap.pmtiles"]
+keep = false
+
+# ── Checks ──────────────────────────────────────────────
+
+# The tests, each run again only when what it reads changed. Deploys come
+# after the checks of what they publish. They need the dependencies installed
+# (pnpm install; data_builder/requirements.txt for the Python ones).
+
+[steps.check-format]
+about = "Everything in the repository is formatted (oxfmt)"
+run = "pnpm fmt:check"
+files = ["."]
+check = true
+
+[steps.check-lint]
+about = "The JavaScript and TypeScript pass the linter (oxlint)"
+run = "pnpm lint"
+files = ["."]
+check = true
+
+[steps.check-types]
+about = "The app and the Worker type-check"
+run = "pnpm typecheck"
+memory = 2
+files = ["src", "tsconfig.json", "vite.config.js", "vitest.config.js", "package.json", "pnpm-lock.yaml"]
+check = true
+
+[steps.check-unit]
+about = "Unit tests of the app, the Worker's API and the style scripts (vitest)"
+run = "pnpm test"
+cpus = 2
+memory = 2
+files = ["src", "scripts/styles", "public/orm", "vitest.config.js", "tsconfig.json", "package.json", "pnpm-lock.yaml"]
+check = true
+
+[steps.check-e2e]
+about = "End-to-end tests of the app in a browser (Playwright)"
+run = """
+if [ "${CI:-}" = "true" ]; then pnpm exec playwright install --with-deps chromium; fi
+pnpm test:e2e
+"""
+cpus = 2
+memory = 3
+files = [
+  "src",
+  "e2e",
+  "public",
+  "index.html",
+  "playwright.config.ts",
+  "vite.config.js",
+  "tsconfig.json",
+  "wrangler.toml",
+  "package.json",
+  "pnpm-lock.yaml",
+]
+check = true
+
+[steps.check-osm-railways]
+about = "Tests of the OSM railway scripts"
+run = "python3 -m unittest discover -s data_builder/osm-railways -p 'test_*.py'"
+files = ["data_builder/osm-railways/meter.py", "data_builder/osm-railways/test_meter.py"]
+check = true
+
+[steps.check-build]
+about = "Tests of the build runner itself"
+run = "python3 -m unittest discover -s data_builder -p 'test_builder.py'"
+files = ["data_builder/builder.py", "data_builder/test_builder.py"]
+check = true
+
+# The lltskb and routing tests also hold the Worker's SQL fixtures to what the
+# scripts write
+[steps.check-cr-timetable]
+about = "Tests of the timetable scripts"
+run = "python3 -m unittest discover -s data_builder/cr-timetable -p 'test_*.py'"
+files = ["data_builder/cr-timetable", "src/worker/api/fixtures", "!data_builder/cr-timetable/*.md"]
+check = true
+
+[steps.check-relations]
+about = "Tests of the relations scripts"
+run = "python3 -m unittest discover -s data_builder/relations -p 'test_*.py'"
+files = ["data_builder/relations", "!data_builder/relations/*.md"]
+check = true
+
+[steps.check-tiles]
+about = "Tests of the tile export"
+run = "python3 -m unittest discover -s data_builder/tiles -p 'test_*.py'"
+files = ["data_builder/tiles/layers.py", "data_builder/tiles/tables.py", "data_builder/tiles/test_layers.py"]
+check = true
+
+[steps.check-routing]
+about = "Tests of the routing scripts"
+run = "python3 -m unittest discover -s data_builder/routing -p 'test_*.py'"
+files = [
+  "data_builder/routing",
+  "data_builder/stations/cr-station-trains.py",
+  "src/worker/api/fixtures",
+  "!data_builder/routing/*.md",
+  "!data_builder/routing/*.html",
+  "!data_builder/routing/*.nix",
+]
+check = true
+
+# ── Deploys ─────────────────────────────────────────────
+
+[steps.deploy-timetable]
+about = "Import the timetable into D1"
+run = """
+data_builder/deploy/d1-import.sh "$BUILD/cr-timetable/cr.sql" data_builder/cr-timetable/build_d1.py "$(cat "$BUILD/cr-timetable/version")"
+"""
+files = [
+  "data_builder/deploy/d1-import.sh",
+  "data_builder/cr-timetable/build_d1.py",
+  "data_builder/cr-timetable/lulutong_parse.py",
+  "wrangler.toml",
+]
+needs = ["cr-timetable/cr.sql", "cr-timetable/version"]
+after = ["check-cr-timetable"]
+deploy = true
+
+[steps.deploy-relations]
+about = "Import the relations into D1"
+run = """
+data_builder/deploy/d1-import.sh "$BUILD/relations/relations.sql" data_builder/relations/relations_sql.py "$(cat "$BUILD/relations/version")"
+"""
+files = ["data_builder/deploy/d1-import.sh", "data_builder/relations/relations_sql.py", "wrangler.toml"]
+needs = ["relations/relations.sql", "relations/version"]
+after = ["check-relations"]
+deploy = true
+
+# One import for both: their old tables are dropped together, by timetable
+# version and extract time. The runs are the timetable's, so it goes first.
+[steps.deploy-routes]
+about = "Import China Railway's train routes and Japan's route hops into D1"
+run = """
+read -r ver ts < "$BUILD/cr-routes/version"
+cat "$BUILD/cr-routes/cr-routes.sql" "$BUILD/jp-hops/jp.sql" > "$OUT/routes.sql"
+data_builder/deploy/d1-import.sh "$OUT/routes.sql" data_builder/routing/export_d1.py "$ver" "$(cat "$BUILD/jp-hops/version")"
+"""
+files = ["data_builder/deploy/d1-import.sh", "data_builder/routing/export_d1.py", "wrangler.toml"]
+needs = ["cr-routes/cr-routes.sql", "cr-routes/version", "jp-hops/jp.sql", "jp-hops/version"]
+after = ["deploy-timetable", "check-routing"]
+deploy = true
+
+[steps.deploy-tiles]
+about = "Upload the tile archive to R2; the map reads its new version from the Worker"
+run = """
+aws s3 cp "$BUILD/tiles/openrailwaymap.pmtiles" s3://orm/openrailwaymap.pmtiles \
+  --endpoint-url "$R2_ENDPOINT" --checksum-algorithm SHA256 --no-progress
+"""
+needs = ["tiles/openrailwaymap.pmtiles"]
+after = ["check-tiles"]
+deploy = true
+
+# Last: the Worker's code may read what the deploys before it publish, and
+# goes out only when every check of the app passed
+[steps.deploy-worker]
+about = "Build the app and deploy the Worker, with the station files it bundles"
+run = """
+JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
+STATION_COORDS="$BUILD/station-coords/station-coords.csv" pnpm build
+pnpm exec wrangler deploy
+"""
+files = [
+  "src",
+  "public",
+  "index.html",
+  "build-dashboard",
+  "package.json",
+  "pnpm-lock.yaml",
+  "tsconfig.json",
+  "vite.config.js",
+  "wrangler.toml",
+  "!src/*.test.ts",
+  "!src/worker/api/fixtures/*",
+]
+needs = ["jp-station-codes/jp-station-codes.csv", "station-coords/station-coords.csv"]
+after = [
+  "deploy-timetable",
+  "deploy-relations",
+  "deploy-routes",
+  "deploy-tiles",
+  "check-format",
+  "check-lint",
+  "check-types",
+  "check-unit",
+  "check-e2e",
+  "check-build",
+]
+deploy = true

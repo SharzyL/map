@@ -360,7 +360,7 @@ export function decodePolyline(encoded: string, precision = 6): Array<[number, n
 
 // Yahoo names stations as OSM does, but adds a suffix where a name is shared:
 // 府中(東京都), 宇治(京阪線), 新宿(東京メトロ). Comparison ignores the suffix,
-// full-width forms, ケ/ヶ and a trailing 駅 (scripts/stations/jp-station-codes.py
+// full-width forms, ケ/ヶ and a trailing 駅 (data_builder/stations/jp-station-codes.py
 // uses the same rule).
 export function normalizeStationName(name: string) {
   return name.normalize('NFKC').replace(/ヶ/g, 'ケ').replace(/ヵ/g, 'カ').replace(/\s/g, '').replace(/駅$/, '');

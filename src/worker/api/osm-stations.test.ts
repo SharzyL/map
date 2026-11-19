@@ -3,7 +3,7 @@ import { metres } from './geo.js';
 import { JP, loadJp, match } from './osm-stations.js';
 
 // The tests run on fixtures/stations/, the stations the other fixtures name;
-// scripts/stations/check-stations.py checks the files the build makes.
+// data_builder/stations/check-stations.py checks the files the build makes.
 describe('JP', () => {
   it('gives typed OSM ids at the station', () => {
     const shibuya = JP.get('22715');

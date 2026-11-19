@@ -29,7 +29,7 @@ Edit `wrangler.toml` for your account before building or deploying anything:
   account; the custom domain and its DNS record are created on the first deploy. To serve from
   `<name>.<subdomain>.workers.dev` instead, remove `routes` and set `workers_dev = true`.
 - `[[r2_buckets]]` `bucket_name`: your bucket. The build uploads the tiles to a bucket named `orm` and
-  keeps its state under `build/` there (`s3://orm/` in `scripts/build/steps.toml`,
+  keeps its state under `build/` there (`s3://orm/` in `data_builder/steps.toml`,
   `.github/workflows/build.yml` and `cleanup-r2-test-files.yml`), so name it `orm` or change those too.
 - `[[d1_databases]]` `database_id`: create the database with `pnpm exec wrangler d1 create cr` and put
   the id it prints here. The build's imports and the Worker's binding `CR_DB` both read this entry.
@@ -42,7 +42,7 @@ itself and deploys it. It needs five repository secrets:
 - `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ACCOUNT_ID`: an R2 API token with Object Read & Write
   on the bucket, for the tile archive and the build's state. Export its keys as `AWS_ACCESS_KEY_ID`
   and `AWS_SECRET_ACCESS_KEY` and the account ID as `R2_ACCOUNT_ID`, then run
-  `./scripts/tiles/set-r2-secrets.sh <owner>/<repo>` to store them.
+  `./data_builder/deploy/set-r2-secrets.sh <owner>/<repo>` to store them.
 - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`: an API token with Workers Scripts edit and D1 edit
   (and Workers Routes and DNS edit on the zone for the custom domain), for the D1 imports and the
   Worker's deploy: `gh secret set CLOUDFLARE_API_TOKEN -R <owner>/<repo>`.
@@ -144,9 +144,9 @@ get them all: `gh run download <run-id> -n build-outputs -D .build/out`.
   railway line picked from one, which a panel beside the map then describes.
 - `layer-store.ts` keeps imported layers and annotations in browser memory; they are lost on reload
   unless exported.
-- `scripts/styles/` generates the railway style, `scripts/tiles/` builds the tile archive, and the other
-  `scripts/` directories build the data behind it and the API (the railway extract, 路路通 timetables,
-  stations, Japan's official lines, relations, train routes); `scripts/build/` runs them all (see
+- `scripts/styles/` generates the railway style. `data_builder/` builds the data behind the map and
+  the API, a directory per kind (the railway extract, 路路通 timetables, stations, Japan's official
+  lines, relations, train routes, the tile archive), and `data_builder/builder.py` runs them all (see
   [The data build](#the-data-build)).
 
 Display settings (base map, railway filter and line colors, highlight) are applied by rewriting the style once at load
@@ -161,7 +161,7 @@ the subset misses. Commit the regenerated files; a unit test fails when they are
 
 ### The data build
 
-`scripts/build/build.py` runs the steps declared in `scripts/build/steps.toml`. A step is a command
+`data_builder/builder.py` runs the steps declared in `data_builder/steps.toml`. A step is a command
 with everything it reads named: files of this repository, data sources from outside, and other steps'
 outputs. It runs again only when the content of one of those changed, and a step that writes the same
 output as before leaves the steps reading it alone. A source's version is pinned (`--refresh` probes
@@ -169,37 +169,37 @@ it again), so a build after a commit rebuilds what the commit touched, and the s
 changed outside.
 
 ```bash
-python3 scripts/build/build.py plan                    # what would run, and why
-python3 scripts/build/build.py run relations           # bring a step and what it needs up to date
-python3 scripts/build/build.py run --refresh lltskb    # probe a source again first
+python3 data_builder/builder.py plan                    # what would run, and why
+python3 data_builder/builder.py run relations           # bring a step and what it needs up to date
+python3 data_builder/builder.py run --refresh lltskb    # probe a source again first
 ```
 
 Outputs go to `.build/out/<step>/` (git-ignored). The steps need `osmium` and the Python packages in
-`scripts/requirements.txt` (`nix-shell scripts/routing/shell.nix` has both); the tile export also
+`data_builder/requirements.txt` (`nix-shell data_builder/shell.nix` has both); the tile export also
 needs docker, GDAL, tippecanoe and pmtiles. Steps that publish (`deploy-*`) only run with `--deploy`,
 which is the workflow's business: on CI the state of the build (what was built from what, when, and
 how long it took) lives in the bucket under `build/`, and locally in `.build/state.json`, so a local
 run never knows what is deployed.
 
-| Step                                                    | Makes                                                                                                                    | From                                                                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `lltskb`                                                | China Railway's timetable, unpacked and as CSV                                                                           | 路路通's `an.db` (`scripts/lltskb/`)                                                                      |
-| `planet-extract`                                        | the railway objects of the weekly planet: worldwide without coordinates, and with them in the box around China and Japan | OpenStreetMap's planet, streamed once (`scripts/extract/`)                                                |
-| `hourly-diffs`                                          | OSM's hourly diffs since the planet, filtered to the railway objects                                                     | the diffs, `planet-extract`                                                                               |
-| `railway-extract`                                       | the worldwide objects brought up to date: line relations and way tags for the tiles                                      | `planet-extract`, `hourly-diffs`                                                                          |
-| `box-extract`                                           | the box brought up to date and cut to China, Japan and what lies between                                                 | `planet-extract`, `hourly-diffs`                                                                          |
-| `n02`, `line-groups`                                    | Japan's railway ways grouped into their official lines                                                                   | MLIT's 国土数値情報 N02, `box-extract` (`scripts/lines/`)                                                 |
-| `osm-stations`                                          | the extract's stations in China and in Japan                                                                             | `box-extract` (`scripts/stations/`)                                                                       |
-| `cr-station-trains`                                     | China Railway's stations matched to OSM, with trains per day                                                             | `lltskb`, `osm-stations`                                                                                  |
-| `jp-station-codes`                                      | Japan's OSM stations matched to Yahoo! 乗換案内 station codes                                                            | `osm-stations`, the API's station search                                                                  |
-| `station-coords`                                        | the position of every matched station                                                                                    | the two station files, `osm-stations`                                                                     |
-| `cr-timetable`                                          | station timetables and trains, as SQL for D1                                                                             | `lltskb`, `cr-station-trains`                                                                             |
-| `relations`                                             | routes, lines and Japan's official lines, as SQL for D1                                                                  | `box-extract`, `line-groups`, `n02` (`scripts/relations/`)                                                |
-| `routing-graph`, `cr-routes`, `jp-hops`                 | trains' routes on OSM track, as SQL for D1                                                                               | `box-extract`, `lltskb`, the station files (`scripts/routing/`)                                           |
-| `tiles`                                                 | the railway tile archive                                                                                                 | the OpenRailwayMap database image, `railway-extract`, `line-groups`, the station files (`scripts/tiles/`) |
-| `deploy-timetable`, `deploy-relations`, `deploy-routes` | the D1 database `cr`                                                                                                     | the SQL above                                                                                             |
-| `deploy-tiles`                                          | `openrailwaymap.pmtiles` in the bucket                                                                                   | `tiles`                                                                                                   |
-| `deploy-worker`                                         | the Worker and the app, last                                                                                             | `src/`, `public/`, the Japanese station files                                                             |
+| Step                                                    | Makes                                                                                                                    | From                                                                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `lltskb`                                                | China Railway's timetable, unpacked and as CSV                                                                           | 路路通's `an.db` (`data_builder/cr-timetable/`)                                                                |
+| `planet-extract`                                        | the railway objects of the weekly planet: worldwide without coordinates, and with them in the box around China and Japan | OpenStreetMap's planet, streamed once (`data_builder/osm-railways/`)                                           |
+| `hourly-diffs`                                          | OSM's hourly diffs since the planet, filtered to the railway objects                                                     | the diffs, `planet-extract`                                                                                    |
+| `railway-extract`                                       | the worldwide objects brought up to date: line relations and way tags for the tiles                                      | `planet-extract`, `hourly-diffs`                                                                               |
+| `box-extract`                                           | the box brought up to date and cut to China, Japan and what lies between                                                 | `planet-extract`, `hourly-diffs`                                                                               |
+| `n02`, `line-groups`                                    | Japan's railway ways grouped into their official lines                                                                   | MLIT's 国土数値情報 N02, `box-extract` (`data_builder/official-lines/`)                                        |
+| `osm-stations`                                          | the extract's stations in China and in Japan                                                                             | `box-extract` (`data_builder/stations/`)                                                                       |
+| `cr-station-trains`                                     | China Railway's stations matched to OSM, with trains per day                                                             | `lltskb`, `osm-stations`                                                                                       |
+| `jp-station-codes`                                      | Japan's OSM stations matched to Yahoo! 乗換案内 station codes                                                            | `osm-stations`, the API's station search                                                                       |
+| `station-coords`                                        | the position of every matched station                                                                                    | the two station files, `osm-stations`                                                                          |
+| `cr-timetable`                                          | station timetables and trains, as SQL for D1                                                                             | `lltskb`, `cr-station-trains`                                                                                  |
+| `relations`                                             | routes, lines and Japan's official lines, as SQL for D1                                                                  | `box-extract`, `line-groups`, `n02` (`data_builder/relations/`)                                                |
+| `routing-graph`, `cr-routes`, `jp-hops`                 | trains' routes on OSM track, as SQL for D1                                                                               | `box-extract`, `lltskb`, the station files (`data_builder/routing/`)                                           |
+| `tiles`                                                 | the railway tile archive                                                                                                 | the OpenRailwayMap database image, `railway-extract`, `line-groups`, the station files (`data_builder/tiles/`) |
+| `deploy-timetable`, `deploy-relations`, `deploy-routes` | the D1 database `cr`                                                                                                     | the SQL above                                                                                                  |
+| `deploy-tiles`                                          | `openrailwaymap.pmtiles` in the bucket                                                                                   | `tiles`                                                                                                        |
+| `deploy-worker`                                         | the Worker and the app, last                                                                                             | `src/`, `public/`, the Japanese station files                                                                  |
 
 Things to know:
 
@@ -209,16 +209,16 @@ Things to know:
 - All OpenStreetMap data, stations included, comes from the one railway extract. The hourly diffs do
   not remove what was deleted from OSM, so a deleted station can linger until the next weekly planet.
 - The station files (`cr-station-trains.csv`, `jp-station-codes.csv`, `station-coords.csv`) are build
-  outputs, not files in git. `scripts/stations/check-stations.py` stops the build when a match looks
+  outputs, not files in git. `data_builder/stations/check-stations.py` stops the build when a match looks
   broken.
-- `scripts/stations/jp-station-exceptions.csv` settles the Japanese stations the name and position
-  rules get wrong, and `scripts/routing/jp-rules.csv` the trains whose route OSM's service routes do
+- `data_builder/stations/jp-station-exceptions.csv` settles the Japanese stations the name and position
+  rules get wrong, and `data_builder/routing/jp-rules.csv` the trains whose route OSM's service routes do
   not give.
 
 #### The tile export
 
-`scripts/tiles/export-from-image.sh` starts the OpenRailwayMap import database from its image
-(`ghcr.io/hiddewie/openrailwaymap-import-db`) and runs `scripts/tiles/export.py` against it,
+`data_builder/tiles/export-from-image.sh` starts the OpenRailwayMap import database from its image
+(`ghcr.io/hiddewie/openrailwaymap-import-db`) and runs `data_builder/tiles/export.py` against it,
 which writes the archive (several GB, worldwide, zoom 0-15). Railway line relations (`route=railway`)
 and the track counts and opening dates of railway ways are not in that database, so they come from
 the railway extract (`LINE_RELATIONS_OPL`); in Japan, where OSM lacks line relations for much of the
@@ -253,18 +253,18 @@ Railway's timetable through the same API, which finds them by their OSM elements
 ```bash
 pnpm fmt:check && pnpm lint && pnpm typecheck   # oxfmt, oxlint, tsc over src/
 pnpm test                                       # Vitest: src/**/*.test.ts, scripts/**/*.test.mjs
-./scripts/test-python.sh                        # the data scripts and the build runner (scripts/*/test_*.py)
+./data_builder/test.sh                          # the data build and its runner (data_builder/**/test_*.py)
 pnpm test:e2e                                   # Playwright, chromium and a Pixel 7 profile
 pnpm vitest run --config vitest.config.js src/gpx.test.ts -t 'name substring'
 pnpm exec playwright test e2e/annotations.spec.ts --project chromium
 ```
 
-They are also steps of the data build (`check-*` in `scripts/build/steps.toml`), so
-`python3 scripts/build/build.py run --checks` runs the ones whose files changed since they last
+They are also steps of the data build (`check-*` in `data_builder/steps.toml`), so
+`python3 data_builder/builder.py run --checks` runs the ones whose files changed since they last
 passed, several at a time. CI runs all of them on pull requests, and on pushes to `main` the changed
 ones inside the build, where a failing check holds back the deploys of what it tests. The Python tests of the
-relations and routing scripts need the packages in `scripts/requirements.txt`
-(`nix-shell scripts/routing/shell.nix --run ./scripts/test-python.sh`). Unit tests named `*.dom.test.ts` run in happy-dom; end-to-end specs
+relations and routing scripts need the packages in `data_builder/requirements.txt`
+(`nix-shell data_builder/shell.nix --run ./data_builder/test.sh`). Unit tests named `*.dom.test.ts` run in happy-dom; end-to-end specs
 named `*.mobile.spec.ts` run only on the mobile profile. Playwright starts its own offline dev server
 with screenshot fixtures; set `PLAYWRIGHT_BASE_URL` to test a server that is already running.
 

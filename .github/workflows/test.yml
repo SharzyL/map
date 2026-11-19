@@ -1,6 +1,6 @@
 name: Test
 
-# The checks of the build (scripts/build/steps.toml: formatting, the linter,
+# The checks of the build (data_builder/steps.toml: formatting, the linter,
 # types, unit and end-to-end tests, the data scripts' tests) on pull requests.
 # Pushes to main run them in the Build workflow, where each one runs only when
 # what it reads changed; here there is no state to tell, so all of them run.
@@ -27,9 +27,9 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: pip install -q -r scripts/requirements.txt
+      - run: pip install -q -r data_builder/requirements.txt
 
-      - run: python3 scripts/build/build.py run --checks
+      - run: python3 data_builder/builder.py run --checks
 
       # Traces, videos and screenshots of failed attempts, flaky ones included
       # (passing tests leave nothing behind).

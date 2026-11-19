@@ -1,5 +1,5 @@
 // What the build dashboard reads out of the build's state (the JSON
-// scripts/build/build.py keeps, as src/worker/build-dashboard.ts passes it on):
+// data_builder/builder.py keeps, as src/worker/build-dashboard.ts passes it on):
 // each step's standing, and how to say times, durations and sizes.
 
 export type StepKind = 'build' | 'check' | 'deploy';

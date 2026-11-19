@@ -39,7 +39,7 @@ function mapResourceHints() {
 }
 
 // The station files the Worker bundles (src/worker/api/osm-stations.ts) are
-// build outputs: the build's own (scripts/build/steps.toml) when it ran here,
+// build outputs: the build's own (data_builder/steps.toml) when it ran here,
 // or where JP_STATION_CODES and STATION_COORDS say; else a few stations' worth
 // from the test fixtures, so the app still starts.
 function stationFile(name, variable, step) {

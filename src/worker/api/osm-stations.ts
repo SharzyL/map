@@ -1,7 +1,7 @@
 // OSM features and positions of Yahoo station codes, from the station files
 // bundled with the Worker: jp-station-codes.csv (OSM feature → Yahoo codes)
 // and station-coords.csv (OSM feature → position). The build makes them
-// (scripts/stations/); `station-data/` is where vite.config.js finds them, and
+// (data_builder/stations/); `station-data/` is where vite.config.js finds them, and
 // a few stations' worth in fixtures/stations/ where it does not.
 
 import codesCsv from 'station-data/jp-station-codes.csv?raw';

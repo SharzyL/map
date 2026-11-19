@@ -5,7 +5,7 @@
 // Japan (Yahoo! 乗換案内): a station's lines and directions, then one
 // direction's departures for a day type, then the stops of one train.
 // Stations carry their Yahoo station codes as `yahoo_codes` (from
-// scripts/stations/jp-station-codes.py); a stop of a train opened from the panel
+// data_builder/stations/jp-station-codes.py); a stop of a train opened from the panel
 // may be looked up by name, and a name Yahoo knows as several stations
 // (府中(東京都), 府中(広島県)) lists each station's lines under its Yahoo name.
 //

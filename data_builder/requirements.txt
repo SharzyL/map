@@ -1,0 +1,6 @@
+# What the data scripts import beyond the standard library (relations, routing
+# and stations); data_builder/shell.nix gives the same on NixOS.
+numpy
+osmium
+scipy
+shapely

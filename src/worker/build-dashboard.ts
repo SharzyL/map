@@ -1,6 +1,6 @@
 // The data behind the build dashboard (/build-dashboard, a page of its own:
 // build-dashboard/index.html): the state the data build keeps in the bucket
-// under build/ (scripts/build/build.py), and its recent runs.
+// under build/ (data_builder/builder.py), and its recent runs.
 
 const STATE_KEY = 'build/state.json';
 const RUNS_PREFIX = 'build/runs/';

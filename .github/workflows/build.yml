@@ -1,8 +1,8 @@
 name: Build
 
 # Brings the map's data and the Worker up to date, runs the checks of what
-# changed, and deploys (scripts/build/build.py, steps in
-# scripts/build/steps.toml; steps run together where the runner holds them):
+# changed, and deploys (data_builder/builder.py, steps in
+# data_builder/steps.toml; steps run together where the runner holds them):
 #
 # - on a push to main, with the data sources as pinned, so only what the
 #   commit touched is rebuilt;
@@ -88,7 +88,7 @@ jobs:
 
       - name: Install the data scripts' tools
         run: |
-          pip install -q -r scripts/requirements.txt
+          pip install -q -r data_builder/requirements.txt
           sudo apt-get update -qq
           sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
@@ -127,12 +127,12 @@ jobs:
           if [ -n "${FORCE}" ]; then args+=(--force "${FORCE}"); fi
           # shellcheck disable=SC2086
           if [ "${PLAN_ONLY}" = "true" ]; then
-            python3 scripts/build/build.py plan ${TARGETS} "${args[@]}"
+            python3 data_builder/builder.py plan ${TARGETS} "${args[@]}"
             exit 0
           fi
           if [ "${DEPLOY}" = "true" ]; then args+=(--deploy); fi
           # shellcheck disable=SC2086
-          python3 scripts/build/build.py run ${TARGETS} "${args[@]}"
+          python3 data_builder/builder.py run ${TARGETS} "${args[@]}"
 
       # Traces, videos and screenshots of failed end-to-end tests
       - name: Upload the end-to-end tests' results
@@ -163,7 +163,7 @@ jobs:
       - name: Leave out what is not kept
         if: ${{ !cancelled() && !inputs.plan_only }}
         run: |
-          python3 scripts/build/build.py prune
+          python3 data_builder/builder.py prune
           du -sh .build/out/* 2>/dev/null || true
 
       # Also after a failed step: what the others built is kept
