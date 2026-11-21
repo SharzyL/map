@@ -1,21 +1,21 @@
 // The works whose anitabi spots are on screen (experimental, with the anitabi
-// layer, anitabi-layer.ts): a button in the control column while the layer is
-// on opens a panel listing them, the most spots in view first. A work's row
-// shows only its spots, all of them, and fits the map to the main ones; again, and
-// every work's show. The list is what the map drew: the spots' layer's
+// layer, anitabi-layer.ts): a panel that opens when the spots are switched on,
+// and from a button in the control column while they show, listing the works
+// the map drew, the most spots in view first. The list is the spots layer's
 // rendered features, counted again while the map renders, at most every
-// REFRESH_MS, and once more after its last frame.
+// REFRESH_MS, and once more after its last frame. Like the timetable, it stays
+// open beside the map while one clicks around it, until closed.
+//
+// A work opens in the same panel: its cover, titles and links, and every one
+// of its spots, on screen or not, by episode and time in it, each with its
+// screenshot; a spot flies the map there and opens its info box. Meanwhile
+// only that work's spots show, all of them, and the map fits them (less the
+// far-flung few, as anitabi frames a work). Back shows every work again.
 import ClapperboardIcon from 'lucide/dist/esm/icons/clapperboard.mjs';
-import { anitabiImageUrl, type AnitabiWork } from './anitabi.js';
-import { ANITABI_LAYER, type AnitabiController } from './anitabi-layer.js';
+import { anitabiImageUrl, anitabiMapUrl, bangumiUrl, type AnitabiPoint, type AnitabiWork } from './anitabi.js';
+import { ANITABI_LAYER, formatEpisode, formatSceneTime, type AnitabiController } from './anitabi-layer.js';
 import { createPanelButton, createPanelShell, el } from './map-panel.js';
-import {
-  emitUiPanelOpen,
-  isOtherUiPanelOpen,
-  onOutsideClick,
-  UI_PANEL_OPEN_EVENT,
-  type OutsideClickMap,
-} from './ui-panels.js';
+import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT, type OutsideClickMap } from './ui-panels.js';
 
 // More rows than anyone reads, and each a cover to load
 const MAX_ROWS = 100;
@@ -107,15 +107,75 @@ export function workBounds(work: AnitabiWork): [[number, number], [number, numbe
   ];
 }
 
+export type EpisodeGroup = { title: string; points: AnitabiPoint[] };
+
+// A work's spots by episode: numbered episodes in order, then named ones (a
+// game's scenes, an OP) in the order they first come, then the rest; within
+// one, by time in the episode, those without a time last, else as anitabi
+// lists them.
+export function spotsByEpisode(points: AnitabiPoint[]): EpisodeGroup[] {
+  const groups = new Map<string, { key: number | string; title: string; points: AnitabiPoint[] }>();
+  for (const point of points) {
+    const id = point.ep === undefined || point.ep === '' ? '' : String(point.ep);
+    let group = groups.get(id);
+    if (!group) {
+      const key = id === '' ? Infinity : typeof point.ep === 'number' ? point.ep : id;
+      groups.set(id, (group = { key, title: id === '' ? 'Other spots' : formatEpisode(point.ep), points: [] }));
+    }
+    group.points.push(point);
+  }
+  const rank = (key: number | string) => (typeof key === 'number' ? (key === Infinity ? 2 : 0) : 1);
+  return [...groups.values()]
+    .sort(
+      (a, b) =>
+        rank(a.key) - rank(b.key) || (typeof a.key === 'number' && typeof b.key === 'number' ? a.key - b.key : 0),
+    )
+    .map(({ title, points: list }) => ({
+      title,
+      points: list
+        .map((point, i) => ({ point, i }))
+        .sort((a, b) => (a.point.s ?? Infinity) - (b.point.s ?? Infinity) || a.i - b.i)
+        .map(({ point }) => point),
+    }));
+}
+
 type ListControl = { onAdd(map: AnitabiListMap): HTMLElement; onRemove(): void };
+type Padding = { top: number; right: number; bottom: number; left: number };
 export type AnitabiListMap = OutsideClickMap & {
   addControl(control: ListControl, position?: string): void;
   getContainer(): HTMLElement;
+  getZoom(): number;
   on(type: 'render', listener: () => void): void;
   off(type: 'render', listener: () => void): void;
   queryRenderedFeatures(options: { layers: string[] }): RenderedSpot[];
-  fitBounds(bounds: [[number, number], [number, number]], options: Record<string, unknown>): void;
+  fitBounds(bounds: [[number, number], [number, number]], options: { padding: Padding; maxZoom: number }): void;
+  flyTo(options: { center: [number, number]; zoom: number; padding: Padding }): void;
 };
+
+export type OpenInfoBox = (lngLat: [number, number], content: HTMLElement) => void;
+
+function image(parent: Element, className: string, src: string | undefined) {
+  const frame = el('span', className, parent);
+  if (src) {
+    const img = el('img', undefined, frame);
+    img.src = src;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => img.remove());
+  }
+  return frame;
+}
+
+function link(parent: Element, text: string, href: string) {
+  const a = el('a', undefined, parent);
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = text;
+  return a;
+}
 
 class AnitabiListPanel {
   _anitabi: AnitabiController;
@@ -127,6 +187,9 @@ class AnitabiListPanel {
   _body: HTMLElement;
   _expanded = false;
   _list: WorkInView[] = [];
+  // The work open in the panel, if one is
+  _work: AnitabiWork | null = null;
+  _openInfoBox: OpenInfoBox | null = null;
   _timer = 0;
   _boundRender = () => {
     if (!this._expanded || this._timer) return;
@@ -141,7 +204,6 @@ class AnitabiListPanel {
   _boundAnyPanelOpen = (event: Event) => {
     if (isOtherUiPanelOpen(event, 'anitabi-list')) this.setExpanded(false);
   };
-  _removeOutsideClick: () => void;
 
   constructor(anitabi: AnitabiController) {
     this._anitabi = anitabi;
@@ -166,31 +228,35 @@ class AnitabiListPanel {
     this._panel = shell.panel;
     this._summary = shell.summary;
     this._body = shell.body;
-    this._removeOutsideClick = onOutsideClick(
-      map,
-      () => [this._panel, this._control],
-      () => this.setExpanded(false),
-    );
     map.getContainer().addEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.addEventListener('keydown', this._boundEscape);
     map.on('render', this._boundRender);
-    this._anitabi.onChange(() => {
+    this._anitabi.onChange(({ switchedOn }) => {
       if (!this._anitabi.enabled) this.setExpanded(false);
+      // Another way of clearing the selection leaves the work too.
+      if (this._anitabi.selectedWork === null) this._work = null;
       this._sync();
-      this._refresh();
+      if (switchedOn) this.setExpanded(true);
+      else this._refresh();
+    });
+    this._anitabi.onStatus(() => {
+      if (this._expanded && !this._work && this._list.length === 0) this._render();
     });
     this._sync();
     return this._control;
   }
 
   onRemove() {
-    this._removeOutsideClick?.();
     this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.removeEventListener('keydown', this._boundEscape);
     this._map.off('render', this._boundRender);
     window.clearTimeout(this._timer);
     this._panel?.remove();
     this._control?.remove();
+  }
+
+  setInfoBox(open: OpenInfoBox) {
+    this._openInfoBox = open;
   }
 
   setExpanded(expanded: boolean) {
@@ -203,88 +269,131 @@ class AnitabiListPanel {
     this._sync();
   }
 
-  // Counts the works on screen again, unless one is selected: then only its
-  // spots show, and the list stays as it was so another can be picked.
+  // Counts the works on screen again, unless one is open: then only its
+  // spots show, and the list waits for Back.
   _refresh() {
-    if (!this._expanded || !this._anitabi.enabled || this._anitabi.selectedWork !== null) {
-      this._render();
-      return;
+    if (!this._expanded) return;
+    if (this._anitabi.enabled && !this._work) {
+      const features = this._map.queryRenderedFeatures({ layers: [ANITABI_LAYER] });
+      this._list = worksInView(features, (id) => this._anitabi.work(id));
     }
-    const features = this._map.queryRenderedFeatures({ layers: [ANITABI_LAYER] });
-    this._list = worksInView(features, (id) => this._anitabi.work(id));
     this._render();
   }
 
-  _select(work: AnitabiWork) {
-    if (this._anitabi.selectedWork === work.id) {
-      this._anitabi.selectWork(null);
-      return;
-    }
+  // The map's room beside the panel: under it on phones, left of it otherwise
+  _padding(): Padding {
+    const sheet = window.matchMedia?.('(max-width: 640px)').matches;
+    const container = this._map.getContainer();
+    if (sheet) return { top: 60, right: 40, bottom: Math.round(container.clientHeight / 2) + 24, left: 40 };
+    const width = this._panel.getBoundingClientRect().width || 340;
+    return { top: 60, right: Math.round(width) + 72, bottom: 60, left: 60 };
+  }
+
+  _openWork(work: AnitabiWork) {
+    this._work = work;
     this._anitabi.selectWork(work.id);
     const bounds = workBounds(work);
-    if (!bounds) return;
-    // On phones the panel is a sheet over the map's lower half.
-    const sheet = window.matchMedia?.('(max-width: 640px)').matches;
-    const bottom = sheet ? Math.round(this._map.getContainer().clientHeight / 2) + 24 : 60;
-    this._map.fitBounds(bounds, { padding: { top: 60, right: 60, bottom, left: 60 }, maxZoom: 15 });
+    if (bounds) this._map.fitBounds(bounds, { padding: this._padding(), maxZoom: 15 });
+    this._render();
+    this._body.scrollTop = 0;
+  }
+
+  _back() {
+    this._work = null;
+    this._anitabi.selectWork(null);
+    this._refresh();
+    this._body.scrollTop = 0;
+  }
+
+  _openSpot(work: AnitabiWork, point: AnitabiPoint) {
+    const lngLat: [number, number] = [point.geo[1], point.geo[0]];
+    this._map.flyTo({ center: lngLat, zoom: Math.max(this._map.getZoom(), 16), padding: this._padding() });
+    this._openInfoBox?.(lngLat, this._anitabi.spotContent(work, point));
   }
 
   _render() {
-    const selected = this._anitabi.selectedWork;
-    const total = this._list.reduce((sum, { spots }) => sum + spots, 0);
-    const selectedWork = selected === null ? undefined : this._anitabi.work(selected);
-    this._summary.textContent = selectedWork
-      ? `Only ${workTitle(selectedWork)}`
-      : this._list.length
-        ? `${plural(this._list.length, 'work')} · ${plural(total, 'spot')} in view`
-        : 'No spots in view';
-
     this._body.replaceChildren();
-    if (selectedWork) {
-      const showAll = el('button', 'anitabi-list-show-all', this._body);
-      showAll.type = 'button';
-      showAll.textContent = 'Show every work';
-      showAll.addEventListener('click', () => this._anitabi.selectWork(null));
-    }
+    if (this._work) this._renderWork(this._work);
+    else this._renderList();
+  }
+
+  _renderList() {
+    const total = this._list.reduce((sum, { spots }) => sum + spots, 0);
+    const status = this._anitabi.status;
+    this._summary.textContent = this._list.length
+      ? `${plural(this._list.length, 'work')} · ${plural(total, 'spot')} in view`
+      : status.state === 'loading' || status.state === 'failed'
+        ? status.text
+        : 'No spots in view';
     if (this._list.length === 0) {
       el('p', 'anitabi-list-empty', this._body).textContent =
-        'Move the map to where spots show; zoom in for more of them.';
+        status.state === 'loading'
+          ? 'The spots are loading; they list here as they show.'
+          : 'Move the map to where spots show; zoom in for more of them.';
       return;
     }
     const list = el('ul', 'anitabi-list-items', this._body);
     for (const { work, spots } of this._list.slice(0, MAX_ROWS)) {
-      const item = el('li', undefined, list);
-      const row = el('button', 'anitabi-list-item', item);
+      const row = el('button', 'anitabi-list-item', el('li', undefined, list));
       row.type = 'button';
-      row.setAttribute('aria-pressed', selected === work.id ? 'true' : 'false');
       row.style.setProperty('--anitabi-work-color', work.color || DEFAULT_COLOR);
       row.style.setProperty('--anitabi-work-ink', inkOn(work.color || DEFAULT_COLOR));
-      row.addEventListener('click', () => this._select(work));
-
-      const cover = el('span', 'anitabi-list-cover', row);
-      const src = anitabiImageUrl(work.cover, 'h160');
-      if (src) {
-        const img = el('img', undefined, cover);
-        img.src = src;
-        img.alt = '';
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        img.referrerPolicy = 'no-referrer';
-        img.addEventListener('error', () => img.remove());
-      }
-
+      row.addEventListener('click', () => this._openWork(work));
+      image(row, 'anitabi-list-cover', anitabiImageUrl(work.cover, 'h160'));
       const text = el('span', 'anitabi-list-text', row);
       el('span', 'anitabi-list-name', text).textContent = workTitle(work);
       const original = work.title && work.title !== workTitle(work) ? work.title : undefined;
       const meta = [original, work.cat, work.city].filter(Boolean).join(' · ');
       if (meta) el('span', 'anitabi-list-meta', text).textContent = meta;
-
       el('span', 'anitabi-list-count', row).textContent = `${spots}`;
       row.title = `${workTitle(work)}: ${spots} of its ${work.points.length} spots in view`;
     }
     if (this._list.length > MAX_ROWS) {
       el('p', 'anitabi-list-empty', this._body).textContent =
         `${this._list.length - MAX_ROWS} more; zoom in to narrow the list.`;
+    }
+  }
+
+  _renderWork(work: AnitabiWork) {
+    const color = work.color || DEFAULT_COLOR;
+    this._summary.textContent = `${workTitle(work)} · ${plural(work.points.length, 'spot')}`;
+    const back = el('button', 'anitabi-list-back', this._body);
+    back.type = 'button';
+    back.textContent = '\u2039 All anime in view';
+    back.addEventListener('click', () => this._back());
+
+    const head = el('div', 'anitabi-work', this._body);
+    head.style.setProperty('--anitabi-work-color', color);
+    image(head, 'anitabi-work-cover', anitabiImageUrl(work.cover, 'h160'));
+    const text = el('div', 'anitabi-work-text', head);
+    el('h3', 'anitabi-work-title', text).textContent = workTitle(work);
+    const original = work.title && work.title !== workTitle(work) ? work.title : undefined;
+    if (original) el('div', 'anitabi-work-original', text).textContent = original;
+    const meta = [work.cat, work.city, plural(work.points.length, 'spot')].filter(Boolean).join(' · ');
+    el('div', 'anitabi-work-meta', text).textContent = meta;
+    const links = el('div', 'anitabi-work-links', text);
+    link(links, 'Bangumi', bangumiUrl(work.id));
+    link(links, 'anitabi', anitabiMapUrl(work.id));
+
+    for (const group of spotsByEpisode(work.points)) {
+      const section = el('section', 'anitabi-spot-group', this._body);
+      const title = el('h4', 'anitabi-spot-group-title', section);
+      title.textContent = `${group.title} · ${group.points.length}`;
+      const list = el('ul', 'anitabi-spots', section);
+      for (const point of group.points) {
+        const row = el('button', 'anitabi-spot', el('li', undefined, list));
+        row.type = 'button';
+        row.style.setProperty('--anitabi-work-color', color);
+        row.addEventListener('click', () => this._openSpot(work, point));
+        image(row, 'anitabi-spot-image', anitabiImageUrl(point.image, 'h160'));
+        const body = el('span', 'anitabi-spot-text', row);
+        const [name, other] = [point.cn || point.name, point.cn && point.name !== point.cn ? point.name : undefined];
+        el('span', 'anitabi-spot-name', body).textContent = name || 'Spot without a name';
+        const details = [formatSceneTime(point.s), other, point.folder].filter(Boolean).join(' · ');
+        if (details) el('span', 'anitabi-spot-meta', body).textContent = details;
+        if (point.mark) el('span', 'anitabi-spot-note', body).textContent = point.mark;
+        row.title = [name, point.mark].filter(Boolean).join(' — ');
+      }
     }
   }
 
@@ -300,5 +409,7 @@ class AnitabiListPanel {
 }
 
 export function installAnitabiList(map: AnitabiListMap, anitabi: AnitabiController) {
-  map.addControl(new AnitabiListPanel(anitabi), 'top-right');
+  const panel = new AnitabiListPanel(anitabi);
+  map.addControl(panel, 'top-right');
+  return { setInfoBox: (open: OpenInfoBox) => panel.setInfoBox(open) };
 }

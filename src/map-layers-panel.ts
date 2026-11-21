@@ -60,7 +60,7 @@ const ANITABI_HINT = 'Anime pilgrimage spots from anitabi.cn; about 4 MB the fir
 // the first time they are switched on (anitabi-layer.ts).
 export type MapLayersOptions = {
   anitabi?: {
-    setEnabled(enabled: boolean): void;
+    setEnabled(enabled: boolean, options?: { byUser?: boolean }): void;
     onStatus(listener: (status: { text: string }) => void): void;
   };
 };
@@ -220,7 +220,9 @@ class MapLayersPanel {
       if (previousState[name] !== value) setGlobalStatePropertyWhenReady(this._map, name, value);
     }
     if (previous.terrain3d !== this._settings.terrain3d) this._applyTerrain();
-    if (previous.anitabi !== this._settings.anitabi) this._options.anitabi?.setEnabled(this._settings.anitabi);
+    if (previous.anitabi !== this._settings.anitabi) {
+      this._options.anitabi?.setEnabled(this._settings.anitabi, { byUser: true });
+    }
     saveMapLayerSettings(this._settings);
     this._sync();
   }

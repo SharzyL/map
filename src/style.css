@@ -3268,11 +3268,6 @@ button.timetable-stop-locate:focus-visible {
   outline: none;
 }
 
-.anitabi-list-item[aria-pressed='true'] {
-  border-color: var(--anitabi-work-color);
-  background: #f8fafc;
-}
-
 /* The work's color under its cover, which shows where there is none */
 .anitabi-list-cover {
   display: block;
@@ -3327,30 +3322,182 @@ button.timetable-stop-locate:focus-visible {
   text-align: center;
 }
 
-.anitabi-list-show-all {
+.anitabi-list-empty {
+  margin: 4px 2px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* A work open in the Anime in view panel: back to the list, the work, and
+   its spots by episode, each with its screenshot. */
+.anitabi-list-back {
   justify-self: start;
-  padding: 5px 10px;
-  border: 1px solid rgba(15, 23, 42, 0.16);
+  padding: 4px 8px 4px 4px;
+  border: 0;
   border-radius: 6px;
-  background: #fff;
-  color: #0f172a;
+  background: transparent;
+  color: #0d6efd;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
 }
 
-.anitabi-list-show-all:hover,
-.anitabi-list-show-all:focus-visible {
+.anitabi-list-back:hover,
+.anitabi-list-back:focus-visible {
   background: #f1f5f9;
   outline: none;
 }
 
-.anitabi-list-empty {
-  margin: 4px 2px;
+.anitabi-work {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.anitabi-work-cover {
+  display: block;
+  width: 56px;
+  height: 78px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--anitabi-work-color);
+}
+
+.anitabi-work-cover img,
+.anitabi-spot-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.anitabi-work-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.anitabi-work-title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.anitabi-work-original,
+.anitabi-work-meta {
   color: #64748b;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
+}
+
+.anitabi-work-links {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.anitabi-work-links a {
+  color: #0d6efd;
+  text-decoration: none;
+}
+
+.anitabi-work-links a:hover {
+  text-decoration: underline;
+}
+
+.anitabi-spot-group {
+  padding-top: 6px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.anitabi-spot-group-title {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.anitabi-spots {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anitabi-spot {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  width: 100%;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.anitabi-spot:hover,
+.anitabi-spot:focus-visible {
+  background: #f1f5f9;
+  outline: none;
+}
+
+/* The work's color shows where a spot has no screenshot. */
+.anitabi-spot-image {
+  display: block;
+  width: 80px;
+  height: 50px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--anitabi-work-color);
+}
+
+.anitabi-spot-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.anitabi-spot-name {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anitabi-spot-meta {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anitabi-spot-note {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* Credits panel (src/credits.ts): above the attribution line, left of the

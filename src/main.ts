@@ -743,7 +743,7 @@ async function init() {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }
     installRailwayFilter(map, railwayFilter);
-    installAnitabiList(map, anitabi);
+    const anitabiList = installAnitabiList(map, anitabi);
     installRouteHighlight(map);
     installTimetable(map, installTrainRoute(map));
     installCredits(map);
@@ -817,11 +817,12 @@ async function init() {
     const runMapReadySetup = () => {
       if (didRunMapReadySetup) return;
       didRunMapReadySetup = true;
-      installOrmPopups(map, maplibregl, featuresCatalog, {
+      const popups = installOrmPopups(map, maplibregl, featuresCatalog, {
         lookupLineLists: (query, signal) => lineListsNear(query, fetchRailwayTile, signal),
         extendContent: timetableButton,
         featurePopups: [anitabi],
       });
+      anitabiList.setInfoBox(popups.open);
       drainGpxQueue(map);
       let resizeFrame = 0;
       const scheduleResize = () => {

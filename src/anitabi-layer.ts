@@ -252,12 +252,18 @@ type RenderedFeatureLike = { source?: string; properties?: Record<string, unknow
 
 export type AnitabiStatus = { state: 'off' | 'loading' | 'ready' | 'failed'; text: string };
 
+export type AnitabiChange = {
+  // The person switched the spots on (not a setting restored at load)
+  switchedOn?: boolean;
+};
+
 export type AnitabiController = {
-  setEnabled(enabled: boolean): void;
+  setEnabled(enabled: boolean, options?: { byUser?: boolean }): void;
   readonly enabled: boolean;
+  readonly status: AnitabiStatus;
   onStatus(listener: (status: AnitabiStatus) => void): void;
   // Switched on or off, new data, another work selected
-  onChange(listener: () => void): void;
+  onChange(listener: (change: AnitabiChange) => void): void;
   work(id: number): AnitabiWork | undefined;
   // Shows only this work's spots, or every work's with null
   selectWork(id: number | null): void;
@@ -265,6 +271,8 @@ export type AnitabiController = {
   // For the info box (popup.ts featurePopups)
   matches(feature: RenderedFeatureLike): boolean;
   content(feature: RenderedFeatureLike): HTMLElement | null;
+  // A spot's info box, opened from elsewhere (anitabi-list.ts)
+  spotContent(work: AnitabiWork, point: AnitabiPoint): HTMLElement;
 };
 
 async function fetchFile(file: string, key: string) {
@@ -294,9 +302,9 @@ export function installAnitabi(
   let users = new Map<number, string>();
   let enabled = false;
   let selectedWork: number | null = null;
-  const changeListeners: Array<() => void> = [];
-  const changed = () => {
-    for (const listener of changeListeners) listener();
+  const changeListeners: Array<(change: AnitabiChange) => void> = [];
+  const changed = (change: AnitabiChange = {}) => {
+    for (const listener of changeListeners) listener(change);
   };
 
   const report = (next: AnitabiStatus) => {
@@ -352,15 +360,18 @@ export function installAnitabi(
   };
 
   return {
-    setEnabled(next) {
+    setEnabled(next, { byUser = false } = {}) {
       if (next && !loading) loading = load();
       if (next === enabled) return;
       enabled = next;
       if (!enabled) selectWork(null);
-      changed();
+      changed({ switchedOn: enabled && byUser });
     },
     get enabled() {
       return enabled;
+    },
+    get status() {
+      return status;
     },
     onStatus(listener) {
       listeners.push(listener);
@@ -384,5 +395,6 @@ export function installAnitabi(
       const point = work?.points.find((p) => p.id === pid);
       return work && point ? anitabiPopupContent(work, point, users) : null;
     },
+    spotContent: (work, point) => anitabiPopupContent(work, point, users),
   };
 }

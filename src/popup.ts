@@ -1856,6 +1856,35 @@ export function installOrmPopups(
     }
   });
 
+  // An info box at a point, on phones a bottom sheet, replacing the one open.
+  const iconHeight = 20;
+  const iconWidth = 10;
+  const popupOffsets: Record<string, Coordinates> = {
+    top: [0, iconHeight],
+    'top-left': [iconWidth, iconHeight],
+    'top-right': [-iconWidth, iconHeight],
+    bottom: [0, -iconHeight],
+    'bottom-left': [iconWidth, -iconHeight],
+    'bottom-right': [-iconWidth, -iconHeight],
+    left: [iconWidth, 0],
+    right: [-iconWidth, 0],
+  };
+  function openInfoBox(coordinates: unknown, content: HTMLElement) {
+    if (popup) popup.remove();
+    const shown = new maplibregl.Popup({
+      offset: popupOffsets,
+      maxWidth: 'min(400px, calc(100vw - 24px))',
+      className: 'orm-info-popup',
+    })
+      .setLngLat(coordinates)
+      .setDOMContent(content)
+      .addTo(map);
+    popup = shown;
+    keepPopupInView(map, shown);
+    installInfoSheet(map, shown);
+    return shown;
+  }
+
   // Click popup
   map.on('click', (event: PopupMapEvent) => {
     if (
@@ -1890,19 +1919,6 @@ export function installOrmPopups(
           ? closestPointOnLine(maplibregl, event.lngLat, feature.geometry.coordinates)
           : event.lngLat;
 
-    const iconHeight = 20;
-    const iconWidth = 10;
-    const popupOffsets: Record<string, Coordinates> = {
-      top: [0, iconHeight],
-      'top-left': [iconWidth, iconHeight],
-      'top-right': [-iconWidth, iconHeight],
-      bottom: [0, -iconHeight],
-      'bottom-left': [iconWidth, -iconHeight],
-      'bottom-right': [-iconWidth, -iconHeight],
-      left: [iconWidth, 0],
-      right: [-iconWidth, 0],
-    };
-
     if (popup) popup.remove();
 
     const abortController = new AbortController();
@@ -1917,17 +1933,7 @@ export function installOrmPopups(
     if (!content) return;
     if (!isOsrmPopup && !isAnnotationPopup && !isOtherPopup) options.extendContent?.(feature, content);
 
-    const shown = new maplibregl.Popup({
-      offset: popupOffsets,
-      maxWidth: 'min(400px, calc(100vw - 24px))',
-      className: 'orm-info-popup',
-    })
-      .setLngLat(coordinates)
-      .setDOMContent(content)
-      .addTo(map);
-    popup = shown;
-    keepPopupInView(map, shown);
-    installInfoSheet(map, shown);
+    const shown = openInfoBox(coordinates, content);
 
     shown.on('close', () => {
       abortController.abort('Popup closed');
@@ -1956,4 +1962,13 @@ export function installOrmPopups(
         .catch(() => {});
     }
   });
+
+  return {
+    // Opens an info box without a click, e.g. for a spot picked from a list.
+    open(lngLat: [number, number], content: HTMLElement) {
+      openInfoBox(lngLat, content);
+    },
+  };
 }
+
+export type OrmPopups = ReturnType<typeof installOrmPopups>;
