@@ -11,6 +11,7 @@ implausible and come back as straight lines.
 from __future__ import annotations
 
 import heapq
+import itertools
 import json
 import math
 from dataclasses import dataclass, field
@@ -146,11 +147,14 @@ def search(
             starts.append((0.0, (s, None, True)))
     dist: dict[State, float] = {st: c for c, st in starts}
     prev: dict[State, tuple[State, int, bool]] = {}
-    heap = [(c + h(st[0]), c, st) for c, st in starts]
+    # Entries that tie on cost go by the order they came in, never by their
+    # states, which hold None and edge numbers in the same place.
+    order = itertools.count()
+    heap = [(c + h(st[0]), c, next(order), st) for c, st in starts]
     heapq.heapify(heap)
     done: set[State] = set()
     while heap and len(done) < MAX_EXPANSIONS:
-        f, c, state = heapq.heappop(heap)
+        f, c, _, state = heapq.heappop(heap)
         if state in done:
             continue
         if f > bound:
@@ -185,7 +189,7 @@ def search(
             if nc < dist.get(nxt, math.inf):
                 dist[nxt] = nc
                 prev[nxt] = (state, ei, forward)
-                heapq.heappush(heap, (nc + h(u), nc, nxt))
+                heapq.heappush(heap, (nc + h(u), nc, next(order), nxt))
     return None
 
 

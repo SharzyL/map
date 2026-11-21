@@ -115,6 +115,45 @@ class RoutingTest(unittest.TestCase):
         cost, _ = search(self.g, [5], [1], Prefs(), arriving=last, reverse_cost=1000)
         self.assertAlmostEqual(cost, 1000 + 3650, delta=60)
 
+    def test_reversing_ties_with_a_loop_back(self) -> None:
+        from array import array
+
+        from graph import Edge, Graph, Way
+        from route import search
+
+        # Arriving at S from the west, a loop of twelve 10-unit edges leads
+        # back to S at the cost of a reversal there (120): the two ways of
+        # standing at S tie on cost, and the search must not compare them.
+        r = 15 / 111_320  # 15 m, in degrees
+        s_lat, s_lon = 35.0, 139.0
+        r_lon = r / math.cos(math.radians(s_lat))
+        angles = [math.radians(-90 + 30 * k) for k in range(12)]
+        ring = [
+            (s_lat + r + r * math.sin(a), s_lon + r_lon * math.cos(a)) for a in angles
+        ]
+        ring[0] = (s_lat, s_lon)
+        pos = {k: p for k, p in enumerate(ring)}
+        pos[12] = (s_lat, s_lon - r)  # where the train comes from
+        pos[13] = (s_lat, s_lon + 0.02)  # a target nothing reaches
+        pairs = [(12, 0)] + [(k, (k + 1) % 12) for k in range(12)]
+        ways, edges, adj = {}, [], {}
+        for i, (u, v) in enumerate(pairs):
+            ways[i] = Way(
+                array("q", [u, v]),
+                array("d", [pos[u][0], pos[v][0]]),
+                array("d", [pos[u][1], pos[v][1]]),
+                "rail",
+                False,
+                "",
+                "main",
+            )
+            edges.append(Edge(u, v, i, 0, 1, 10.0))
+            adj.setdefault(u, []).append(i)
+            adj.setdefault(v, []).append(i)
+        g = Graph(ways, {}, {}, pos, edges, adj, {})
+        found = search(g, [0], [13], Prefs(), arriving=(0, True), reverse_cost=120.0)
+        self.assertIsNone(found)
+
     def test_turns_back(self) -> None:
         from types import SimpleNamespace
 
