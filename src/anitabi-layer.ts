@@ -19,11 +19,14 @@ import {
   type AnitabiWork,
   type LoadProgress,
 } from './anitabi.js';
-import { runWhenStyleInfrastructureReady } from './style-ready.js';
+import { runWhenStyleInfrastructureReady, setGlobalStatePropertyWhenReady } from './style-ready.js';
 
 export const ANITABI_SOURCE = 'anitabi';
 export const ANITABI_LAYER = 'anitabi-spots';
 export const ANITABI_STATE = 'showAnitabi';
+// The one work whose spots show (the list's selection, anitabi-list.ts), all
+// of them at every zoom; 0 for all works, thinned by priority.
+export const ANITABI_WORK_STATE = 'anitabiWork';
 
 const DEFAULT_COLOR = '#11b4da';
 
@@ -67,9 +70,20 @@ export const ANITABI_PRIORITY_FILTER = [
   true,
 ];
 
+const SELECTED_WORK = ['to-number', ['global-state', ANITABI_WORK_STATE]];
+
+// The priority filter, but with a work selected only that work's spots. A
+// filter takes zoom only at its top, so the choice goes in every step.
+export const ANITABI_FILTER = ANITABI_PRIORITY_FILTER.map((output, index) =>
+  index >= 2 && index % 2 === 0
+    ? ['case', ['==', SELECTED_WORK, 0], output, ['==', ['get', 'aid'], SELECTED_WORK]]
+    : output,
+);
+
 type StyleLike = {
   sources?: Record<string, unknown>;
   layers?: Array<Record<string, unknown>>;
+  state?: Record<string, unknown>;
 };
 
 // An empty source and the spots' layer, on top of everything, shown while
@@ -77,6 +91,7 @@ type StyleLike = {
 export function addAnitabiToStyle<T extends StyleLike>(style: T): T {
   return {
     ...style,
+    state: { ...(style.state || {}), [ANITABI_WORK_STATE]: { default: 0 } },
     sources: { ...(style.sources || {}), [ANITABI_SOURCE]: { type: 'geojson', data: emptyCollection() } },
     layers: [
       ...(style.layers || []),
@@ -84,7 +99,7 @@ export function addAnitabiToStyle<T extends StyleLike>(style: T): T {
         id: ANITABI_LAYER,
         type: 'circle',
         source: ANITABI_SOURCE,
-        filter: ANITABI_PRIORITY_FILTER,
+        filter: ANITABI_FILTER,
         layout: { visibility: ['case', ['to-boolean', ['global-state', ANITABI_STATE]], 'visible', 'none'] },
         paint: {
           'circle-color': ['get', 'color'],
@@ -239,7 +254,14 @@ export type AnitabiStatus = { state: 'off' | 'loading' | 'ready' | 'failed'; tex
 
 export type AnitabiController = {
   setEnabled(enabled: boolean): void;
+  readonly enabled: boolean;
   onStatus(listener: (status: AnitabiStatus) => void): void;
+  // Switched on or off, new data, another work selected
+  onChange(listener: () => void): void;
+  work(id: number): AnitabiWork | undefined;
+  // Shows only this work's spots, or every work's with null
+  selectWork(id: number | null): void;
+  readonly selectedWork: number | null;
   // For the info box (popup.ts featurePopups)
   matches(feature: RenderedFeatureLike): boolean;
   content(feature: RenderedFeatureLike): HTMLElement | null;
@@ -270,14 +292,28 @@ export function installAnitabi(
   let loading: Promise<void> | null = null;
   let works = new Map<number, AnitabiWork>();
   let users = new Map<number, string>();
+  let enabled = false;
+  let selectedWork: number | null = null;
+  const changeListeners: Array<() => void> = [];
+  const changed = () => {
+    for (const listener of changeListeners) listener();
+  };
 
   const report = (next: AnitabiStatus) => {
     status = next;
     for (const listener of listeners) listener(status);
   };
 
+  const selectWork = (id: number | null) => {
+    if (id === selectedWork) return;
+    selectedWork = id;
+    setGlobalStatePropertyWhenReady(map, ANITABI_WORK_STATE, id ?? 0);
+    changed();
+  };
+
   const show = (list: AnitabiWork[]) => {
     works = new Map(list.map((work) => [work.id, work]));
+    changed();
     const data = anitabiFeatures(list);
     runWhenStyleInfrastructureReady(map, () => {
       (map.getSource(ANITABI_SOURCE) as GeoJsonSourceLike | undefined)?.setData(data);
@@ -316,12 +352,27 @@ export function installAnitabi(
   };
 
   return {
-    setEnabled(enabled) {
-      if (enabled && !loading) loading = load();
+    setEnabled(next) {
+      if (next && !loading) loading = load();
+      if (next === enabled) return;
+      enabled = next;
+      if (!enabled) selectWork(null);
+      changed();
+    },
+    get enabled() {
+      return enabled;
     },
     onStatus(listener) {
       listeners.push(listener);
       listener(status);
+    },
+    onChange(listener) {
+      changeListeners.push(listener);
+    },
+    work: (id) => works.get(id),
+    selectWork,
+    get selectedWork() {
+      return selectedWork;
     },
     matches(feature) {
       return feature.source === ANITABI_SOURCE;

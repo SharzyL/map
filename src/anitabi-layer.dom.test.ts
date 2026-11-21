@@ -4,6 +4,7 @@ import { featureFilter, validateStyleMin } from '@maplibre/maplibre-gl-style-spe
 import { describe, expect, it, vi } from 'vitest';
 import type { AnitabiPoint, AnitabiWork } from './anitabi.js';
 import {
+  ANITABI_FILTER,
   ANITABI_LAYER,
   ANITABI_PRIORITY_FILTER,
   ANITABI_SOURCE,
@@ -58,6 +59,17 @@ describe('style', () => {
       filter.filter({ zoom }, { type: 1, properties: { priority }, geometry: [] } as never);
     expect([shown(70000, 1), shown(50000, 1), shown(50000, 2)]).toEqual([true, false, true]);
     expect([shown(4, 15), shown(4, 16), shown(1, 16), shown(1, 17)]).toEqual([false, true, false, true]);
+  });
+
+  it('shows only the selected work’s spots, all of them at every zoom', () => {
+    const shown = (aid: number, priority: number, zoom: number, anitabiWork: number) =>
+      featureFilter(ANITABI_FILTER as never, { anitabiWork }).filter({ zoom }, {
+        type: 1,
+        properties: { aid, priority },
+        geometry: [],
+      } as never);
+    expect([shown(1, 4, 15, 0), shown(1, 4, 16, 0)]).toEqual([false, true]);
+    expect([shown(1, 4, 2, 1), shown(2, 99999, 2, 1)]).toEqual([true, false]);
   });
 
   it('draws spots with a screenshot over those without', () => {

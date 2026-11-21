@@ -42,6 +42,7 @@ import {
 } from './map-layers.js';
 import { installMapLayers } from './map-layers-panel.js';
 import { addAnitabiToStyle, installAnitabi } from './anitabi-layer.js';
+import { installAnitabiList } from './anitabi-list.js';
 import type * as ScreenshotFixtureModule from './screenshot-fixture.js';
 
 const LOCAL_ORM_PREFIX = '/orm';
@@ -742,6 +743,7 @@ async function init() {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }
     installRailwayFilter(map, railwayFilter);
+    installAnitabiList(map, anitabi);
     installRouteHighlight(map);
     installTimetable(map, installTrainRoute(map));
     installCredits(map);

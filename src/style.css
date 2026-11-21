@@ -87,7 +87,8 @@ body,
 
 .maplibregl-ctrl-locate,
 .maplibregl-ctrl-map-layers,
-.maplibregl-ctrl-railways {
+.maplibregl-ctrl-railways,
+.maplibregl-ctrl-anitabi-list {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -102,17 +103,20 @@ body,
 
 .maplibregl-ctrl-locate:hover,
 .maplibregl-ctrl-map-layers:hover,
-.maplibregl-ctrl-railways:hover {
+.maplibregl-ctrl-railways:hover,
+.maplibregl-ctrl-anitabi-list:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
 .maplibregl-ctrl-locate-enabled,
 .maplibregl-ctrl-map-layers-enabled,
-.maplibregl-ctrl-railways-enabled {
+.maplibregl-ctrl-railways-enabled,
+.maplibregl-ctrl-anitabi-list-enabled {
   color: #b45309;
 }
 
-.maplibregl-ctrl-railways-filtered::after {
+.maplibregl-ctrl-railways-filtered::after,
+.maplibregl-ctrl-anitabi-list-filtered::after {
   position: absolute;
   top: 5px;
   right: 5px;
@@ -2060,7 +2064,9 @@ body,
 .route-info-panel,
 .route-info-panel *,
 .credits-panel,
-.credits-panel * {
+.anitabi-list-panel,
+.credits-panel *,
+.anitabi-list-panel * {
   box-sizing: border-box;
 }
 
@@ -2068,7 +2074,8 @@ body,
 .railway-filter-panel,
 .timetable-panel,
 .route-info-panel,
-.credits-panel {
+.credits-panel,
+.anitabi-list-panel {
   position: absolute;
   top: 12px;
   right: 52px;
@@ -2094,7 +2101,8 @@ body,
 .railway-filter-panel-visible,
 .timetable-panel-visible,
 .route-info-panel-visible,
-.credits-panel-visible {
+.credits-panel-visible,
+.anitabi-list-panel-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -2104,7 +2112,8 @@ body,
 .railway-filter-header,
 .timetable-header,
 .route-info-header,
-.credits-header {
+.credits-header,
+.anitabi-list-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 30px;
   align-items: center;
@@ -2119,7 +2128,8 @@ body,
 .railway-filter-title-wrap,
 .timetable-title-wrap,
 .route-info-title-wrap,
-.credits-title-wrap {
+.credits-title-wrap,
+.anitabi-list-title-wrap {
   min-width: 0;
 }
 
@@ -2127,7 +2137,8 @@ body,
 .railway-filter-title,
 .timetable-title,
 .route-info-title,
-.credits-title {
+.credits-title,
+.anitabi-list-title {
   color: #111827;
   font-size: 13px;
   font-weight: 800;
@@ -2138,7 +2149,8 @@ body,
 .railway-filter-summary,
 .timetable-summary,
 .route-info-summary,
-.credits-summary {
+.credits-summary,
+.anitabi-list-summary {
   margin-top: 2px;
   overflow: hidden;
   color: #64748b;
@@ -2153,7 +2165,8 @@ body,
 .railway-filter-close,
 .timetable-close,
 .route-info-close,
-.credits-close {
+.credits-close,
+.anitabi-list-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2177,7 +2190,9 @@ body,
 .route-info-close:hover,
 .route-info-close:focus,
 .credits-close:hover,
-.credits-close:focus {
+.anitabi-list-close:hover,
+.credits-close:focus,
+.anitabi-list-close:focus {
   background: #f1f5f9;
   color: #0f172a;
   outline: none;
@@ -2187,7 +2202,8 @@ body,
 .railway-filter-body,
 .timetable-body,
 .route-info-body,
-.credits-body {
+.credits-body,
+.anitabi-list-body {
   display: grid;
   gap: 10px;
   min-height: 0;
@@ -3212,6 +3228,131 @@ button.timetable-stop-locate:focus-visible {
   cursor: default;
 }
 
+/* Anime in view (src/anitabi-list.ts): the works whose anitabi spots show,
+   each a row with its cover, titles and the spots in view. */
+.anitabi-list-panel {
+  width: min(340px, calc(100vw - 72px));
+}
+
+.anitabi-list-body {
+  gap: 8px;
+}
+
+.anitabi-list-items {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anitabi-list-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.anitabi-list-item:hover,
+.anitabi-list-item:focus-visible {
+  background: #f1f5f9;
+  outline: none;
+}
+
+.anitabi-list-item[aria-pressed='true'] {
+  border-color: var(--anitabi-work-color);
+  background: #f8fafc;
+}
+
+/* The work's color under its cover, which shows where there is none */
+.anitabi-list-cover {
+  display: block;
+  width: 34px;
+  height: 46px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--anitabi-work-color);
+}
+
+.anitabi-list-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.anitabi-list-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.anitabi-list-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anitabi-list-meta {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anitabi-list-count {
+  min-width: 26px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--anitabi-work-color);
+  color: var(--anitabi-work-ink, #fff);
+  font-size: 11px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.anitabi-list-show-all {
+  justify-self: start;
+  padding: 5px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.anitabi-list-show-all:hover,
+.anitabi-list-show-all:focus-visible {
+  background: #f1f5f9;
+  outline: none;
+}
+
+.anitabi-list-empty {
+  margin: 4px 2px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* Credits panel (src/credits.ts): above the attribution line, left of the
    control column like the other panels */
 .credits-panel {
@@ -3275,7 +3416,8 @@ a.credits-name:hover {
   .railway-filter-panel,
   .timetable-panel,
   .route-info-panel,
-  .credits-panel {
+  .credits-panel,
+  .anitabi-list-panel {
     top: auto;
     right: 0;
     bottom: 0;
@@ -3302,7 +3444,8 @@ a.credits-name:hover {
   .railway-filter-panel > .sheet-grabber,
   .timetable-panel > .sheet-grabber,
   .route-info-panel > .sheet-grabber,
-  .credits-panel > .sheet-grabber {
+  .credits-panel > .sheet-grabber,
+  .anitabi-list-panel > .sheet-grabber {
     position: absolute;
     top: 0;
     left: 0;
@@ -3314,7 +3457,8 @@ a.credits-name:hover {
   .railway-filter-panel > .sheet-grabber::before,
   .timetable-panel > .sheet-grabber::before,
   .route-info-panel > .sheet-grabber::before,
-  .credits-panel > .sheet-grabber::before {
+  .credits-panel > .sheet-grabber::before,
+  .anitabi-list-panel > .sheet-grabber::before {
     margin-top: 6px;
   }
 
@@ -3322,7 +3466,8 @@ a.credits-name:hover {
   .railway-filter-header,
   .timetable-header,
   .route-info-header,
-  .credits-header {
+  .credits-header,
+  .anitabi-list-header {
     padding-top: 16px;
     touch-action: none;
   }
@@ -3332,11 +3477,19 @@ a.credits-name:hover {
   .railway-filter-panel > :not(.sheet-grabber, .railway-filter-header),
   .timetable-panel > :not(.sheet-grabber, .timetable-header),
   .route-info-panel > :not(.sheet-grabber, .route-info-header),
-  .credits-panel > :not(.sheet-grabber, .credits-header) {
+  .credits-panel > :not(.sheet-grabber, .credits-header),
+  .anitabi-list-panel > :not(.sheet-grabber, .anitabi-list-header) {
     transition: opacity 0.2s;
   }
 
-  :is(.map-layers-panel, .railway-filter-panel, .timetable-panel, .route-info-panel, .credits-panel).sheet-collapsed
+  :is(
+      .map-layers-panel,
+      .railway-filter-panel,
+      .timetable-panel,
+      .route-info-panel,
+      .credits-panel,
+      .anitabi-list-panel
+    ).sheet-collapsed
     > :not(.sheet-grabber, [class$='-header']) {
     opacity: 0;
   }
@@ -3345,7 +3498,8 @@ a.credits-name:hover {
   .railway-filter-panel-visible,
   .timetable-panel-visible,
   .route-info-panel-visible,
-  .credits-panel-visible {
+  .credits-panel-visible,
+  .anitabi-list-panel-visible {
     transform: translateY(0);
   }
 
@@ -3353,7 +3507,8 @@ a.credits-name:hover {
   .railway-filter-body,
   .timetable-body,
   .route-info-body,
-  .credits-body {
+  .credits-body,
+  .anitabi-list-body {
     padding-bottom: 12px;
   }
 
