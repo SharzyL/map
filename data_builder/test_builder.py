@@ -227,6 +227,50 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(self.ran, ['upper', 'joined'])
         self.assertTrue(self.out('joined/joined.txt').startswith('HELLO\n'))
 
+    def test_plan_finds_the_inputs_a_run_makes_again(self) -> None:
+        self.build('run', '--deploy')
+        # Not the recorded content, as a cancelled run leaves the cache
+        (self.root / '.build' / 'out' / 'upper' / 'upper.txt').write_text('stale\n')
+        _, output = self.build('plan', '--refresh', 'manual')
+        self.assertIn('build  upper: its output upper.txt is gone and joined reads it', output)
+        # A deploy's input only when deploying: without, the deploy does not run
+        # joined changes with it, so publish has to run again
+        self.build('run', '--refresh', 'manual')
+        (self.root / '.build' / 'out' / 'joined' / 'joined.txt').unlink()
+        _, output = self.build('plan')
+        self.assertNotIn('build  joined', output)
+        self.build('run')
+        self.assertEqual(self.ran, [])
+        _, output = self.build('plan', '--deploy')
+        self.assertIn('build  joined: its output joined.txt is gone and publish reads it', output)
+        self.build('run', '--deploy')
+        self.assertEqual(self.ran, ['joined', 'publish'])
+
+    def test_a_run_takes_the_versions_its_plan_probed(self) -> None:
+        self.build('run', '--deploy')
+        self.write('feed-version', '5\n')
+        plan = self.root / 'plan.json'
+        self.build('plan', '--refresh', 'feed', '--json', str(plan))
+        written = json.loads(plan.read_text())
+        self.assertEqual(written['probed'], {'feed': '5'})
+        self.assertEqual(written['steps']['joined'], {'kind': 'build', 'reasons': ['source feed: 1 → 5']})
+        self.assertEqual(list(written['steps']), ['joined', 'publish'])
+        # The feed moves on between the plan and the run: the run keeps to the plan
+        self.write('feed-version', '6\n')
+        _, output = self.build('run', '--refresh', 'feed', '--versions-from', str(plan))
+        self.assertEqual(self.ran, ['joined'])
+        self.assertIn('source feed: 1 → 5', output)
+        self.assertEqual(self.out('joined/joined.txt'), 'HELLO\n5 initial\n')
+        # A probe that failed in the plan fails in the run too
+        (self.root / 'feed-version').unlink()
+        self.build('plan', '--refresh', 'feed', '--json', str(plan))
+        self.assertEqual(json.loads(plan.read_text())['probed'], {'feed': None})
+        self.write('feed-version', '7\n')
+        _, output = self.build('run', '--refresh', 'feed', '--versions-from', str(plan))
+        self.assertEqual(self.ran, [])
+        self.assertIn('could not probe feed in the plan', output)
+        self.assertEqual(self.state()['sources']['feed']['version'], '5')
+
     def test_force_and_targets(self) -> None:
         self.build('run', 'upper')
         self.assertEqual(self.ran, ['upper'])

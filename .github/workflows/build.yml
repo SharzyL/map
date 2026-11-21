@@ -93,13 +93,6 @@ jobs:
           sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
 
-      # Room for the planet pass's box (~10 GB, filtered then deleted) and the
-      # tile export, beside the cached outputs
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h / | tail -1
-
       # The newest cache: each run saves its own below
       - name: Restore the build outputs
         uses: actions/cache/restore@v6
@@ -108,14 +101,18 @@ jobs:
           key: build-out-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: build-out-
 
-      - name: Build
+      # What the run will do, decided from the state as the run decides it
+      # (after the cache comes back, since a step reading a lost output makes
+      # it again). The sources are probed here once; the run takes the
+      # versions this plan found (--versions-from), so it does what was planned.
+      - name: Plan
+        id: plan
         env:
           EVENT: ${{ github.event_name }}
           REFRESH: ${{ inputs.refresh }}
           FORCE: ${{ inputs.force }}
           TARGETS: ${{ inputs.targets }}
           DEPLOY: ${{ inputs.deploy }}
-          PLAN_ONLY: ${{ inputs.plan_only }}
           AUTO_DEPLOY: ${{ vars.BUILD_DEPLOY }}
         run: |
           case "${EVENT}" in
@@ -125,14 +122,33 @@ jobs:
           args=()
           if [ -n "${REFRESH}" ]; then args+=(--refresh "${REFRESH}"); fi
           if [ -n "${FORCE}" ]; then args+=(--force "${FORCE}"); fi
-          # shellcheck disable=SC2086
-          if [ "${PLAN_ONLY}" = "true" ]; then
-            python3 data_builder/builder.py plan ${TARGETS} "${args[@]}"
-            exit 0
-          fi
           if [ "${DEPLOY}" = "true" ]; then args+=(--deploy); fi
+          mkdir -p .build
           # shellcheck disable=SC2086
-          python3 data_builder/builder.py run ${TARGETS} "${args[@]}"
+          python3 data_builder/builder.py plan ${TARGETS} "${args[@]}" --json .build/plan.json
+          # The run's own arguments, the same as the plan's, one a line
+          : > .build/run-args
+          if [ "${#args[@]}" -gt 0 ]; then printf '%s\n' "${args[@]}" > .build/run-args; fi
+          planet=$(jq -r '.steps | has("planet-extract")' .build/plan.json)
+          echo "planet-extract=${planet}" >> "${GITHUB_OUTPUT}"
+
+      # Room for the planet pass's box (~10 GB, filtered then deleted), beside
+      # the cached outputs; only for a run with the pass, as it takes a minute.
+      # (The tile export frees the same itself, export-from-image.sh.)
+      - name: Free disk space
+        if: ${{ steps.plan.outputs.planet-extract == 'true' && !inputs.plan_only }}
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Build
+        if: ${{ !inputs.plan_only }}
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          mapfile -t args < .build/run-args
+          # shellcheck disable=SC2086
+          python3 data_builder/builder.py run ${TARGETS} "${args[@]}" --versions-from .build/plan.json
 
       # Traces, videos and screenshots of failed end-to-end tests
       - name: Upload the end-to-end tests' results

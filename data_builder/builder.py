@@ -2,9 +2,10 @@
 """Builds the map's data and deploys what changed.
 
 Usage: builder.py plan [target ...] [--checks] [--refresh SOURCES] [--force STEPS]
-                     [--deploy] [--cpus N] [--memory GB]
+                     [--deploy] [--cpus N] [--memory GB] [--json FILE]
        builder.py run [target ...] [--checks] [--refresh SOURCES] [--force STEPS]
                     [--deploy] [--cpus N] [--memory GB] [--report SECONDS]
+                    [--versions-from FILE]
        builder.py prune
        builder.py adopt step ...
 
@@ -26,6 +27,13 @@ use is pinned in the state: a build reads the pins, and only --refresh probes
 the sources again (`all`, or names; a source without a probe changes only when
 named). So a build after a commit rebuilds what the commit touched, and a
 scheduled build with --refresh all what changed outside.
+
+`plan` says which steps a run would run and why, deciding as the run does
+(a lost input made again only for a step that runs, deploys only with
+--deploy); --json writes that down, with the versions it probed the sources
+at, and `run --versions-from` takes those versions instead of probing again,
+so the run does what the plan said (CI frees disk for the planet pass only
+when the plan holds it).
 
 Steps marked `check` write no output either: they are the tests (formatting,
 types, unit and end-to-end tests), up to date like any step while what they
@@ -335,6 +343,8 @@ class Build:
         self.state: dict = {'version': STATE_VERSION, 'sources': {}, 'steps': {}}
         self._file_hashes: dict[str, str] = {}
         self._repository_files: list[str] | bool | None = None
+        # What refresh() found each source it probed at (None: the probe failed)
+        self.probed: dict[str, str | None] = {}
 
     # State
 
@@ -390,10 +400,14 @@ class Build:
             return None
         return version
 
-    def refresh(self, names: list[str], targets: list[str] | None = None) -> None:
+    def refresh(
+        self, names: list[str], targets: list[str] | None = None, versions: dict[str, str | None] | None = None
+    ) -> None:
         """Probes the named sources (`all`: every source with a probe) and
         the ones never pinned that the targets' steps read, and pins what
-        they answer"""
+        they answer. `versions` are what a plan's probes answered (its
+        `probed`): those are taken instead of probing again, so a run does
+        what the plan said."""
         read = {source for name in self.order(targets or []) for source in self.steps[name].sources}
         chosen = set()
         for name in names:
@@ -412,7 +426,13 @@ class Build:
                 # A source without a probe starts at a fixed version
                 pins[source.name] = {'version': 'initial', 'checked_at': now(), 'changed_at': now()}
                 continue
-            version = self.probe(source)
+            if versions is not None and source.name in versions:
+                version = versions[source.name]
+                if version is None:
+                    print(f'! could not probe {source.name} in the plan', flush=True)
+            else:
+                version = self.probe(source)
+            self.probed[source.name] = version
             if version is None:
                 if pin is None:
                     raise BuildError(f'source {source.name} has no pinned version and its probe failed')
@@ -582,10 +602,12 @@ class Build:
             visit(target)
         return list(seen)
 
-    def plan(self, targets: list[str], force: set[str] = frozenset()) -> dict[str, list[str]]:
+    def plan(self, targets: list[str], force: set[str] = frozenset(), deploy: bool = True) -> dict[str, list[str]]:
         """Each step that would run, with the reasons. A step reading the
         output of one that runs is listed too, though it stays up to date if
-        that output comes out the same."""
+        that output comes out the same. Like a run, a step that runs has its
+        inputs made again when they are not as recorded (gone, or other
+        content), except a deploy when deploys are off, which does not run."""
         runs: dict[str, list[str]] = {}
         order = self.order(targets)
         for name in order:
@@ -596,12 +618,12 @@ class Build:
                 reasons += [f'{other} runs' for other in dict.fromkeys(s for s, _ in step.needs) if other in runs]
             if reasons:
                 runs[name] = list(dict.fromkeys(reasons))
-        # Steps that run need their inputs back if those are gone
+        # Steps that run need their inputs back if those are not as recorded
         for name in reversed(order):
-            if name not in runs:
+            if name not in runs or (self.steps[name].deploy and not deploy):
                 continue
             for other, out in self.steps[name].needs:
-                if other not in runs and not (self.out / other / out).exists():
+                if other not in runs and not self.output_present(other, out):
                     runs[other] = [f'its output {out} is gone and {name} reads it']
         return {name: runs[name] for name in order if name in runs}
 
@@ -694,7 +716,8 @@ class Runner:
     def run(self, targets: list[str]) -> bool:
         order = self.build.order(targets)
         self.width = max((len(name) for name in order), default=0)
-        for line in forecast(self.build, self.build.plan(targets, self.force), self.deploy, self.cpus, self.memory):
+        plan = self.build.plan(targets, self.force, self.deploy)
+        for line in forecast(self.build, plan, self.deploy, self.cpus, self.memory):
             self.say('', line)
         due = time.monotonic() + self.report
         try:
@@ -1020,7 +1043,19 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument(
             '--memory', type=float, default=machine_memory(), help='GB of memory they may take together'
         )
+    commands.choices['plan'].add_argument(
+        '--json',
+        type=Path,
+        metavar='FILE',
+        help='also write the plan to FILE: the steps that would run and why, and what each source probed was found at',
+    )
     run = commands.choices['run']
+    run.add_argument(
+        '--versions-from',
+        type=Path,
+        metavar='FILE',
+        help="take the sources' versions from a plan's --json instead of probing them again",
+    )
     run.add_argument(
         '--report', type=float, default=REPORT_EVERY, metavar='SECONDS', help='how often to say what is running (0: never)'
     )
@@ -1062,13 +1097,19 @@ def main(argv: list[str] | None = None) -> int:
         targets = args.targets
         if args.checks:
             targets = [s.name for s in build.steps.values() if s.check] + targets
-        build.refresh(split(args.refresh), targets)
+        versions = None
+        if args.command == 'run' and args.versions_from:
+            versions = json.loads(args.versions_from.read_text())['probed']
+        build.refresh(split(args.refresh), targets, versions)
         if args.command == 'plan':
             # Nothing is written: the pins a plan refreshed are for the plan only
-            plan = build.plan(targets, force)
+            plan = build.plan(targets, force, args.deploy)
             print_plan(build, plan)
             if plan:
                 print('\n'.join(forecast(build, plan, args.deploy, args.cpus, args.memory)))
+            if args.json:
+                steps = {name: {'kind': build.steps[name].kind, 'reasons': reasons} for name, reasons in plan.items()}
+                args.json.write_text(json.dumps({'steps': steps, 'probed': build.probed}, ensure_ascii=False, indent=1))
             return 0
 
         build.save_state()
