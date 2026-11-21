@@ -3902,6 +3902,31 @@ a.credits-name:hover {
   text-decoration: underline;
 }
 
+/* anitabi spot (anitabi-layer.ts): the other name under the title, and the
+   scene's screenshot. */
+.anitabi-popup-subtitle {
+  margin: -2px 0 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.anitabi-popup-image {
+  display: block;
+  margin: 6px 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #e2e8f0;
+  aspect-ratio: 16 / 9;
+}
+
+.anitabi-popup-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* Color marker (route dot) — identical to upstream */
 .orm-color-marker {
   display: inline-block;

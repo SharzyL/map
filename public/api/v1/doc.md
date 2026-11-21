@@ -55,6 +55,8 @@ Railway relations: `GET /api/v1/relations/{id}`.
 
 Search: `GET /api/v1/search?q=` (China Railway train numbers for now).
 
+anitabi (experimental): `GET /api/v1/anitabi/{file}`.
+
 Typical timetable flow: `stations` → `timetables` (pick a `gid`) →
 `timetables/{gid}` (pick a `train_id`) → `trains/{train_id}`.
 Station `id`s in route results are the same codes, so you can jump straight
@@ -926,6 +928,28 @@ GET /api/v1/search?q=Z157
 Errors: `400 bad_request` without `q`; `503 data_unavailable` when the
 China Railway data is not loaded.
 
+## anitabi
+
+### `GET /api/v1/anitabi/{file}`
+
+Experimental. anitabi's anime pilgrimage spots, the files its own map at
+[anitabi.cn/map](https://www.anitabi.cn/map) loads, passed on unchanged from
+`https://www.anitabi.cn/d/{file}`, which sends no CORS headers. The map's
+anitabi layer reads them (`src/anitabi.ts` describes their fields).
+
+| `file`                  | What                                                                                           |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `g.json`                | `[works, page_size, modified]`: every work with the position and priority of its spots         |
+| `g0.json`, `g1.json`, … | The spots' details (names, screenshots, episodes), `page_size` works each, in `g.json`'s order |
+| `users.csv`             | `id,nickname` of contributors                                                                  |
+
+| Param | Values                                                                                     | Default |
+| ----- | ------------------------------------------------------------------------------------------ | ------- |
+| `d`   | anitabi's cache key, passed on: base 36 of `floor(ms / 1440000) + 6`, new every 24 minutes | none    |
+
+Errors: `404 not_found` for a chunk past the last; `502`/`504` when anitabi
+errs or is slow.
+
 ## Errors
 
 ```json
@@ -960,5 +984,6 @@ clients:
 | China Railway trainsets (`/api/v1/cr/trainsets`)           | 10 min |
 | Search (`/api/v1/search`)                                  | 1 hour |
 | Railway relations (`/api/v1/relations/*`)                  | 1 day  |
+| anitabi (`/api/v1/anitabi/*`)                              | 1 hour |
 
 Results are scheduled times; real-time delays are not reflected.

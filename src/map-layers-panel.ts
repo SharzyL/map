@@ -54,6 +54,17 @@ const LABEL_NAMES: Record<LabelLanguage, string> = {
 
 const { checkboxRow, group, rangeField, selectField } = createPanelFields('map-layers');
 
+const ANITABI_HINT = 'Anime pilgrimage spots from anitabi.cn; about 4 MB the first time';
+
+// What the panel drives beyond global state: the anitabi spots load their data
+// the first time they are switched on (anitabi-layer.ts).
+export type MapLayersOptions = {
+  anitabi?: {
+    setEnabled(enabled: boolean): void;
+    onStatus(listener: (status: { text: string }) => void): void;
+  };
+};
+
 class MapLayersPanel {
   _settings: MapLayerSettings;
   _map: MapLayersMap;
@@ -70,13 +81,17 @@ class MapLayersPanel {
   _hillshadeInput: HTMLInputElement;
   _contoursInput: HTMLInputElement;
   _terrainInput: HTMLInputElement;
+  _anitabiInput: HTMLInputElement;
+  _anitabiHint: HTMLElement | null = null;
+  _options: MapLayersOptions;
   _expanded = false;
   _boundEscape: (event: KeyboardEvent) => void;
   _boundAnyPanelOpen: (event: Event) => void;
   _removeOutsideClick: () => void;
 
-  constructor(settings: MapLayerSettings) {
+  constructor(settings: MapLayerSettings, options: MapLayersOptions = {}) {
     this._settings = structuredClone(settings);
+    this._options = options;
     this._boundEscape = (event) => {
       if (event.key === 'Escape' && this._expanded) this.setExpanded(false);
     };
@@ -166,7 +181,16 @@ class MapLayersPanel {
       this._update((s) => (s.terrain3d = this._terrainInput.checked)),
     );
 
+    const experimentalGroup = group(shell.body, 'Experimental');
+    this._anitabiInput = checkboxRow(experimentalGroup, 'Anitabi pilgrimage spots', ANITABI_HINT);
+    this._anitabiHint = this._anitabiInput.parentElement?.querySelector('.map-layers-check-hint') ?? null;
+    this._anitabiInput.addEventListener('change', () => this._update((s) => (s.anitabi = this._anitabiInput.checked)));
+    this._options.anitabi?.onStatus(({ text }) => {
+      if (this._anitabiHint) this._anitabiHint.textContent = text || ANITABI_HINT;
+    });
+
     if (this._settings.terrain3d) this._applyTerrain();
+    if (this._settings.anitabi) this._options.anitabi?.setEnabled(true);
     this._sync();
     return this._control;
   }
@@ -196,6 +220,7 @@ class MapLayersPanel {
       if (previousState[name] !== value) setGlobalStatePropertyWhenReady(this._map, name, value);
     }
     if (previous.terrain3d !== this._settings.terrain3d) this._applyTerrain();
+    if (previous.anitabi !== this._settings.anitabi) this._options.anitabi?.setEnabled(this._settings.anitabi);
     saveMapLayerSettings(this._settings);
     this._sync();
   }
@@ -226,6 +251,7 @@ class MapLayersPanel {
     this._hillshadeInput.checked = settings.hillshade;
     this._contoursInput.checked = settings.contours;
     this._terrainInput.checked = settings.terrain3d;
+    this._anitabiInput.checked = settings.anitabi;
 
     this._summary.textContent = [
       BASE_LABELS[settings.base].label,
@@ -234,16 +260,17 @@ class MapLayersPanel {
       settings.hillshade && 'hillshade',
       settings.contours && 'contours',
       settings.terrain3d && '3D',
+      settings.anitabi && 'anitabi',
     ]
       .filter(Boolean)
       .join(' · ');
   }
 }
 
-export function createMapLayers(settings: MapLayerSettings) {
-  return new MapLayersPanel(settings);
+export function createMapLayers(settings: MapLayerSettings, options: MapLayersOptions = {}) {
+  return new MapLayersPanel(settings, options);
 }
 
-export function installMapLayers(map: MapLayersMap, settings: MapLayerSettings) {
-  map.addControl(createMapLayers(settings), 'top-right');
+export function installMapLayers(map: MapLayersMap, settings: MapLayerSettings, options: MapLayersOptions = {}) {
+  map.addControl(createMapLayers(settings, options), 'top-right');
 }

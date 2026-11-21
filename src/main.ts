@@ -39,6 +39,7 @@ import {
   type MapLayerSettings,
 } from './map-layers.js';
 import { installMapLayers } from './map-layers-panel.js';
+import { addAnitabiToStyle, installAnitabi } from './anitabi-layer.js';
 import type * as ScreenshotFixtureModule from './screenshot-fixture.js';
 
 const LOCAL_ORM_PREFIX = '/orm';
@@ -535,7 +536,9 @@ async function loadStyle(
     railwaySources,
   );
   const withTerrain = addMapterhornTerrain(merged, demSource);
-  return withShortAttributions(withGlobe(applyMapLayerState(addSatelliteSourceAndLayer(withTerrain), mapLayers)));
+  return withShortAttributions(
+    withGlobe(applyMapLayerState(addAnitabiToStyle(addSatelliteSourceAndLayer(withTerrain)), mapLayers)),
+  );
 }
 
 // The attribution line only credits OpenStreetMap, on the base map and the
@@ -730,7 +733,8 @@ async function init() {
     installPhotonSearch(map, maplibregl);
     installWeatherPointPicker(map, maplibregl);
     // Layers sits right above Railways, which style.css joins onto it.
-    installMapLayers(map, mapLayers);
+    const anitabi = installAnitabi(map);
+    installMapLayers(map, mapLayers, { anitabi });
     if (screenshotFixtureModule && screenshotFixtureMode) {
       screenshotFixtureModule.installScreenshotFixtureMapLayers(map, screenshotFixtureMode);
     }
@@ -809,6 +813,7 @@ async function init() {
       installOrmPopups(map, maplibregl, featuresCatalog, {
         lookupLineLists: (query, signal) => lineListsNear(query, fetchRailwayTile, signal),
         extendContent: timetableButton,
+        featurePopups: [anitabi],
       });
       drainGpxQueue(map);
       let resizeFrame = 0;

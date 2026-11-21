@@ -3,6 +3,7 @@
 // /api/v1/cr, and what serves both at the root. Runtime-agnostic: the Worker
 // (runtime.ts) injects the upstream fetch and the D1 query.
 
+import { ANITABI_PREFIX, dispatchAnitabi } from './anitabi.js';
 import { CR_PREFIX, dispatchCr } from './cr.js';
 import {
   API_PREFIX,
@@ -33,6 +34,7 @@ const ENDPOINTS = [
   '/cr/trainsets/{train}',
   '/relations/{id}',
   '/search',
+  '/anitabi/{file}',
 ].map((path) => API_PREFIX + path);
 
 function index(): ApiResponse {
@@ -55,6 +57,7 @@ async function dispatch(url: URL, ctx: Context): Promise<ApiResponse> {
   if (path.startsWith(CR_PREFIX)) return dispatchCr(path, url.searchParams, db, ctx.fetch, now);
   if (path.startsWith(RELATIONS_PREFIX)) return dispatchRelations(path, url.searchParams, db);
   if (path === SEARCH_PATH) return dispatchSearch(path, url.searchParams, db);
+  if (path.startsWith(ANITABI_PREFIX)) return dispatchAnitabi(path, url.searchParams, ctx.fetch);
   throw notFound(path);
 }
 

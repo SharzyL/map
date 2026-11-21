@@ -345,6 +345,20 @@ describe('installOrmPopups', () => {
     expect((opened[0] as HTMLElement).querySelector('.orm-popup-section-title').textContent).toBe('Station');
   });
 
+  it('takes a point layer with its own info box over the railway under it', () => {
+    const spot = document.createElement('div');
+    spot.className = 'spot';
+    const featurePopups = [{ matches: (f: { source?: string }) => f.source === 'anitabi', content: () => spot }];
+    const opened = clickMap(
+      [
+        { source: 'openrailwaymap', sourceLayer: 'standard_railway_text_stations', properties: STATION_PROPERTIES },
+        { source: 'anitabi', properties: { pid: 'a', aid: 1 } },
+      ],
+      { featurePopups },
+    );
+    expect([...opened]).toEqual([spot]);
+  });
+
   it('looks up the lines of a line clicked while zoomed out and shows them', async () => {
     const lookupLineLists = vi.fn(async () => ({ line_relations: '12265072\u001e\u001e京广高速线\u001e3001' }));
     const opened = clickMap(

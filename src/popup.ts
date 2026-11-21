@@ -1701,6 +1701,14 @@ export type OrmPopupOptions = {
   lookupLineLists?: (query: LineListQuery, signal: AbortSignal) => Promise<LineLists>;
   // Adds to a railway feature's info box, e.g. a station's Timetable button.
   extendContent?: (feature: RenderedFeatureLike, content: HTMLElement) => void;
+  // Other point layers with info boxes of their own (anitabi's spots), taken
+  // before railways under them.
+  featurePopups?: FeaturePopup[];
+};
+
+export type FeaturePopup = {
+  matches(feature: RenderedFeatureLike): boolean;
+  content(feature: RenderedFeatureLike): HTMLElement | null;
 };
 
 // Lines drawn below z7 come from this layer, which carries no line or route
@@ -1740,6 +1748,15 @@ export function installOrmPopups(
   const isAnnotationFeature = (f: RenderedFeatureLike) =>
     String(f?.source || '').startsWith('annotation-source') &&
     String(f?.properties?.kind || '').startsWith('annotation_');
+  const featurePopups = options.featurePopups || [];
+  const isOtherFeature = (f: RenderedFeatureLike) => featurePopups.some((popup) => popup.matches(f));
+  const otherPopupOf = (features: RenderedFeatureLike[]) => {
+    for (const feature of features) {
+      const popup = featurePopups.find((candidate) => candidate.matches(feature));
+      if (popup) return { feature, popup };
+    }
+    return null;
+  };
   const isWeatherPickerActive = () => map.getContainer().dataset.weatherPickerActive === 'true';
   const isRoutingPickerActive = () => map.getContainer().dataset.routingPickerActive === 'true';
   const isAnnotationPickerActive = () => map.getContainer().dataset.annotationPickerActive === 'true';
@@ -1801,10 +1818,11 @@ export function installOrmPopups(
     const osrmFeatures = renderedFeatures.filter(isOsrmFeature);
     const annotationFeatures = renderedFeatures.filter(isAnnotationFeature);
     const ormFeatures = renderedFeatures.filter(isOrmFeature);
-    if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || ormFeatures.length > 0) {
+    const hasOtherFeature = renderedFeatures.some(isOtherFeature);
+    if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || hasOtherFeature || ormFeatures.length > 0) {
       map.getCanvas().style.cursor = 'pointer';
 
-      if (osrmFeatures.length > 0 || annotationFeatures.length > 0) {
+      if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || hasOtherFeature) {
         clearHover();
         return;
       }
@@ -1854,11 +1872,13 @@ export function installOrmPopups(
     const osrmFeatures = renderedFeatures.filter(isOsrmFeature).sort((a, b) => osrmPriority(a) - osrmPriority(b));
     const annotationFeatures = renderedFeatures.filter(isAnnotationFeature);
     const ormFeatures = renderedFeatures.filter(isOrmFeature);
-    if (osrmFeatures.length === 0 && annotationFeatures.length === 0 && ormFeatures.length === 0) return;
+    const other = osrmFeatures.length || annotationFeatures.length ? null : otherPopupOf(renderedFeatures);
+    if (osrmFeatures.length === 0 && annotationFeatures.length === 0 && !other && ormFeatures.length === 0) return;
 
-    const feature = osrmFeatures[0] || annotationFeatures[0] || ormFeatures[0];
+    const feature = osrmFeatures[0] || annotationFeatures[0] || other?.feature || ormFeatures[0];
     const isOsrmPopup = osrmFeatures.length > 0;
     const isAnnotationPopup = !isOsrmPopup && annotationFeatures.length > 0;
+    const isOtherPopup = !isOsrmPopup && !isAnnotationPopup && Boolean(other);
 
     // Determine popup coordinates
     const coordinates =
@@ -1891,9 +1911,11 @@ export function installOrmPopups(
       ? osrmPopupContent(feature)
       : isAnnotationPopup
         ? annotationPopupContent(feature)
-        : popupContent(feature, featuresCatalog, clicked);
+        : isOtherPopup
+          ? other.popup.content(feature)
+          : popupContent(feature, featuresCatalog, clicked);
     if (!content) return;
-    if (!isOsrmPopup && !isAnnotationPopup) options.extendContent?.(feature, content);
+    if (!isOsrmPopup && !isAnnotationPopup && !isOtherPopup) options.extendContent?.(feature, content);
 
     const shown = new maplibregl.Popup({
       offset: popupOffsets,
@@ -1914,6 +1936,7 @@ export function installOrmPopups(
     if (
       !isOsrmPopup &&
       !isAnnotationPopup &&
+      !isOtherPopup &&
       feature.sourceLayer === ZOOMED_OUT_LINE_LAYER &&
       options.lookupLineLists
     ) {

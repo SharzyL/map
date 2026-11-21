@@ -40,6 +40,13 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
         use: "Japan's official railway lines",
         note: '出典：国土数値情報（鉄道データ）（国土交通省）を加工して作成 · CC BY 4.0',
       },
+      {
+        name: 'anitabi 巡礼地图',
+        href: 'https://www.anitabi.cn/map',
+        use: 'Anime pilgrimage spots and their screenshots (experimental layer)',
+        note: 'Spots and screenshots by their contributors',
+      },
+      { name: 'Bangumi 番组计划', href: 'https://bgm.tv/', use: 'The works pilgrimage spots link to' },
     ],
   },
   {

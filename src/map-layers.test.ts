@@ -444,6 +444,7 @@ describe('map layer settings', () => {
         hillshade: false,
         contours: true,
         terrain3d: true,
+        anitabi: true,
       },
     );
     expect(style.state).toEqual({
@@ -454,6 +455,7 @@ describe('map layer settings', () => {
       labelLanguage: { default: 'en' },
       showHillshade: { default: false },
       showContours: { default: true },
+      showAnitabi: { default: true },
     });
   });
 
@@ -489,6 +491,7 @@ describe('map layer settings', () => {
       hillshade: false,
       contours: false,
       terrain3d: true,
+      anitabi: true,
     };
     saveMapLayerSettings(settings, storage);
     expect(loadMapLayerSettings(storage)).toEqual(settings);

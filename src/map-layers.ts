@@ -1,6 +1,6 @@
 // Map display settings: base map (vector map, satellite, or satellite with
-// roads and labels), base map saturation, label language, terrain layers and
-// 3D terrain.
+// roads and labels), base map saturation, label language, terrain layers, 3D
+// terrain and the experimental anitabi spots (anitabi-layer.ts).
 //
 // Like the railway filter, every affected layer's visibility, colors and
 // label text read `global-state`, set once when the style is built, so
@@ -31,6 +31,8 @@ export type MapLayerSettings = {
   hillshade: boolean;
   contours: boolean;
   terrain3d: boolean;
+  // anitabi's anime pilgrimage spots (experimental)
+  anitabi: boolean;
 };
 
 const BASE_STATE = 'baseMap';
@@ -40,6 +42,8 @@ const HIGHLIGHT_BOUNDARIES_STATE = 'highlightBoundaries';
 const LABEL_STATE = 'labelLanguage';
 const HILLSHADE_STATE = 'showHillshade';
 const CONTOURS_STATE = 'showContours';
+// anitabi-layer.ts ANITABI_STATE
+const ANITABI_STATE = 'showAnitabi';
 
 export function defaultMapLayerSettings(): MapLayerSettings {
   return {
@@ -51,6 +55,7 @@ export function defaultMapLayerSettings(): MapLayerSettings {
     hillshade: true,
     contours: true,
     terrain3d: false,
+    anitabi: false,
   };
 }
 
@@ -63,7 +68,14 @@ export function normalizeMapLayerSettings(value: unknown): MapLayerSettings {
     settings.saturation = Math.min(1, Math.max(0, record.saturation));
   }
   if ((LABEL_LANGUAGES as readonly unknown[]).includes(record.labels)) settings.labels = record.labels as LabelLanguage;
-  for (const key of ['highlightRoads', 'highlightBoundaries', 'hillshade', 'contours', 'terrain3d'] as const) {
+  for (const key of [
+    'highlightRoads',
+    'highlightBoundaries',
+    'hillshade',
+    'contours',
+    'terrain3d',
+    'anitabi',
+  ] as const) {
     if (typeof record[key] === 'boolean') settings[key] = record[key];
   }
   return settings;
@@ -86,6 +98,7 @@ export function mapLayerGlobalState(settings: MapLayerSettings): Record<string, 
     [LABEL_STATE]: settings.labels,
     [HILLSHADE_STATE]: settings.hillshade,
     [CONTOURS_STATE]: settings.contours,
+    [ANITABI_STATE]: settings.anitabi,
   };
 }
 
