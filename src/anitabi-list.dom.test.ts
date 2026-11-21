@@ -114,7 +114,9 @@ describe('the panel', () => {
     const handlers: Record<string, () => void> = {};
     let selected: number | null = null;
     let enabled = false;
+    let openWork: (work: AnitabiWork) => void = null;
     const anitabi = {
+      setWorkOpener: (open: (work: AnitabiWork) => void) => (openWork = open),
       get enabled() {
         return enabled;
       },
@@ -157,7 +159,16 @@ describe('the panel', () => {
       listeners.forEach((l) => l({ switchedOn: next && byUser }));
     };
     const setRendered = (next: typeof rendered) => (rendered = next);
-    return { container, map, anitabi, setEnabled, setRendered, handlers, openInfoBox };
+    return {
+      container,
+      map,
+      anitabi,
+      setEnabled,
+      setRendered,
+      handlers,
+      openInfoBox,
+      openWork: (w: AnitabiWork) => openWork(w),
+    };
   }
 
   const button = (container: HTMLElement) =>
@@ -289,6 +300,22 @@ describe('the panel', () => {
     expect(spots.every((spot) => spot.isConnected)).toBe(true);
     // Nor does it count the map's spots meanwhile
     expect(map.queryRenderedFeatures.mock.calls.length).toBe(queries);
+  });
+
+  it('opens a work chosen from a spot’s info box, open or not', () => {
+    const { container, map, anitabi, setEnabled, openWork } = setup();
+    setEnabled(true);
+    expect(isOpen(container)).toBe(false);
+    openWork(A);
+    expect(isOpen(container)).toBe(true);
+    expect(anitabi.selectWork).toHaveBeenLastCalledWith(1);
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.anitabi-work-title').textContent).toBe('作品1');
+    expect(container.querySelectorAll('.anitabi-spot')).toHaveLength(5);
+    // Another work's spot, from another view
+    openWork(B);
+    expect(anitabi.selectWork).toHaveBeenLastCalledWith(2);
+    expect(container.querySelector('.anitabi-work-title').textContent).toBe('作品2');
   });
 
   it('flies to a spot and opens its info box', () => {

@@ -4252,6 +4252,27 @@ a.credits-name:hover {
   object-fit: cover;
 }
 
+/* A spot's work in its info box, which opens it with all of its spots */
+.anitabi-popup-work {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0d6efd;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.anitabi-popup-work::after {
+  content: ' \203A';
+}
+
+.anitabi-popup-work:hover,
+.anitabi-popup-work:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
 /* An anitabi image loading (anitabi-layer.ts loadImage): a spinner on light
    gray in the frame, in place of the work's color, until the image fades in. */
 .anitabi-image {

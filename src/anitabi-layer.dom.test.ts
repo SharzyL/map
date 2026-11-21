@@ -114,6 +114,17 @@ describe('info box', () => {
     });
   });
 
+  it('opens the spot’s work from its name, when it can', () => {
+    expect(anitabiPopupContent(WORK, POINT).querySelector('.anitabi-popup-work')).toBeNull();
+    const openWork = vi.fn();
+    const box = anitabiPopupContent(WORK, POINT, new Map(), openWork);
+    const button = box.querySelector<HTMLButtonElement>('.orm-popup-label .anitabi-popup-work');
+    expect(button.textContent).toBe('无法向繁星许愿的恋情');
+    expect(button.title).toBe('Show 无法向繁星许愿的恋情: all 2 of its spots');
+    button.click();
+    expect(openWork).toHaveBeenCalledWith(WORK);
+  });
+
   it('shows a spot without details by its place', () => {
     const box = anitabiPopupContent(WORK, WORK.points[1]);
     expect(box.querySelector('.orm-popup-title').textContent).toBe('Pilgrimage spot');
@@ -197,6 +208,15 @@ describe('installAnitabi', () => {
     expect(setData.mock.lastCall[0].features).toHaveLength(1);
     const box = anitabi.content({ source: ANITABI_SOURCE, properties: { aid: 1, pid: 'p1' } });
     expect(box.querySelector('.orm-popup-title').textContent).toBe('駅');
+    // The work's name opens it once something offers to
+    expect(box.querySelector('.anitabi-popup-work')).toBeNull();
+    const openWork = vi.fn();
+    anitabi.setWorkOpener(openWork);
+    anitabi
+      .content({ source: ANITABI_SOURCE, properties: { aid: 1, pid: 'p1' } })
+      .querySelector<HTMLButtonElement>('.anitabi-popup-work')
+      .click();
+    expect(openWork).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
     expect(anitabi.matches({ source: 'openrailwaymap' })).toBe(false);
     expect(anitabi.content({ source: ANITABI_SOURCE, properties: { aid: 1, pid: 'gone' } })).toBeNull();
   });

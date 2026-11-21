@@ -6,7 +6,8 @@
 // come in, at most every REFRESH_MS. Like the timetable, it stays
 // open beside the map while one clicks around it, until closed.
 //
-// A work opens in the same panel: its cover, titles and links, and every one
+// A work opens in the same panel, from its row or from the name in one of its
+// spots' info boxes: its cover, titles and links, and every one
 // of its spots, on screen or not, by episode and time in it, each with its
 // screenshot; a spot flies the map there and opens its info box. Meanwhile
 // only that work's spots show, all of them, and the map fits them (less the
@@ -241,6 +242,11 @@ class AnitabiListPanel {
       this._sync();
       if (switchedOn) this.setExpanded(true);
       else this._refresh();
+    });
+    // A work chosen from a spot's info box opens here, as from the list.
+    this._anitabi.setWorkOpener((work) => {
+      this.setExpanded(true);
+      this._openWork(work);
     });
     this._anitabi.onStatus(() => {
       if (this._expanded && !this._work && this._list.length === 0) this._render();

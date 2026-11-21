@@ -217,7 +217,14 @@ function distinct(...names: Array<string | undefined>) {
   return names.filter((name): name is string => Boolean(name) && !seen.has(name) && Boolean(seen.add(name)));
 }
 
-export function anitabiPopupContent(work: AnitabiWork, point: AnitabiPoint, users: Map<number, string> = new Map()) {
+// `openWork`, when given, makes the work's name a button opening it (the
+// Anime in view panel, anitabi-list.ts) with all of its spots.
+export function anitabiPopupContent(
+  work: AnitabiWork,
+  point: AnitabiPoint,
+  users: Map<number, string> = new Map(),
+  openWork?: (work: AnitabiWork) => void,
+) {
   const container = el('div', 'orm-popup anitabi-popup');
   const [spotName, ...otherSpotNames] = distinct(point.cn, point.name);
   el('h5', 'orm-popup-title', container).textContent = spotName || 'Pilgrimage spot';
@@ -226,7 +233,16 @@ export function anitabiPopupContent(work: AnitabiWork, point: AnitabiPoint, user
   const label = el('h6', 'orm-popup-label', container);
   const marker = el('span', 'orm-color-marker', label);
   marker.style.backgroundColor = work.color || DEFAULT_COLOR;
-  el('span', undefined, label).textContent = work.cn || work.title || `Work ${work.id}`;
+  const workName = work.cn || work.title || `Work ${work.id}`;
+  if (openWork) {
+    const button = el('button', 'anitabi-popup-work', label);
+    button.type = 'button';
+    button.textContent = workName;
+    button.title = `Show ${workName}: all ${work.points.length} of its spots`;
+    button.addEventListener('click', () => openWork(work));
+  } else {
+    el('span', undefined, label).textContent = workName;
+  }
 
   const image = anitabiImageUrl(point.image, 'h360');
   if (image) {
@@ -294,6 +310,8 @@ export type AnitabiController = {
   content(feature: RenderedFeatureLike): HTMLElement | null;
   // A spot's info box, opened from elsewhere (anitabi-list.ts)
   spotContent(work: AnitabiWork, point: AnitabiPoint): HTMLElement;
+  // What a work's name in an info box opens (anitabi-list.ts)
+  setWorkOpener(open: (work: AnitabiWork) => void): void;
 };
 
 async function fetchFile(file: string, key: string) {
@@ -323,6 +341,7 @@ export function installAnitabi(
   let users = new Map<number, string>();
   let enabled = false;
   let selectedWork: number | null = null;
+  let workOpener: ((work: AnitabiWork) => void) | null = null;
   const changeListeners: Array<(change: AnitabiChange) => void> = [];
   const changed = (change: AnitabiChange = {}) => {
     for (const listener of changeListeners) listener(change);
@@ -414,8 +433,11 @@ export function installAnitabi(
       const pid = String(feature.properties?.pid ?? '');
       const work = works.get(aid);
       const point = work?.points.find((p) => p.id === pid);
-      return work && point ? anitabiPopupContent(work, point, users) : null;
+      return work && point ? anitabiPopupContent(work, point, users, workOpener ?? undefined) : null;
     },
-    spotContent: (work, point) => anitabiPopupContent(work, point, users),
+    spotContent: (work, point) => anitabiPopupContent(work, point, users, workOpener ?? undefined),
+    setWorkOpener(open) {
+      workOpener = open;
+    },
   };
 }
