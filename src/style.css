@@ -4252,6 +4252,69 @@ a.credits-name:hover {
   object-fit: cover;
 }
 
+/* An anitabi image loading (anitabi-layer.ts loadImage): a spinner and its
+   text in the frame, over the frame's own color, until the image fades in.
+   Narrow frames (covers) stack the two. */
+.anitabi-image {
+  position: relative;
+  color: var(--anitabi-work-ink, #475569);
+}
+
+.anitabi-image img {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.anitabi-image-loaded img {
+  opacity: 1;
+}
+
+.anitabi-image-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+
+.anitabi-list-cover .anitabi-image-status,
+.anitabi-work-cover .anitabi-image-status {
+  flex-direction: column;
+  gap: 3px;
+  font-size: 8.5px;
+}
+
+.anitabi-image-spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: load-status-spin 0.8s linear infinite;
+}
+
+.anitabi-image-failed .anitabi-image-text {
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anitabi-image-spinner {
+    animation-duration: 2.4s;
+  }
+
+  .anitabi-image img {
+    transition: none;
+  }
+}
+
 /* Color marker (route dot) — identical to upstream */
 .orm-color-marker {
   display: inline-block;

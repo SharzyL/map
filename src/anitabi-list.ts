@@ -13,7 +13,7 @@
 // far-flung few, as anitabi frames a work). Back shows every work again.
 import ClapperboardIcon from 'lucide/dist/esm/icons/clapperboard.mjs';
 import { anitabiImageUrl, anitabiMapUrl, bangumiUrl, type AnitabiPoint, type AnitabiWork } from './anitabi.js';
-import { ANITABI_LAYER, formatEpisode, formatSceneTime, type AnitabiController } from './anitabi-layer.js';
+import { ANITABI_LAYER, formatEpisode, formatSceneTime, loadImage, type AnitabiController } from './anitabi-layer.js';
 import { createPanelButton, createPanelShell, el } from './map-panel.js';
 import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT, type OutsideClickMap } from './ui-panels.js';
 
@@ -154,17 +154,10 @@ export type AnitabiListMap = OutsideClickMap & {
 
 export type OpenInfoBox = (lngLat: [number, number], content: HTMLElement) => void;
 
+// A cover or screenshot frame, in the work's color where there is none
 function image(parent: Element, className: string, src: string | undefined) {
   const frame = el('span', className, parent);
-  if (src) {
-    const img = el('img', undefined, frame);
-    img.src = src;
-    img.alt = '';
-    img.loading = 'lazy';
-    img.decoding = 'async';
-    img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => img.remove());
-  }
+  if (src) loadImage(frame, src);
   return frame;
 }
 
@@ -364,6 +357,7 @@ class AnitabiListPanel {
 
     const head = el('div', 'anitabi-work', this._body);
     head.style.setProperty('--anitabi-work-color', color);
+    head.style.setProperty('--anitabi-work-ink', inkOn(color));
     image(head, 'anitabi-work-cover', anitabiImageUrl(work.cover, 'h160'));
     const text = el('div', 'anitabi-work-text', head);
     el('h3', 'anitabi-work-title', text).textContent = workTitle(work);
@@ -384,6 +378,7 @@ class AnitabiListPanel {
         const row = el('button', 'anitabi-spot', el('li', undefined, list));
         row.type = 'button';
         row.style.setProperty('--anitabi-work-color', color);
+        row.style.setProperty('--anitabi-work-ink', inkOn(color));
         row.addEventListener('click', () => this._openSpot(work, point));
         image(row, 'anitabi-spot-image', anitabiImageUrl(point.image, 'h160'));
         const body = el('span', 'anitabi-spot-text', row);

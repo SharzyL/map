@@ -13,6 +13,7 @@ import {
   anitabiPopupContent,
   formatSceneTime,
   installAnitabi,
+  loadImage,
 } from './anitabi-layer.js';
 
 const POINT: AnitabiPoint = {
@@ -126,6 +127,43 @@ describe('info box', () => {
       '0:59',
       '1:02:05',
     ]);
+  });
+});
+
+describe('loadImage', () => {
+  const status = (frame: HTMLElement) => frame.querySelector('.anitabi-image-status');
+
+  it('shows a spinner with its text until the image arrives', () => {
+    const frame = document.createElement('span');
+    const img = loadImage(frame, 'https://img-tc.anitabi.cn/a.jpg?plan=h160', 'Scene');
+    expect(img.src).toBe('https://img-tc.anitabi.cn/a.jpg?plan=h160');
+    expect(status(frame).querySelector('.anitabi-image-spinner')).not.toBeNull();
+    expect(status(frame).textContent).toBe('Loading…');
+    expect(frame.classList.contains('anitabi-image-loaded')).toBe(false);
+    img.dispatchEvent(new Event('load'));
+    expect(status(frame)).toBeNull();
+    expect(frame.classList.contains('anitabi-image-loaded')).toBe(true);
+  });
+
+  it('says when there is no image, or leaves that to the caller', () => {
+    const frame = document.createElement('span');
+    loadImage(frame, 'https://img-tc.anitabi.cn/gone.jpg').dispatchEvent(new Event('error'));
+    expect(frame.querySelector('img')).toBeNull();
+    expect(status(frame).textContent).toBe('No image');
+    expect(status(frame).querySelector('.anitabi-image-spinner')).toBeNull();
+
+    const onError = vi.fn();
+    const other = document.createElement('span');
+    loadImage(other, 'https://img-tc.anitabi.cn/gone.jpg', '', onError).dispatchEvent(new Event('error'));
+    expect(onError).toHaveBeenCalledOnce();
+    expect(status(other).textContent).toBe('Loading…');
+  });
+
+  it('drops the info box’s frame when its screenshot fails', () => {
+    const box = anitabiPopupContent(WORK, POINT);
+    expect(box.querySelector('.anitabi-popup-image .anitabi-image-text').textContent).toBe('Loading…');
+    box.querySelector('.anitabi-popup-image img').dispatchEvent(new Event('error'));
+    expect(box.querySelector('.anitabi-popup-image')).toBeNull();
   });
 });
 

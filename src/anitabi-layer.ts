@@ -155,6 +155,34 @@ function link(parent: Element, text: string, href: string) {
   return a;
 }
 
+// An anitabi image in its frame: a spinner and "Loading…" in its place
+// until it arrives, then the image fades in. A failed one leaves "No image",
+// or whatever `onError` does instead.
+export function loadImage(frame: HTMLElement, src: string, alt = '', onError?: () => void) {
+  frame.classList.add('anitabi-image');
+  const status = el('span', 'anitabi-image-status', frame);
+  el('span', 'anitabi-image-spinner', status).setAttribute('aria-hidden', 'true');
+  el('span', 'anitabi-image-text', status).textContent = 'Loading…';
+  const img = el('img', undefined, frame);
+  img.alt = alt;
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.referrerPolicy = 'no-referrer';
+  img.addEventListener('load', () => {
+    status.remove();
+    frame.classList.add('anitabi-image-loaded');
+  });
+  img.addEventListener('error', () => {
+    img.remove();
+    if (onError) return onError();
+    status.replaceChildren();
+    el('span', 'anitabi-image-text', status).textContent = 'No image';
+    frame.classList.add('anitabi-image-failed');
+  });
+  img.src = src;
+  return img;
+}
+
 type Row = [label: string, value: string | undefined, href?: string];
 
 function section(parent: Element, title: string, rows: Row[]) {
@@ -206,13 +234,7 @@ export function anitabiPopupContent(work: AnitabiWork, point: AnitabiPoint, user
     const frame = link(container, '', anitabiImageUrl(point.image) || image);
     frame.className = 'anitabi-popup-image';
     frame.title = 'The scene, full size';
-    const img = el('img', undefined, frame);
-    img.src = image;
-    img.alt = spotName ? `Scene at ${spotName}` : 'Scene';
-    img.loading = 'lazy';
-    img.decoding = 'async';
-    img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => frame.remove());
+    loadImage(frame, image, spotName ? `Scene at ${spotName}` : 'Scene', () => frame.remove());
   }
 
   const sections = el('div', 'orm-popup-sections', container);
