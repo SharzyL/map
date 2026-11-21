@@ -133,12 +133,12 @@ describe('info box', () => {
 describe('loadImage', () => {
   const status = (frame: HTMLElement) => frame.querySelector('.anitabi-image-status');
 
-  it('shows a spinner with its text until the image arrives', () => {
+  it('shows a spinner until the image arrives', () => {
     const frame = document.createElement('span');
     const img = loadImage(frame, 'https://img-tc.anitabi.cn/a.jpg?plan=h160', 'Scene');
     expect(img.src).toBe('https://img-tc.anitabi.cn/a.jpg?plan=h160');
     expect(status(frame).querySelector('.anitabi-image-spinner')).not.toBeNull();
-    expect(status(frame).textContent).toBe('Loading…');
+    expect(status(frame).textContent).toBe('');
     expect(frame.classList.contains('anitabi-image-loaded')).toBe(false);
     img.dispatchEvent(new Event('load'));
     expect(status(frame)).toBeNull();
@@ -156,12 +156,12 @@ describe('loadImage', () => {
     const other = document.createElement('span');
     loadImage(other, 'https://img-tc.anitabi.cn/gone.jpg', '', onError).dispatchEvent(new Event('error'));
     expect(onError).toHaveBeenCalledOnce();
-    expect(status(other).textContent).toBe('Loading…');
+    expect(status(other).querySelector('.anitabi-image-spinner')).not.toBeNull();
   });
 
   it('drops the info box’s frame when its screenshot fails', () => {
     const box = anitabiPopupContent(WORK, POINT);
-    expect(box.querySelector('.anitabi-popup-image .anitabi-image-text').textContent).toBe('Loading…');
+    expect(box.querySelector('.anitabi-popup-image .anitabi-image-spinner')).not.toBeNull();
     box.querySelector('.anitabi-popup-image img').dispatchEvent(new Event('error'));
     expect(box.querySelector('.anitabi-popup-image')).toBeNull();
   });

@@ -4252,12 +4252,15 @@ a.credits-name:hover {
   object-fit: cover;
 }
 
-/* An anitabi image loading (anitabi-layer.ts loadImage): a spinner and its
-   text in the frame, over the frame's own color, until the image fades in.
-   Narrow frames (covers) stack the two. */
+/* An anitabi image loading (anitabi-layer.ts loadImage): a spinner on light
+   gray in the frame, in place of the work's color, until the image fades in. */
 .anitabi-image {
   position: relative;
-  color: var(--anitabi-work-ink, #475569);
+  color: #64748b;
+}
+
+.anitabi-image:not(.anitabi-image-loaded) {
+  background: #e2e8f0;
 }
 
 .anitabi-image img {
@@ -4275,7 +4278,6 @@ a.credits-name:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   padding: 2px;
   font-size: 10.5px;
   font-weight: 600;
@@ -4286,8 +4288,6 @@ a.credits-name:hover {
 
 .anitabi-list-cover .anitabi-image-status,
 .anitabi-work-cover .anitabi-image-status {
-  flex-direction: column;
-  gap: 3px;
   font-size: 8.5px;
 }
 

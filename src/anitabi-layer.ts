@@ -155,14 +155,13 @@ function link(parent: Element, text: string, href: string) {
   return a;
 }
 
-// An anitabi image in its frame: a spinner and "Loading…" in its place
-// until it arrives, then the image fades in. A failed one leaves "No image",
-// or whatever `onError` does instead.
+// An anitabi image in its frame: a spinner on light gray in its place until
+// it arrives, then the image fades in. A failed one leaves "No image", or
+// whatever `onError` does instead.
 export function loadImage(frame: HTMLElement, src: string, alt = '', onError?: () => void) {
   frame.classList.add('anitabi-image');
   const status = el('span', 'anitabi-image-status', frame);
   el('span', 'anitabi-image-spinner', status).setAttribute('aria-hidden', 'true');
-  el('span', 'anitabi-image-text', status).textContent = 'Loading…';
   const img = el('img', undefined, frame);
   img.alt = alt;
   img.loading = 'lazy';

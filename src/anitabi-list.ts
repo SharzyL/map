@@ -357,7 +357,6 @@ class AnitabiListPanel {
 
     const head = el('div', 'anitabi-work', this._body);
     head.style.setProperty('--anitabi-work-color', color);
-    head.style.setProperty('--anitabi-work-ink', inkOn(color));
     image(head, 'anitabi-work-cover', anitabiImageUrl(work.cover, 'h160'));
     const text = el('div', 'anitabi-work-text', head);
     el('h3', 'anitabi-work-title', text).textContent = workTitle(work);
@@ -378,7 +377,6 @@ class AnitabiListPanel {
         const row = el('button', 'anitabi-spot', el('li', undefined, list));
         row.type = 'button';
         row.style.setProperty('--anitabi-work-color', color);
-        row.style.setProperty('--anitabi-work-ink', inkOn(color));
         row.addEventListener('click', () => this._openSpot(work, point));
         image(row, 'anitabi-spot-image', anitabiImageUrl(point.image, 'h160'));
         const body = el('span', 'anitabi-spot-text', row);
