@@ -2,8 +2,8 @@
 // layer, anitabi-layer.ts): a panel that opens when the spots are switched on,
 // and from a button in the control column while they show, listing the works
 // the map drew, the most spots in view first. The list is the spots layer's
-// rendered features, counted again while the map renders, at most every
-// REFRESH_MS, and once more after its last frame. Like the timetable, it stays
+// rendered features, counted again once the map stops moving and as its tiles
+// come in, at most every REFRESH_MS. Like the timetable, it stays
 // open beside the map while one clicks around it, until closed.
 //
 // A work opens in the same panel: its cover, titles and links, and every one
@@ -20,6 +20,7 @@ import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT, type OutsideC
 // More rows than anyone reads, and each a cover to load
 const MAX_ROWS = 100;
 const REFRESH_MS = 300;
+const MAX_KEPT_ROWS = 300;
 const DEFAULT_COLOR = '#11b4da';
 
 type RenderedSpot = { properties?: Record<string, unknown> | null };
@@ -145,8 +146,9 @@ export type AnitabiListMap = OutsideClickMap & {
   addControl(control: ListControl, position?: string): void;
   getContainer(): HTMLElement;
   getZoom(): number;
-  on(type: 'render', listener: () => void): void;
-  off(type: 'render', listener: () => void): void;
+  on(type: 'render' | 'moveend', listener: () => void): void;
+  off(type: 'render' | 'moveend', listener: () => void): void;
+  isMoving(): boolean;
   queryRenderedFeatures(options: { layers: string[] }): RenderedSpot[];
   fitBounds(bounds: [[number, number], [number, number]], options: { padding: Padding; maxZoom: number }): void;
   flyTo(options: { center: [number, number]; zoom: number; padding: Padding }): void;
@@ -182,10 +184,17 @@ class AnitabiListPanel {
   _list: WorkInView[] = [];
   // The work open in the panel, if one is
   _work: AnitabiWork | null = null;
+  // What the body shows now (_render), and the list's rows by work
+  _shown = '';
+  _rows = new Map<number, { item: HTMLLIElement; button: HTMLButtonElement; count: HTMLElement }>();
+  _items = el('ul', 'anitabi-list-items');
+  _more = el('p', 'anitabi-list-empty');
   _openInfoBox: OpenInfoBox | null = null;
   _timer = 0;
+  // Not while the map moves: nobody reads the list mid-drag, and a recount
+  // then costs every frame. Once it stops, and as its tiles come in.
   _boundRender = () => {
-    if (!this._expanded || this._timer) return;
+    if (!this._expanded || this._timer || this._map.isMoving()) return;
     this._timer = window.setTimeout(() => {
       this._timer = 0;
       this._refresh();
@@ -224,6 +233,7 @@ class AnitabiListPanel {
     map.getContainer().addEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.addEventListener('keydown', this._boundEscape);
     map.on('render', this._boundRender);
+    map.on('moveend', this._boundRender);
     this._anitabi.onChange(({ switchedOn }) => {
       if (!this._anitabi.enabled) this.setExpanded(false);
       // Another way of clearing the selection leaves the work too.
@@ -243,6 +253,7 @@ class AnitabiListPanel {
     this._map.getContainer().removeEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.removeEventListener('keydown', this._boundEscape);
     this._map.off('render', this._boundRender);
+    this._map.off('moveend', this._boundRender);
     window.clearTimeout(this._timer);
     this._panel?.remove();
     this._control?.remove();
@@ -263,7 +274,8 @@ class AnitabiListPanel {
   }
 
   // Counts the works on screen again, unless one is open: then only its
-  // spots show, and the list waits for Back.
+  // spots show, and the list waits for Back. Runs while the map renders, so
+  // what it draws must cost nothing when nothing changed (_render).
   _refresh() {
     if (!this._expanded) return;
     if (this._anitabi.enabled && !this._work) {
@@ -304,47 +316,94 @@ class AnitabiListPanel {
     this._openInfoBox?.(lngLat, this._anitabi.spotContent(work, point));
   }
 
+  // What the body shows: a work's view is built once when it opens, as the
+  // map moving does not change it; the list keeps its rows (and their loaded
+  // covers) by work, and a recount only updates counts and order, or does
+  // nothing when they are the same.
   _render() {
-    this._body.replaceChildren();
-    if (this._work) this._renderWork(this._work);
-    else this._renderList();
+    if (this._work) {
+      const key = `work:${this._work.id}`;
+      if (this._shown === key) return;
+      this._shown = key;
+      this._body.replaceChildren();
+      this._renderWork(this._work);
+      return;
+    }
+    this._renderList();
   }
 
   _renderList() {
     const total = this._list.reduce((sum, { spots }) => sum + spots, 0);
     const status = this._anitabi.status;
-    this._summary.textContent = this._list.length
+    const summary = this._list.length
       ? `${plural(this._list.length, 'work')} · ${plural(total, 'spot')} in view`
       : status.state === 'loading' || status.state === 'failed'
         ? status.text
         : 'No spots in view';
+    if (this._summary.textContent !== summary) this._summary.textContent = summary;
+
+    const shown = this._list.slice(0, MAX_ROWS);
+    const key = `list:${status.state}:${this._list.length}:${shown.map(({ work, spots }) => `${work.id}=${spots}`).join(',')}`;
+    if (this._shown === key) return;
+    this._shown = key;
+
     if (this._list.length === 0) {
-      el('p', 'anitabi-list-empty', this._body).textContent =
+      const empty = el('p', 'anitabi-list-empty');
+      empty.textContent =
         status.state === 'loading'
           ? 'The spots are loading; they list here as they show.'
           : 'Move the map to where spots show; zoom in for more of them.';
+      this._body.replaceChildren(empty);
       return;
     }
-    const list = el('ul', 'anitabi-list-items', this._body);
-    for (const { work, spots } of this._list.slice(0, MAX_ROWS)) {
-      const row = el('button', 'anitabi-list-item', el('li', undefined, list));
-      row.type = 'button';
-      row.style.setProperty('--anitabi-work-color', work.color || DEFAULT_COLOR);
-      row.style.setProperty('--anitabi-work-ink', inkOn(work.color || DEFAULT_COLOR));
-      row.addEventListener('click', () => this._openWork(work));
-      image(row, 'anitabi-list-cover', anitabiImageUrl(work.cover, 'h160'));
-      const text = el('span', 'anitabi-list-text', row);
-      el('span', 'anitabi-list-name', text).textContent = workTitle(work);
-      const original = work.title && work.title !== workTitle(work) ? work.title : undefined;
-      const meta = [original, work.cat, work.city].filter(Boolean).join(' · ');
-      if (meta) el('span', 'anitabi-list-meta', text).textContent = meta;
-      el('span', 'anitabi-list-count', row).textContent = `${spots}`;
-      row.title = `${workTitle(work)}: ${spots} of its ${work.points.length} spots in view`;
+    const items: HTMLLIElement[] = [];
+    const keep = new Set<number>();
+    for (const { work, spots } of shown) {
+      const row = this._rows.get(work.id) ?? this._listRow(work);
+      if (row.count.textContent !== `${spots}`) {
+        row.count.textContent = `${spots}`;
+        row.button.title = `${workTitle(work)}: ${spots} of its ${work.points.length} spots in view`;
+      }
+      items.push(row.item);
+      keep.add(work.id);
     }
+    // Rows that leave the list wait for their work to come back into view,
+    // cover and all, up to MAX_KEPT_ROWS
+    if (this._rows.size > MAX_KEPT_ROWS) {
+      for (const id of this._rows.keys()) if (!keep.has(id)) this._rows.delete(id);
+    }
+    if (this._items.parentNode !== this._body || this._body.firstChild !== this._items) {
+      this._body.replaceChildren(this._items);
+    }
+    // Only the rows out of place move, and a row that moves keeps its image.
+    items.forEach((item, index) => {
+      if (this._items.children[index] !== item) this._items.insertBefore(item, this._items.children[index] ?? null);
+    });
+    while (this._items.children.length > items.length) this._items.lastElementChild.remove();
+    this._more.remove();
     if (this._list.length > MAX_ROWS) {
-      el('p', 'anitabi-list-empty', this._body).textContent =
-        `${this._list.length - MAX_ROWS} more; zoom in to narrow the list.`;
+      this._more.textContent = `${this._list.length - MAX_ROWS} more; zoom in to narrow the list.`;
+      this._body.appendChild(this._more);
     }
+  }
+
+  _listRow(work: AnitabiWork) {
+    const item = el('li');
+    const button = el('button', 'anitabi-list-item', item);
+    button.type = 'button';
+    button.style.setProperty('--anitabi-work-color', work.color || DEFAULT_COLOR);
+    button.style.setProperty('--anitabi-work-ink', inkOn(work.color || DEFAULT_COLOR));
+    button.addEventListener('click', () => this._openWork(work));
+    image(button, 'anitabi-list-cover', anitabiImageUrl(work.cover, 'h160'));
+    const text = el('span', 'anitabi-list-text', button);
+    el('span', 'anitabi-list-name', text).textContent = workTitle(work);
+    const original = work.title && work.title !== workTitle(work) ? work.title : undefined;
+    const meta = [original, work.cat, work.city].filter(Boolean).join(' · ');
+    if (meta) el('span', 'anitabi-list-meta', text).textContent = meta;
+    const count = el('span', 'anitabi-list-count', button);
+    const row = { item, button, count };
+    this._rows.set(work.id, row);
+    return row;
   }
 
   _renderWork(work: AnitabiWork) {

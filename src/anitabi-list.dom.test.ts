@@ -143,6 +143,7 @@ describe('the panel', () => {
       on: (type: string, handler: () => void) => (handlers[type] = handler),
       off: () => {},
       queryRenderedFeatures: vi.fn(() => rendered),
+      isMoving: vi.fn(() => false),
       fitBounds: vi.fn(),
       flyTo: vi.fn(),
     };
@@ -230,6 +231,64 @@ describe('the panel', () => {
     expect(anitabi.selectWork).toHaveBeenLastCalledWith(null);
     expect(container.querySelector('.anitabi-work')).toBeNull();
     expect(summary(container)).toBe('1 work · 1 spot in view');
+  });
+
+  it('builds nothing again while the map renders unless the list changed', async () => {
+    const { container, setEnabled, setRendered, handlers } = setup();
+    setEnabled(true, true);
+    const [first, second] = rows(container);
+    const cover = first.querySelector('img');
+    // Nothing changed: the same rows
+    handlers.render();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(rows(container)[0]).toBe(first);
+    // New counts and order: the rows move and update, covers kept
+    setRendered([spot(2, '2-0'), spot(2, '2-1'), spot(2, '2-2'), spot(1, '1-0')]);
+    handlers.render();
+    await vi.waitFor(() => expect(rows(container)).toEqual([second, first]));
+    expect(second.querySelector('.anitabi-list-count').textContent).toBe('3');
+    expect(first.querySelector('.anitabi-list-count').textContent).toBe('1');
+    expect(first.querySelector('img')).toBe(cover);
+    // A work that leaves and comes back keeps its row
+    setRendered([spot(2, '2-0')]);
+    handlers.render();
+    await vi.waitFor(() => expect(rows(container)).toEqual([second]));
+    setRendered([spot(1, '1-0'), spot(2, '2-0')]);
+    handlers.render();
+    await vi.waitFor(() => expect(rows(container)).toHaveLength(2));
+    expect(rows(container)).toContain(first);
+  });
+
+  it('waits for the map to stop moving before it counts again', async () => {
+    const { container, map, setEnabled, setRendered, handlers } = setup();
+    setEnabled(true, true);
+    const queries = map.queryRenderedFeatures.mock.calls.length;
+    map.isMoving.mockReturnValue(true);
+    setRendered([spot(3, '3-0')]);
+    for (let i = 0; i < 3; i++) {
+      handlers.render();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+    expect(map.queryRenderedFeatures.mock.calls.length).toBe(queries);
+    map.isMoving.mockReturnValue(false);
+    handlers.moveend();
+    await vi.waitFor(() => expect(summary(container)).toBe('1 work · 1 spot in view'));
+  });
+
+  it('leaves an open work’s view alone while the map renders', async () => {
+    const { container, setEnabled, handlers, map } = setup();
+    setEnabled(true, true);
+    rows(container)[0].click();
+    const spots = [...container.querySelectorAll('.anitabi-spot')];
+    const queries = map.queryRenderedFeatures.mock.calls.length;
+    for (let i = 0; i < 3; i++) {
+      handlers.render();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+    expect([...container.querySelectorAll('.anitabi-spot')]).toEqual(spots);
+    expect(spots.every((spot) => spot.isConnected)).toBe(true);
+    // Nor does it count the map's spots meanwhile
+    expect(map.queryRenderedFeatures.mock.calls.length).toBe(queries);
   });
 
   it('flies to a spot and opens its info box', () => {
