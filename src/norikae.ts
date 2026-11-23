@@ -226,7 +226,10 @@ export function isRetryable(error: unknown) {
   return error.status >= 500 || error.status === 408 || error.status === 429;
 }
 
-const responses = new Map<string, Promise<unknown>>();
+// Each answer for as long as its Cache-Control allows (today's timetable, asked
+// without a day, ten minutes, so a page left open does not keep a past day's),
+// or for the page's life without one; a failed one not at all.
+const responses = new Map<string, { response: Promise<unknown>; expires: number }>();
 
 // Forgets every answer, so the next request of each asks the API (for tests).
 export function forgetResponses() {
@@ -237,17 +240,21 @@ export function forgetResponses() {
 async function get<T>(path: string, params: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
   const query = new URLSearchParams(params).toString();
   const url = `${API_BASE}${path}${query ? `?${query}` : ''}`;
-  let response = responses.get(url) as Promise<T> | undefined;
-  if (!response) {
-    response = fetch(url, { signal }).then(async (res) => {
-      const body = (await res.json().catch((): null => null)) as { error?: { message?: string } } | null;
-      if (!res.ok) throw new NorikaeError(body?.error?.message || `HTTP ${res.status}`, res.status);
-      return body as T;
-    });
-    responses.set(url, response);
-    response.catch(() => responses.delete(url));
-  }
-  return response;
+  const cached = responses.get(url);
+  if (cached && cached.expires > Date.now()) return cached.response as Promise<T>;
+  const entry = { response: null as Promise<T>, expires: Infinity };
+  entry.response = fetch(url, { signal }).then(async (res) => {
+    const body = (await res.json().catch((): null => null)) as { error?: { message?: string } } | null;
+    if (!res.ok) throw new NorikaeError(body?.error?.message || `HTTP ${res.status}`, res.status);
+    const maxAge = /max-age=(\d+)/.exec(res.headers?.get('cache-control') ?? '')?.[1];
+    if (maxAge !== undefined) entry.expires = Date.now() + Number(maxAge) * 1000;
+    return body as T;
+  });
+  responses.set(url, entry);
+  entry.response.catch(() => {
+    if (responses.get(url) === entry) responses.delete(url);
+  });
+  return entry.response;
 }
 
 export function searchStations(name: string, signal?: AbortSignal) {
@@ -394,6 +401,7 @@ export async function findStationsByName(name: string, signal?: AbortSignal) {
 export function japanNow(now = new Date()) {
   const jst = new Date(now.getTime() + 9 * 3600_000);
   return {
+    date: jst.toISOString().slice(0, 10),
     minutes: jst.getUTCHours() * 60 + jst.getUTCMinutes(),
     weekday: jst.getUTCDay(),
   };

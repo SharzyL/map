@@ -61,10 +61,11 @@ export type TimetableRequest =
   | { name: string; crTrain: string; date: string };
 type Source = { text: string; href?: string };
 
+// As Yahoo's own timetables name them
 const DAY_LABELS: Record<TimetableDay, string> = {
-  weekday: 'Weekday',
-  saturday: 'Saturday',
-  holiday: 'Sunday & holiday',
+  weekday: '平日',
+  saturday: '土曜',
+  holiday: '日曜・祝日',
 };
 // Departures before this time belong to the previous service day ("00:30").
 const SERVICE_DAY_START = 3 * 60;
@@ -121,10 +122,42 @@ export function crBoundTabs(trains: Array<Pick<CrStationTrain, 'bound'>>) {
   );
 }
 
+type JapanNow = { minutes: number; weekday: number; date?: string };
+
+// The service day it is in Japan: before SERVICE_DAY_START, the day before's.
+function serviceDay(now: JapanNow) {
+  const early = now.minutes < SERVICE_DAY_START;
+  return {
+    date: now.date && (early ? addDays(now.date, -1) : now.date),
+    weekday: early ? (now.weekday + 6) % 7 : now.weekday,
+  };
+}
+
+// Today's day type as Yahoo gave it with today's timetable (asked without a
+// day): it knows the holidays, which the weekday does not.
+let yahooToday: { date: string; day: TimetableDay } | null = null;
+
+export function rememberTodaysDay(day: TimetableDay, now: JapanNow = japanNow()) {
+  // Which day Yahoo means after midnight is unclear; its answer by day only.
+  if (now.minutes < SERVICE_DAY_START || !now.date) return;
+  yahooToday = { date: now.date, day };
+}
+
+export function forgetTodaysDay() {
+  yahooToday = null;
+}
+
+// The day type whose schedule runs now: Yahoo's for today when known, else by
+// the weekday (a holiday counts as its weekday then).
+export function todaysDay(now: JapanNow = japanNow()): TimetableDay {
+  const { date, weekday } = serviceDay(now);
+  if (yahooToday && date === yahooToday.date) return yahooToday.day;
+  return weekday === 0 ? 'holiday' : weekday === 6 ? 'saturday' : 'weekday';
+}
+
 // The departure to highlight: the next one today, when the table shows today's schedule.
-export function nextDepartureIndex(table: Pick<DepartureTable, 'day' | 'departures'>, now = japanNow()) {
-  const today = now.weekday === 0 ? 'holiday' : now.weekday === 6 ? 'saturday' : 'weekday';
-  if (table.day !== today) return -1;
+export function nextDepartureIndex(table: Pick<DepartureTable, 'day' | 'departures'>, now: JapanNow = japanNow()) {
+  if (table.day !== todaysDay(now)) return -1;
   const current = now.minutes < SERVICE_DAY_START ? now.minutes + 24 * 60 : now.minutes;
   return table.departures.findIndex((departure) => serviceMinutes(departure.time) >= current);
 }
@@ -517,6 +550,8 @@ class TimetablePanel {
     const signal = this._signal;
     const table = await departures(code, gid, day, signal);
     if (signal.aborted) return;
+    // Asked without a day, Yahoo gave today's.
+    if (day === null) rememberTodaysDay(table.day as TimetableDay);
     this._setHeader(stationName, `${table.line} → ${table.direction}`, yahooSource(table.source_url));
     this._setBack('Lines');
     this._body.replaceChildren();
