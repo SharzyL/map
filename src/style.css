@@ -2217,11 +2217,12 @@ body,
   gap: 10px;
 }
 
-/* Station timetable (src/timetable.ts) and route panel (src/route-highlight.ts):
-   left of the map, below the search box and lined up with it (MapLibre puts
-   controls 10px in) */
+/* Station timetable (src/timetable.ts), route panel (src/route-highlight.ts)
+   and Anime in view (src/anitabi-list.ts): left of the map, below the search
+   box and lined up with it (MapLibre puts controls 10px in) */
 .timetable-panel,
-.route-info-panel {
+.route-info-panel,
+.anitabi-list-panel {
   top: 64px;
   right: auto;
   left: 10px;
@@ -2233,13 +2234,19 @@ body,
 
 /* Again after the slide-in offset above, which would otherwise win. */
 .timetable-panel-visible,
-.route-info-panel-visible {
+.route-info-panel-visible,
+.anitabi-list-panel-visible {
   transform: translateX(0);
 }
 
 /* The route panel has no back row or source link: header and body only. */
 .route-info-panel {
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* Anime in view has a back row but no source link. */
+.anitabi-list-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .route-info-swatch {
@@ -3229,12 +3236,24 @@ button.timetable-stop-locate:focus-visible {
 }
 
 /* Anime in view (src/anitabi-list.ts): the works whose anitabi spots show,
-   each a row with its cover, titles and the spots in view. */
-.anitabi-list-panel {
-  width: min(340px, calc(100vw - 72px));
+   each a row with its cover, titles and the spots in view. Rows are placed
+   explicitly, so the back row, hidden on the list, leaves an empty one. */
+.anitabi-list-nav {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 2px 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.anitabi-list-nav[hidden] {
+  display: none;
 }
 
 .anitabi-list-body {
+  grid-row: 3;
+  align-content: start;
   gap: 8px;
 }
 

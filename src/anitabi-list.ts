@@ -189,6 +189,7 @@ class AnitabiListPanel {
   _shown = '';
   _rows = new Map<number, { item: HTMLLIElement; button: HTMLButtonElement; count: HTMLElement }>();
   _items = el('ul', 'anitabi-list-items');
+  _nav: HTMLElement;
   _more = el('p', 'anitabi-list-empty');
   _openInfoBox: OpenInfoBox | null = null;
   _timer = 0;
@@ -231,6 +232,15 @@ class AnitabiListPanel {
     this._panel = shell.panel;
     this._summary = shell.summary;
     this._body = shell.body;
+    // The way back stays in a row of its own over the scrolling spots, as
+    // in the timetable.
+    this._nav = el('div', 'anitabi-list-nav');
+    this._nav.hidden = true;
+    const back = el('button', 'anitabi-list-back', this._nav);
+    back.type = 'button';
+    back.textContent = '\u2039 All anime in view';
+    back.addEventListener('click', () => this._back());
+    this._panel.insertBefore(this._nav, this._body);
     map.getContainer().addEventListener(UI_PANEL_OPEN_EVENT, this._boundAnyPanelOpen);
     window.addEventListener('keydown', this._boundEscape);
     map.on('render', this._boundRender);
@@ -291,13 +301,13 @@ class AnitabiListPanel {
     this._render();
   }
 
-  // The map's room beside the panel: under it on phones, left of it otherwise
+  // The map's room beside the panel: above it on phones, right of it otherwise
   _padding(): Padding {
     const sheet = window.matchMedia?.('(max-width: 640px)').matches;
     const container = this._map.getContainer();
     if (sheet) return { top: 60, right: 40, bottom: Math.round(container.clientHeight / 2) + 24, left: 40 };
     const width = this._panel.getBoundingClientRect().width || 340;
-    return { top: 60, right: Math.round(width) + 72, bottom: 60, left: 60 };
+    return { top: 60, right: 60, bottom: 60, left: Math.round(width) + 30 };
   }
 
   _openWork(work: AnitabiWork) {
@@ -327,6 +337,7 @@ class AnitabiListPanel {
   // covers) by work, and a recount only updates counts and order, or does
   // nothing when they are the same.
   _render() {
+    this._nav.hidden = !this._work;
     if (this._work) {
       const key = `work:${this._work.id}`;
       if (this._shown === key) return;
@@ -415,11 +426,6 @@ class AnitabiListPanel {
   _renderWork(work: AnitabiWork) {
     const color = work.color || DEFAULT_COLOR;
     this._summary.textContent = `${workTitle(work)} · ${plural(work.points.length, 'spot')}`;
-    const back = el('button', 'anitabi-list-back', this._body);
-    back.type = 'button';
-    back.textContent = '\u2039 All anime in view';
-    back.addEventListener('click', () => this._back());
-
     const head = el('div', 'anitabi-work', this._body);
     head.style.setProperty('--anitabi-work-color', color);
     image(head, 'anitabi-work-cover', anitabiImageUrl(work.cover, 'h160'));

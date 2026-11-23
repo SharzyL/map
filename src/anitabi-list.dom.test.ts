@@ -318,6 +318,20 @@ describe('the panel', () => {
     expect(container.querySelector('.anitabi-work-title').textContent).toBe('作品2');
   });
 
+  it('keeps the way back in a row of its own, over the scrolling spots', () => {
+    const { container, setEnabled } = setup();
+    setEnabled(true, true);
+    const nav = container.querySelector<HTMLElement>('.anitabi-list-nav');
+    const body = container.querySelector('.anitabi-list-body');
+    expect(nav.hidden).toBe(true);
+    rows(container)[0].click();
+    expect(nav.hidden).toBe(false);
+    expect(nav.nextElementSibling).toBe(body);
+    expect(body.contains(container.querySelector('.anitabi-list-back'))).toBe(false);
+    container.querySelector<HTMLButtonElement>('.anitabi-list-back').click();
+    expect(nav.hidden).toBe(true);
+  });
+
   it('flies to a spot and opens its info box', () => {
     const { container, map, setEnabled, openInfoBox } = setup();
     setEnabled(true, true);
