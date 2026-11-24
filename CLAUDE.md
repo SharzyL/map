@@ -143,15 +143,16 @@ The attribution line (bottom right) only credits OpenStreetMap and, while imager
 
 Zoom curves cannot be nested inside other expressions, so the rewrites map over a curve's stop outputs (`mapZoomOutputs`). Unit tests validate rewritten styles with `@maplibre/maplibre-gl-style-spec` and evaluate the expressions directly.
 
-Leftovers from the collaboration era still shape some modules: `layer-sync.ts` and `file-layer-sync.ts` hold layer ordering and file-layer content helpers used by the layer store and manager, and `collaboration-permissions.ts` gates editing on a `data-collaboration-can-edit` attribute that nothing sets any more, so editing is always enabled.
+Leftovers from the collaboration era still shape some modules: `layer-sync.ts` and `file-layer-sync.ts` hold layer ordering and file-layer content helpers used by the layer store and manager.
 
 `src/screenshot-fixture*.ts` is a deterministic demo scene (`?screenshot=overview|layers|annotations`) enabled by the `__SCREENSHOT_FIXTURES__` build flag. E2E tests and `pnpm screenshots` (images in `docs/screenshots/`) depend on it.
 
 ### Layer and annotation model
 
-See `docs/layer-stack-design.md` (its storage and sync sections describe the removed room backend). Key rules that still hold in the browser:
+Two kinds of layer, `annotation` and `file` (GPX or GeoJSON, shown as three types in the UI), held in `LayerStore`:
 
-- Ordering is only `sortKey` on layer rows (fractional keys from `src/layer-model.ts`).
+- Ordering is only `sortKey` on layer rows (fractional keys from `src/layer-model.ts`). Ties break deterministically, by `createdAt` and then id, everywhere a list is sorted.
+- Each layer row draws as one or more MapLibre layers, moved to the top in order bottom to top (`moveLayer` without `beforeId`), so later rows draw above earlier ones. Text annotations are DOM markers and float above every canvas layer, whatever their order.
 - Each annotation feature is its own record with a `layerId`. Never store feature arrays on a layer or the whole drawing as one JSON blob.
 
 ### Map style

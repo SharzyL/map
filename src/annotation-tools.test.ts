@@ -20,15 +20,5 @@ describe('annotation tools map interaction state', () => {
         mode: 'route',
       }),
     ).toBe(false);
-
-    expect(
-      isAnnotationPickerInteractionActive({
-        expanded: true,
-        layerVisible: true,
-        annotationReady: true,
-        canEdit: false,
-        mode: 'route',
-      }),
-    ).toBe(false);
   });
 });

@@ -1,6 +1,5 @@
-// Generated from the shanghai-citywalk room snapshot.
-
-// Run `pnpm screenshots:fixture` after updating the remote room.
+// The demo scene's routes, once taken from a room of upstream Atlas Realm
+// (shanghai-citywalk); edit them here.
 
 export const WALK_WUKANG_ANFU_POINTS: [number, number][] = [
   [121.433615, 31.206417],

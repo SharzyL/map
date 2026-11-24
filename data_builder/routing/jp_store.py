@@ -3,7 +3,7 @@
 Offline, every OSM service route is cut into hops between its consecutive
 stops (Yahoo codes), each routed once along the route. A request then needs
 no graph: it looks up the routes stopping at the train's stops, picks one per
-leg as jp_poc.py does (type, name, direction, previous leg), and joins the
+leg (by type, name, direction and the previous leg), and joins the
 picked route's hops. A leg whose joined hops are implausibly long against the
 straight distance falls to the next route; legs no route covers come back
 straight.
@@ -19,11 +19,11 @@ ways, and stored as a route stopping at every station on the way, which
 trains matching the rule take before any other.
 
 Usage: jp_store.py build <graph.pkl> <jp-station-codes.csv> <out.sqlite>
-       jp_store.py check <out.sqlite> <jp-trains.json> <graph.pkl> <jp-station-codes.csv>
 """
 
 from __future__ import annotations
 
+import collections
 import csv
 import itertools
 import json
@@ -33,9 +33,8 @@ import sys
 import time
 from pathlib import Path
 
-from graph import Graph, metres
-from jp_assemble import assemble, run_sqlite
-from jp_poc import Japan
+import numpy as np
+from graph import PLATFORM_ROLES, ROUTES, STOP_ROLES, Graph, metres, to_xyz
 from route import (
     OVERVIEW_TOLERANCE_DEG,
     Prefs,
@@ -46,6 +45,7 @@ from route import (
     encode_polyline,
     route_leg,
 )
+from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 
 # Hops adding up to more than this times the route's own track: out of order
@@ -54,6 +54,146 @@ HOP_DETOUR_RATIO, HOP_DETOUR_SLACK_M = 2.5, 1000
 REVERSAL_AT_STOP_M = 2000
 # A rule's route keeps to its lines: off them costs this much more
 RULE_OFF_HINT = 20.0
+
+ROUTE_STOP_M = 300
+NEAR_STOPS_M = 50_000
+
+
+# Japan's stations by Yahoo code, and its OSM service routes with their stops
+# on the routing graph
+class Japan:
+    def __init__(self, g: Graph, codes_csv: Path) -> None:
+        self.g = g
+        refs: dict[str, list[str]] = collections.defaultdict(list)
+        with open(codes_csv, encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                for code in r["codes"].split(";"):
+                    refs[code].append(r["osm_type"] + r["osm_id"])
+        self.elements = dict(refs)
+        elem_codes: dict[str, set[str]] = collections.defaultdict(set)
+        for code, elems in refs.items():
+            for e in elems:
+                elem_codes[e].add(code)
+        # Stop areas: member -> areas, area -> its station elements
+        areas_of: dict[str, list[int]] = collections.defaultdict(list)
+        area_stations: dict[int, list[str]] = {}
+        for aid, rel in g.relations.items():
+            if rel.tags.get("public_transport") == "stop_area":
+                members = [f"{t.upper()}{r}" for t, r, _ in rel.members]
+                area_stations[aid] = [m for m in members if m in elem_codes]
+                for m in members:
+                    areas_of[m].append(aid)
+        self.attach = {}
+        self.position = {}
+        for code, elems in refs.items():
+            att = sorted({v for e in elems for v in g.attach.get(e, [])})
+            pts = [g.points[e][:2] for e in elems if e in g.points]
+            if att:
+                self.attach[code] = att
+            if pts:
+                self.position[code] = (
+                    sum(p[0] for p in pts) / len(pts),
+                    sum(p[1] for p in pts) / len(pts),
+                )
+
+        # Passenger routes, their ways and the stations they stop at
+        by_vertex: dict[int, set[str]] = collections.defaultdict(set)
+        for code, att in self.attach.items():
+            for v in att:
+                by_vertex[v].add(code)
+        codes = list(self.position)
+        tree = cKDTree(
+            to_xyz(
+                np.array([self.position[c][0] for c in codes]),
+                np.array([self.position[c][1] for c in codes]),
+            )
+        )
+        self.route_ways: dict[int, frozenset[int]] = {}
+        self.route_name: dict[int, str] = {}
+        self.route_hs: dict[int, bool] = {}  # a 新幹線 service
+        self.route_order: dict[int, dict[str, int]] = {}  # stop code -> position
+        self.route_seq: dict[
+            int, list[str]
+        ] = {}  # stop codes in member order, repeats kept
+        self.routes_at: dict[str, set[int]] = collections.defaultdict(set)
+        for rid, rel in g.relations.items():
+            if rel.tags.get("type") != "route" or rel.tags.get("route") not in ROUTES:
+                continue
+            ways = frozenset(
+                ref for t, ref, _ in rel.members if t == "w" and ref in g.ways
+            )
+            if not ways:
+                continue
+            self.route_ways[rid] = ways
+            self.route_name[rid] = rel.tags.get("name", "")
+            # 新幹線 services are named for the service (のぞみ, こまち列車), so
+            # go by track: mini-新幹線 like こまち run partly on conventional lines
+            share = sum(g.ways[w].highspeed for w in ways) / len(ways)
+            self.route_hs[rid] = share >= 0.3 or "新幹線" in self.route_name[rid]
+            order = self.route_order[rid] = {}
+            seq = self.route_seq[rid] = []
+            for t, ref, role in rel.members:
+                if role not in STOP_ROLES | PLATFORM_ROLES:
+                    continue
+                # A stop belongs to the stations of its stop area; without one,
+                # to the nearest station only: attach points reach the main
+                # tracks within 400 m, so at 名古屋 a 新幹線 stop would also
+                # count for 名鉄名古屋
+                elem = f"{t.upper()}{ref}"
+                found = {
+                    c
+                    for a in areas_of.get(elem, ())
+                    for e in area_stations[a]
+                    for c in elem_codes.get(e, ())
+                }
+                if not found:
+                    pos = g.vertex_pos.get(ref) if t == "n" else None
+                    pos = pos or (g.points[elem][:2] if elem in g.points else None)
+                    if not pos:
+                        continue
+                    near = tree.query_ball_point(
+                        to_xyz(np.array([pos[0]]), np.array([pos[1]]))[0], ROUTE_STOP_M
+                    )
+                    candidates = {codes[k] for k in near} | set(
+                        by_vertex.get(ref, ()) if t == "n" else ()
+                    )
+                    if not candidates:
+                        continue
+                    found = {
+                        min(candidates, key=lambda c: metres(*pos, *self.position[c]))
+                    }
+                for c in sorted(found):
+                    self.routes_at[c].add(rid)
+                    order.setdefault(c, len(order))
+                    seq.append(c)
+        # Line relations too, for rules that name infrastructure lines
+        self.line_ways: dict[int, frozenset[int]] = {}
+        self.line_name: dict[int, str] = {}
+        for rid, rel in g.relations.items():
+            if rel.tags.get("route") == "railway":
+                ways = frozenset(
+                    ref for t, ref, _ in rel.members if t == "w" and ref in g.ways
+                )
+                if ways:
+                    self.line_ways[rid] = ways
+                    self.line_name[rid] = rel.tags.get("name", "")
+        self.passenger_ways = frozenset(
+            w for ways in self.route_ways.values() for w in ways
+        )
+        print(
+            f"{len(self.attach)} Yahoo codes on track, {len(self.route_ways)} passenger routes",
+            file=sys.stderr,
+        )
+
+    def near(self, ways: frozenset[int], stops: list[tuple[float, float]]) -> bool:
+        """Whether any of the ways passes near the train's stops."""
+        for w in list(ways)[:50]:
+            way = self.g.ways[w]
+            lat, lon = way.lat[0], way.lon[0]
+            if any(metres(lat, lon, *p) < NEAR_STOPS_M for p in stops):
+                return True
+        return False
+
 
 SCHEMA = """
 CREATE TABLE jp_stations (code TEXT PRIMARY KEY, lat REAL, lon REAL, elements TEXT) WITHOUT ROWID;
@@ -376,51 +516,7 @@ def build(graph: Path, codes: Path, out: Path) -> None:
         print(f"  {line}", file=sys.stderr)
 
 
-def check(store: Path, trains_json: Path, graph: Path, codes: Path) -> None:
-    """Compare the stored-hop paths with jp_poc.py's, train by train."""
-    import jp_poc
-
-    db = sqlite3.connect(store)
-    g = Graph.load(graph)
-    jp = Japan(g, codes)
-    rules = jp_poc.load_rules(Path(__file__).with_name("jp-rules.csv"))
-    with open(trains_json, encoding="utf-8") as f:
-        trains = json.load(f)
-    for train in trains:
-        t0 = time.perf_counter()
-        legs, _, _ = run_sqlite(assemble(train), db)
-        ms = (time.perf_counter() - t0) * 1000
-        _, mem_legs, _ = jp_poc.route_train(jp, train, rules, True)
-        km = sum(x["length_m"] for x in legs) / 1000
-        mem_km = sum(x.length for x in mem_legs) / 1000
-        straight = sum(x["method"] == "straight" for x in legs)
-        size = len(
-            json.dumps(
-                {
-                    "ways": [w for x in legs for w in x["ways"]],
-                    "partial": [p for x in legs for p in x["partial"]],
-                }
-            )
-        )
-        # Legs whose stored path differs in length from the in-memory one by
-        # more than 10%: a different route was picked, or a hop is missing
-        differ = sum(
-            1
-            for x, y in zip(legs, mem_legs, strict=True)
-            if (x["method"] == "straight") != (y.method == "straight")
-            or abs(x["length_m"] - y.length) > 0.1 * max(y.length, 1)
-        )
-        print(
-            f"{train['label']}: stored {km:.1f} km vs in-memory {mem_km:.1f} km; "
-            f"{straight} straight of {len(legs)} legs; {differ} legs differ; "
-            f"{ms:.1f} ms; ~{size / 1000:.0f} KB of ids and partial geometry"
-        )
-
-
 if __name__ == "__main__":
-    if sys.argv[1] == "build":
-        build(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))
-    else:
-        check(
-            Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), Path(sys.argv[5])
-        )
+    if len(sys.argv) != 5 or sys.argv[1] != "build":
+        sys.exit(__doc__.strip().splitlines()[-1])
+    build(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))

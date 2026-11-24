@@ -17,13 +17,11 @@ database (`cr`), from which the Worker serves
 | `cr_stations.py`                                              | Every lltskb station matched to OSM, from the extract's stations, as `../stations/cr-station-trains.py` matches them; that file keeps only the stops, routing needs the stations trains pass too                                                  |
 | `cr_lines.py`                                                 | Matches lltskb's lines to OSM line relations (name, sections, track within 1 km of the line's stations); `cr-line-relations.csv` overrides                                                                                                        |
 | `cr_route.py`                                                 | China Railway routes per run, in the API's format, checked against lltskb's km; lists suspected OSM gaps in `out/cr-osm-issues.csv`                                                                                                               |
-| `jp_fetch.py`                                                 | Collects sample Japanese trains (stop lists) through a local `wrangler dev` of this repository                                                                                                                                                    |
-| `jp_poc.py`, `jp-rules.csv`                                   | Japan in memory: routes kept to OSM service routes chosen by type, name and rules                                                                                                                                                                 |
-| `jp_store.py`                                                 | Japan from stored hops, the D1 shape, on SQLite: builds the tables, checks against `jp_poc.py`                                                                                                                                                    |
+| `jp-rules.csv`                                                | Trains no OSM service route covers (サンライズ, 特急鎌倉): the lines and ends of their routes                                                                                                                                                     |
+| `jp_store.py`                                                 | Japan's OSM service routes cut into stop-to-stop hops, the D1 shape, on SQLite; routes are kept to them by type, name and `jp-rules.csv`                                                                                                          |
 | `jp_assemble.py`, `geo.py`                                    | A Yahoo train's route from the stored hops, by queries it yields: run on SQLite here; the Worker runs its port to TypeScript (`src/worker/api/jp-assemble.ts`) on D1                                                                              |
 | `export_d1.py`                                                | SQL loading the China routes and the Japanese tables into D1 as a new version, and dropping old versions                                                                                                                                          |
 | `cr_poc.py`                                                   | The first China attempt (line chains vs direct, per stop), kept for comparison                                                                                                                                                                    |
-| `viewer.html`                                                 | Shows GeoJSON output over OpenRailwayMap                                                                                                                                                                                                          |
 | `test_routing.py`, `test_jp_assemble.py`, `test_export_d1.py` | Tests on a small synthetic network, a tiny store of hops, and the SQL                                                                                                                                                                             |
 
 ## Running
@@ -46,7 +44,6 @@ python3 cr_lines.py out/graph.pkl csv out/cr-stations.csv out/cr-lines.json
 python3 cr_route.py out/graph.pkl csv out/cr-stations.csv out/cr-lines.json out \
     --routes out/cr-routes.jsonl.gz  # --jobs N
 python3 jp_store.py build out/graph.pkl jp-station-codes.csv out/paths.sqlite
-python3 jp_store.py check out/paths.sqlite out/jp-trains.json out/graph.pkl jp-station-codes.csv
 python3 -m unittest discover -s . -p 'test_*.py'
 
 # Into D1: the timetable version the routes are for, the extract's time

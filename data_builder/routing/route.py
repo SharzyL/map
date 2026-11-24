@@ -389,28 +389,6 @@ def path_response(
     }
 
 
-def leg_coords(g: Graph, edges: list[tuple[int, bool]]) -> list[tuple[float, float]]:
-    pts: list[tuple[float, float]] = []
-    for way, i, j, forward in _runs(g, edges):
-        run = _coords(g, way, i, j, forward)
-        pts.extend(run if not pts or pts[-1] != run[0] else run[1:])
-    return pts
-
-
-def divergence_m(
-    g: Graph, a: list[tuple[int, bool]], b: list[tuple[int, bool]]
-) -> float:
-    """How far apart two paths get (Hausdorff distance, metres). Parallel
-    tracks of one line, mapped as separate ways, are a few metres apart."""
-    pa, pb = leg_coords(g, a), leg_coords(g, b)
-    if len(pa) < 2 or len(pb) < 2:
-        return 0.0 if len(pa) == len(pb) else math.inf
-    k = math.cos(math.radians(pa[0][0]))
-    la = LineString([(lon * k * 111_320, lat * 110_540) for lat, lon in pa])
-    lb = LineString([(lon * k * 111_320, lat * 110_540) for lat, lon in pb])
-    return la.hausdorff_distance(lb)
-
-
 def write_index(out: Path) -> None:
     """The viewer's file list."""
     files = sorted(p.name for p in out.glob("*.geojson"))
