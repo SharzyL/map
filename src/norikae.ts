@@ -401,7 +401,6 @@ export async function findStationsByName(name: string, signal?: AbortSignal) {
 export function japanNow(now = new Date()) {
   const jst = new Date(now.getTime() + 9 * 3600_000);
   return {
-    date: jst.toISOString().slice(0, 10),
     minutes: jst.getUTCHours() * 60 + jst.getUTCMinutes(),
     weekday: jst.getUTCDay(),
   };

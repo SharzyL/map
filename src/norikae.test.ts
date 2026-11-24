@@ -10,7 +10,7 @@ import {
   stationsNamed,
   type NorikaeStation,
 } from './norikae.js';
-import { forgetTodaysDay, nextCrTrainIndex, nextDepartureIndex, rememberTodaysDay, todaysDay } from './timetable.js';
+import { directionLabel, nextCrTrainIndex, nextDepartureIndex } from './timetable.js';
 
 const station = (code: string, name: string, address = '東京'): NorikaeStation => ({
   code,
@@ -23,7 +23,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   forgetResponses();
-  forgetTodaysDay();
 });
 
 describe('station names', () => {
@@ -68,37 +67,30 @@ describe('next departure', () => {
     })),
   });
 
-  it('is the first departure from now in today’s schedule', () => {
+  it('is the first departure from now, on whichever day’s table', () => {
     // 2026-11-16 is a Monday; 03:00 UTC is 12:00 in Japan.
     const now = japanNow(new Date('2026-11-16T03:00:00Z'));
     expect(nextDepartureIndex(table('weekday'), now)).toBe(1);
-    expect(nextDepartureIndex(table('saturday'), now)).toBe(-1);
+    // Saturday's table, looked at on a weekday, shows where the day is too
+    expect(nextDepartureIndex(table('saturday'), now)).toBe(1);
+    expect(nextDepartureIndex(table('holiday'), now)).toBe(1);
   });
 
   it('counts departures after midnight as the end of the service day', () => {
-    // 15:00 UTC is 00:00 on Tuesday in Japan; still Monday's service.
-    expect(nextDepartureIndex(table('weekday'), { minutes: 23 * 60 + 55, weekday: 1 })).toBe(3);
-    // 01:00 on Monday is still Sunday's service
-    expect(nextDepartureIndex(table('holiday'), { minutes: 60, weekday: 1 })).toBe(-1);
-    expect(todaysDay({ minutes: 60, weekday: 1 })).toBe('holiday');
+    // 23:55, and 00:10 the next day: the train at 00:20 is next both times
+    expect(nextDepartureIndex(table('weekday'), { minutes: 23 * 60 + 55 })).toBe(3);
+    expect(nextDepartureIndex(table('weekday'), { minutes: 10 })).toBe(3);
+    // After the last one, none
+    expect(nextDepartureIndex(table('weekday'), { minutes: 50 })).toBe(-1);
   });
+});
 
-  it('takes today’s day type from Yahoo, which knows the holidays', () => {
-    // 2026-11-23, a Monday, is 勤労感謝の日; 03:00 UTC is 12:00 in Japan.
-    const holiday = japanNow(new Date('2026-11-23T03:00:00Z'));
-    expect(todaysDay(holiday)).toBe('weekday');
-    rememberTodaysDay('holiday', holiday);
-    expect(nextDepartureIndex(table('holiday'), holiday)).toBe(1);
-    expect(nextDepartureIndex(table('weekday'), holiday)).toBe(-1);
-    // Still that holiday's service at 01:00 the next day, a weekday after
-    expect(todaysDay(japanNow(new Date('2026-11-23T16:00:00Z')))).toBe('holiday');
-    expect(todaysDay(japanNow(new Date('2026-11-24T03:00:00Z')))).toBe('weekday');
-  });
-
-  it('does not take Yahoo’s day after midnight, when its day is unclear', () => {
-    // 01:00 on Tuesday 2026-11-24 in Japan
-    rememberTodaysDay('holiday', japanNow(new Date('2026-11-23T16:00:00Z')));
-    expect(todaysDay(japanNow(new Date('2026-11-24T03:00:00Z')))).toBe('weekday');
+describe('directions', () => {
+  it('are named by where they go, as Yahoo’s timetables do', () => {
+    expect(directionLabel('新宿・高崎・宇都宮')).toBe('新宿・高崎・宇都宮方面');
+    expect(directionLabel('東京')).toBe('東京方面');
+    expect(directionLabel('渋谷方面')).toBe('渋谷方面');
+    expect(directionLabel('内回り')).toBe('内回り');
   });
 });
 

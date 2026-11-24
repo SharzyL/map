@@ -6,9 +6,7 @@ import {
   crBoundTabs,
   crLineTabs,
   crLinesBetweenStops,
-  forgetTodaysDay,
   installTimetable,
-  todaysDay,
   timetableButton,
   TIMETABLE_OPEN_EVENT,
   timetableRequestFor,
@@ -286,7 +284,6 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   forgetResponses();
-  forgetTodaysDay();
   failOnce.clear();
   localStorage.clear();
   document.body.replaceChildren();
@@ -300,12 +297,13 @@ describe('timetable panel', () => {
     const root = panel.panel;
     await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
     expect(text(root, '.timetable-line-name')).toEqual(['ＪＲ湘南新宿ライン']);
+    expect(text(root, '.timetable-direction')).toEqual(['新宿・高崎・宇都宮方面', '横浜・大船方面']);
     expect(root.querySelector('.timetable-title').textContent).toBe('渋谷');
 
     root.querySelector<HTMLButtonElement>('.timetable-direction').click();
     await vi.waitFor(() => expect(text(root, '.timetable-time')).toEqual(['07:16', '08:02']));
     expect(text(root, '.timetable-hour')).toEqual(['7時', '8時']);
-    expect(root.querySelector('.timetable-summary').textContent).toBe('ＪＲ湘南新宿ライン → 新宿・高崎・宇都宮');
+    expect(root.querySelector('.timetable-summary').textContent).toBe('ＪＲ湘南新宿ライン 新宿・高崎・宇都宮方面');
     expect(root.querySelector('.timetable-day[aria-pressed="true"]').textContent).toBe('平日');
     // The day buttons stay in view in the back button's row.
     expect(root.querySelector('.timetable-nav .timetable-day[aria-pressed="true"]').textContent).toBe('平日');
@@ -411,27 +409,6 @@ describe('timetable panel', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(panel.isOpen).toBe(false);
     expect(panel.panel.getAttribute('aria-hidden')).toBe('true');
-  });
-
-  it('takes today’s day type from the timetable Yahoo gives for today', async () => {
-    // Sunday noon in Japan; the fixture's timetable for "today" is a weekday's,
-    // as on a Sunday Yahoo would never say: so the day comes from the answer.
-    vi.useFakeTimers({ now: new Date('2026-11-22T03:00:00Z'), shouldAdvanceTime: true });
-    expect(todaysDay()).toBe('holiday');
-    const { container, panel, requests } = setup();
-    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
-    await vi.waitFor(() => expect(text(panel.panel, '.timetable-direction')).toHaveLength(2));
-    panel.panel.querySelector<HTMLButtonElement>('.timetable-direction').click();
-    await vi.waitFor(() => expect(text(panel.panel, '.timetable-time')).toHaveLength(2));
-    expect(requests.at(-1)).toBe('/api/v1/norikae/stations/22715/timetables/1051');
-    expect(todaysDay()).toBe('weekday');
-    // A day picked by hand says nothing about today.
-    Array.from(panel.panel.querySelectorAll<HTMLButtonElement>('.timetable-day'))
-      .find((button) => button.textContent === '土曜')
-      .click();
-    await vi.waitFor(() => expect(requests.at(-1)).toBe('/api/v1/norikae/stations/22715/timetables/1051?day=saturday'));
-    await vi.waitFor(() => expect(text(panel.panel, '.timetable-time')).toHaveLength(2));
-    expect(todaysDay()).toBe('weekday');
   });
 
   it('shows the error of a failed request', async () => {
