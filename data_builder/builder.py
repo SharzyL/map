@@ -1118,8 +1118,10 @@ def main(argv: list[str] | None = None) -> int:
         text = summary(build, runner, started)
         print('\n' + text)
         if os.environ.get('GITHUB_STEP_SUMMARY'):
+            # After whatever the steps wrote there themselves (Vitest's report
+            # ends in a list, which would swallow the table): a heading of its own.
             with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
-                f.write(text)
+                f.write('\n\n## Data build\n\n' + text)
         info = run_info()
         if remote and info:
             report = build.dir / 'run.json'

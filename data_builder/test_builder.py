@@ -110,6 +110,18 @@ class BuildTest(unittest.TestCase):
         self.build('run')
         self.assertEqual(self.ran, ['upper'])
 
+    def test_job_summary_follows_what_steps_wrote_there(self) -> None:
+        summary = self.root / 'summary.md'
+        # What Vitest's report ends with: a list item, no newline
+        summary.write_text('- Test Results: 530 passes')
+        os.environ['GITHUB_STEP_SUMMARY'] = str(summary)
+        try:
+            self.build('run')
+        finally:
+            os.environ.pop('GITHUB_STEP_SUMMARY', None)
+        text = summary.read_text()
+        self.assertIn('530 passes\n\n## Data build\n\n| Step | Result |', text)
+
     def test_changed_command_rebuilds(self) -> None:
         self.build('run')
         self.write('steps.toml', STEPS.replace('echo $SRC_FEED', 'echo v$SRC_FEED'))
