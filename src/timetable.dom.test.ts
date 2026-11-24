@@ -311,7 +311,7 @@ describe('timetable panel', () => {
     expect(root.querySelector<HTMLAnchorElement>('.timetable-source').href).toContain('/timetable/22715/1051');
 
     // The back button stays outside the scrolling list.
-    expect(root.querySelector('.timetable-nav .timetable-back').textContent).toBe('← Lines');
+    expect(root.querySelector('.timetable-nav .timetable-back').textContent).toBe('← 路線');
     expect(root.querySelector('.timetable-body .timetable-back')).toBeNull();
 
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
@@ -320,14 +320,14 @@ describe('timetable panel', () => {
     expect(text(root, '.timetable-stop-time')).toEqual(['07:30', '08:01 – 08:02', '09:50']);
     expect(text(root, '.timetable-comment')).toEqual(['大宮−小山間快速。']);
     // The departure it was opened from knows its number, cars and track here.
-    expect(text(root, '.timetable-meta dt')).toEqual(['Train', 'Number', 'Line', 'Cars', 'Track', 'Stops']);
+    expect(text(root, '.timetable-meta dt')).toEqual(['列車', '列車番号', '路線', '両数', '番線', '停車駅']);
     expect(text(root, '.timetable-meta dd')).toEqual([
       '快速',
       '2824Y',
       'ＪＲ湘南新宿ライン',
-      '15 cars · Green Car',
-      '3 at 渋谷',
-      '3',
+      '15両 · グリーン車',
+      '渋谷 3番線',
+      '3駅',
     ]);
     // The train's route goes on the map, and stops the API placed get a button to fly there.
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '渋谷', expect.anything()));
@@ -366,14 +366,14 @@ describe('timetable panel', () => {
     expect(rows[0].querySelector('.timetable-kind').classList).not.toContain('timetable-kind-special');
     expect(text(root, '.timetable-train-info')).toEqual(['始G15両', 'G15両']);
     expect(text(root, '.timetable-jp-departures .timetable-platform')).toEqual(['3', '3']);
-    expect((rows[0] as HTMLElement).title).toBe('Train 2520Y · Starts here · Green Car · Track 3');
+    expect((rows[0] as HTMLElement).title).toBe('列車番号 2520Y · 当駅始発 · グリーン車 · 3番線');
 
     // The printed layout, by a switch the browser remembers.
     const printed = root.querySelector<HTMLElement>('.timetable-printed');
     const list = root.querySelector<HTMLElement>('.timetable-jp-departures');
     expect(printed.hidden).toBe(true);
     // It stays in view in the back button's row, which the list scrolls below.
-    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('Printed');
+    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('時刻表形式');
     root.querySelector<HTMLInputElement>('.timetable-nav .timetable-toggle input').click();
     expect(printed.hidden).toBe(false);
     expect(list.hidden).toBe(true);
@@ -383,11 +383,11 @@ describe('timetable panel', () => {
     expect(text(root, '.timetable-grid-marks')).toEqual(['●金', '宇[快]◆']);
     expect(text(root, '.timetable-legend li')).toEqual([
       '[快] 快速',
-      '金 for 小金井',
-      '宇 for 宇都宮',
-      '● Starts here',
-      '◆ Runs on specific days only',
-      'No mark 普通',
+      '金 小金井行',
+      '宇 宇都宮行',
+      '● 当駅始発',
+      '◆ 運転日注意',
+      '無印 普通',
     ]);
     expect(root.querySelectorAll('.timetable-grid-minute')[1].classList).toContain('timetable-kind-special');
     root.querySelectorAll<HTMLButtonElement>('.timetable-grid-minute')[1].click();
@@ -437,6 +437,7 @@ describe('timetable panel', () => {
         '09:47 – 09:48+1',
         '10:00+1',
       ]);
+      expect(panel.panel.querySelector<HTMLElement>('.timetable-stop-day').title).toBe('始発駅を出て翌日');
     } finally {
       train.stops = stops;
     }
@@ -446,7 +447,7 @@ describe('timetable panel', () => {
     const { container, panel } = setup();
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '架空', codes: ['99999'] } }));
     await vi.waitFor(() =>
-      expect(panel.panel.querySelector('.timetable-error').textContent).toBe('Could not load the timetable.'),
+      expect(panel.panel.querySelector('.timetable-error').textContent).toBe('時刻表を読み込めませんでした。'),
     );
     // The message names no data source; what went wrong is in its tooltip.
     expect(panel.panel.querySelector<HTMLElement>('.timetable-error-message').title).toBe('not found');
@@ -460,7 +461,7 @@ describe('timetable panel', () => {
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
     const root = panel.panel;
     await vi.waitFor(() =>
-      expect(root.querySelector('.timetable-error-message').textContent).toBe('Could not load the timetable.'),
+      expect(root.querySelector('.timetable-error-message').textContent).toBe('時刻表を読み込めませんでした。'),
     );
     root.querySelector<HTMLButtonElement>('.timetable-error .panel-retry').click();
     await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
@@ -473,7 +474,7 @@ describe('timetable panel', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() => expect(root.querySelector('.timetable-route-missing .panel-retry')).not.toBeNull());
-    expect(root.querySelector('.timetable-route-missing').textContent).toBe('Its track could not be loaded.Retry');
+    expect(root.querySelector('.timetable-route-missing').textContent).toBe('走行経路を読み込めませんでした。再試行');
     // Its stops joined stand in for the track, and stay since it failed
     expect(route.sketch).toHaveBeenCalledWith(
       [
@@ -551,7 +552,7 @@ describe('crLineTabs and crBoundTabs', () => {
       { line: '京沪高速', count: 5 },
       { line: '京津城际', count: 4 },
       { line: '京九', count: 1 },
-      { line: 'Other', count: 1 },
+      { line: '其他', count: 1 },
     ]);
     expect(crBoundTabs(trains)).toEqual([
       { bound: '下行', count: 6 },
@@ -575,32 +576,32 @@ describe('China Railway timetable', () => {
         .click();
     const pressed = (row: HTMLElement) =>
       tabs(row).find((tab) => tab.getAttribute('aria-pressed') === 'true').textContent;
-    expect(lineRow.getAttribute('aria-label')).toBe('Line');
-    expect(tabs(lineRow)[0].textContent).toBe('All');
+    expect(lineRow.getAttribute('aria-label')).toBe('线路');
+    expect(tabs(lineRow)[0].textContent).toBe('全部');
     expect(
       tabs(lineRow)
         .map((tab) => tab.textContent)
         .slice(1)
         .sort(),
-    ).toEqual(['Other', '京哈', '京广高速'].sort());
-    expect(tabs(lineRow).at(-1).textContent).toBe('Other');
-    expect(boundRow.getAttribute('aria-label')).toBe('Direction');
-    expect(tabs(boundRow).map((tab) => tab.textContent)).toEqual(['Both', '下行', '上行']);
-    expect([pressed(lineRow), pressed(boundRow)]).toEqual(['All', 'Both']);
+    ).toEqual(['其他', '京哈', '京广高速'].sort());
+    expect(tabs(lineRow).at(-1).textContent).toBe('其他');
+    expect(boundRow.getAttribute('aria-label')).toBe('方向');
+    expect(tabs(boundRow).map((tab) => tab.textContent)).toEqual(['上下行', '下行', '上行']);
+    expect([pressed(lineRow), pressed(boundRow)]).toEqual(['全部', '上下行']);
 
     pick(boundRow, '下行');
     expect(text(root, '.timetable-train-number')).toEqual(['Z157', 'G301']);
-    expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 Mon · 2 of 3 trains');
+    expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 周一 · 2/3趟');
     // Each tab counts what it would show with the other row's pick.
-    expect(tabs(lineRow).find((tab) => tab.textContent === 'Other').title).toBe('0 trains');
+    expect(tabs(lineRow).find((tab) => tab.textContent === '其他').title).toBe('0趟');
     pick(lineRow, '京广高速');
     expect(text(root, '.timetable-train-number')).toEqual(['G301']);
     expect(text(root, '.timetable-hour')).toEqual(['8时']);
-    expect(tabs(boundRow).find((tab) => tab.textContent === '上行').title).toBe('0 trains');
+    expect(tabs(boundRow).find((tab) => tab.textContent === '上行').title).toBe('0趟');
 
     // The next day keeps both.
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
-      .find((button) => button.title === 'Next day')
+      .find((button) => button.title === '后一天')
       .click();
     await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['G301']));
@@ -624,7 +625,7 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['Z157', 'G301', 'K2550']));
     expect(requests.slice(0, 2)).toEqual([crPath('stations/N1,W2/timetable'), crPath('stations/北京西/timetable')]);
     expect(root.querySelector('.timetable-title').textContent).toBe('北京西');
-    expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 Mon · 3 trains');
+    expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 周一 · 3趟');
     expect(text(root, '.timetable-hour')).toEqual(['6时', '8时', '9时']);
     expect(text(root, '.timetable-time')).toEqual(['06:02', '08:00', '09:11']);
     expect(root.querySelector('.timetable-time-arrival').textContent).toBe('09:11');
@@ -632,7 +633,7 @@ describe('China Railway timetable', () => {
     // A train changing lines here says so; the full number and its direction are on hover.
     expect(text(root, '.timetable-line-change')).toEqual(['京沪→京哈']);
     expect(root.querySelector<HTMLElement>('.timetable-departure-button').title).toBe(
-      'Runs as Z156/Z157 · 京哈 下行 · Platform or gate 10',
+      '全程车次 Z156/Z157 · 京哈 下行 · 站台/检票口 10',
     );
     const source = root.querySelector<HTMLAnchorElement>('.timetable-source');
     expect(source.textContent).toBe('lltskb 20261114');
@@ -640,10 +641,10 @@ describe('China Railway timetable', () => {
 
     // The date steps stay in view in the row a back button would take.
     expect(root.querySelector<HTMLElement>('.timetable-nav').hidden).toBe(false);
-    expect(root.querySelector('.timetable-nav .timetable-date').textContent).toBe('2026-11-16 Mon');
+    expect(root.querySelector('.timetable-nav .timetable-date').textContent).toBe('2026-11-16 周一');
     // Date steps replace the view instead of stacking on the back button.
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
-      .find((button) => button.title === 'Next day')
+      .find((button) => button.title === '后一天')
       .click();
     await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
@@ -658,27 +659,31 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '北京西', expect.anything()));
     expect(requests).toContain('/api/v1/cr/trains/Z156%2FZ157/route?date=2026-11-15');
     expect(root.querySelector('.timetable-summary').textContent).toBe(
-      'Z156/Z157 · 泰州 → 哈尔滨西 · from 2026-11-15 Sun',
+      'Z156/Z157 · 泰州 → 哈尔滨西 · 2026-11-15 周日始发',
     );
     // 12306 has no trainset for it, so that row goes.
     await vi.waitFor(() => expect(root.querySelector('.timetable-trainset')).toBeNull());
     expect(requests).toContain('/api/v1/cr/trainsets/Z156%2FZ157?date=2026-11-15');
     // The train and its first stop are in the header: the facts say the rest.
-    expect(text(root, '.timetable-meta dt')).toEqual(['Stops', 'In service', 'Rolling stock']);
-    expect(text(root, '.timetable-meta dd')).toEqual(['3 · 2400 km', '2024-04-02 – 2026-11-24', '25T · 上局南京段']);
+    expect(text(root, '.timetable-meta dt')).toEqual(['停站', '开行日期', '担当车底']);
+    expect(text(root, '.timetable-meta dd')).toEqual([
+      '3站 · 全程 2400 公里',
+      '2024-04-02 – 2026-11-24',
+      '25T · 上局南京段',
+    ]);
     expect(text(root, '.timetable-comment')).toEqual(['25T型，DC600V供电']);
     expect(root.querySelector('.timetable-stop-here').textContent).toContain('北京西');
     expect(text(root, '.timetable-stop-day')).toEqual(['+1', '+1']);
     expect(text(root, '.timetable-cr-stops .timetable-platform')).toEqual(['', '10', '']);
-    expect(root.querySelector('.timetable-back').textContent).toBe('← Trains');
+    expect(root.querySelector('.timetable-back').textContent).toBe('← 车次');
 
     // Lines and distances are folded in by a switch the browser remembers.
     const stopList = root.querySelector('.timetable-cr-stops');
     const toggle = root.querySelector<HTMLInputElement>('.timetable-nav .timetable-toggle input');
-    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('Lines and distances');
+    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('线路和里程');
     expect(toggle.checked).toBe(false);
     expect(stopList.classList.contains('timetable-show-lines')).toBe(false);
-    expect(text(root, '.timetable-stop-km')).toEqual(['0 km', '1200 km', '2400 km']);
+    expect(text(root, '.timetable-stop-km')).toEqual(['0 公里', '1200 公里', '2400 公里']);
     expect(text(root, '.timetable-stop-lines')).toEqual(['京沪线', '京哈线']);
     toggle.click();
     expect(stopList.classList.contains('timetable-show-lines')).toBe(true);
@@ -698,21 +703,19 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() =>
-      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe('CR400AF-A-2001 · 16 cars'),
-    );
-    const rows = Object.fromEntries(
-      Array.from(root.querySelectorAll('.timetable-meta > dt')).map((dt) => [dt.textContent, dt.nextElementSibling]),
+      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe('CR400AF-A-2001 · 16辆编组'),
     );
     // It replaces the rolling stock the timetable plans, which named another model.
-    expect(rows['Rolling stock']).toBeUndefined();
+    const stockRows = Array.from(root.querySelectorAll('.timetable-meta > dt')).filter(
+      (dt) => dt.textContent === '担当车底',
+    );
+    expect(stockRows.map((dt) => dt.nextElementSibling.className)).toEqual(['timetable-trainset']);
     expect(text(root, '.timetable-comment')).not.toContain('CR400AF型重联');
     expect(text(root, '.timetable-coach-details dt')).toEqual(['餐车', '静音车厢']);
     expect(text(root, '.timetable-coach-details dd')).toEqual(['09车', '✓']);
     expect(text(root, '.timetable-coach-list li')).toEqual(['01车 一等/商务 32/5', '02车 二等 93']);
     // The API has no track for it yet: a note says so above the stops.
-    await vi.waitFor(() =>
-      expect(root.querySelector('.timetable-route-missing')?.textContent).toBe('Its track is not available yet.'),
-    );
+    await vi.waitFor(() => expect(root.querySelector('.timetable-route-missing')?.textContent).toBe('暂无运行路径。'));
     expect(root.querySelector('.timetable-route-missing').nextElementSibling.classList).toContain('timetable-stops');
     expect(route.show).not.toHaveBeenCalled();
   });
@@ -725,10 +728,10 @@ describe('China Railway timetable', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() => expect(root.querySelector('.timetable-trainset .panel-retry')).not.toBeNull());
-    expect(root.querySelector('.timetable-trainset').textContent).toBe('Could not load the trainsetRetry');
+    expect(root.querySelector('.timetable-trainset').textContent).toBe('无法加载车底信息重试');
     root.querySelector<HTMLButtonElement>('.timetable-trainset .panel-retry').click();
     await vi.waitFor(() =>
-      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe('CR400AF-A-2001 · 16 cars'),
+      expect(root.querySelector('.timetable-trainset').firstChild.textContent).toBe('CR400AF-A-2001 · 16辆编组'),
     );
   });
 
@@ -738,9 +741,7 @@ describe('China Railway timetable', () => {
       new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '申滨南路', cr: ['N9', '申滨南路'] } }),
     );
     await vi.waitFor(() =>
-      expect(panel.panel.querySelector('.timetable-status').textContent).toBe(
-        'No China Railway timetable for 申滨南路.',
-      ),
+      expect(panel.panel.querySelector('.timetable-status').textContent).toBe('没有申滨南路站的列车时刻表。'),
     );
   });
 });

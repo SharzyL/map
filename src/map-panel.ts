@@ -84,11 +84,11 @@ export function createPanelShell(
 }
 
 // A Retry button after the message of a request that failed but may not
-// fail again (norikae.ts isRetryable).
-export function retryButton(parent: Element, retry: () => void) {
+// fail again (norikae.ts isRetryable); `label` in the language of the panel.
+export function retryButton(parent: Element, retry: () => void, label = 'Retry') {
   const button = el('button', 'panel-retry', parent);
   button.type = 'button';
-  button.textContent = 'Retry';
+  button.textContent = label;
   button.addEventListener('click', retry);
   return button;
 }
