@@ -12,7 +12,13 @@
 import { installSheetCollapse, isSheetLayout, sheetClosed, sheetOpened } from './bottom-sheet.js';
 import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter, type HoveredLine } from './line-hover.js';
 import { renderMarkdown } from './markdown.js';
-import { ROUTE_SELECT_EVENT, type RouteSelection } from './route-highlight.js';
+import {
+  ROUTE_SELECT_EVENT,
+  STATION_OPEN_EVENT,
+  STOP_LABEL_LAYERS,
+  type RouteSelection,
+  type StationStop,
+} from './route-highlight.js';
 import type { LineListQuery, LineLists } from './route-trace.js';
 import { UI_PANEL_OPEN_EVENT, type UiPanelOpenDetail } from './ui-panels.js';
 import { buildWeatherDashboardUrl, buildWeatherRouteSummary } from './weather-dashboard.js';
@@ -144,6 +150,7 @@ type RenderedFeatureLike = {
   id?: string | number;
   source: string;
   sourceLayer?: string;
+  layer?: { id?: string };
   properties?: JsonRecord;
   geometry: {
     type: string;
@@ -173,8 +180,11 @@ type MapLike = {
   // Finds the hovered line's features (line-hover.ts); optional for tests.
   querySourceFeatures?(
     source: string,
-    options: { sourceLayer: string; filter: never },
-  ): Array<{ id?: string | number }>;
+    options: { sourceLayer: string; filter?: never },
+  ): Array<{ id?: string | number; properties?: JsonRecord; geometry?: RenderedFeatureLike['geometry'] }>;
+  isMoving?(): boolean;
+  areTilesLoaded?(): boolean;
+  once?(type: 'idle', listener: () => void): void;
   on(type: 'mousemove' | 'click', listener: (event: PopupMapEvent) => void): void;
   on(type: 'move' | 'resize', listener: () => void): void;
   off(type: 'move' | 'resize', listener: () => void): void;
@@ -1704,7 +1714,24 @@ export type OrmPopupOptions = {
   // Other point layers with info boxes of their own (anitabi's spots), taken
   // before railways under them.
   featurePopups?: FeaturePopup[];
+  // The vector source of the railway tiles, where a stop's station is looked
+  // up (a stop label clicked, or a station picked in the route panel).
+  railwaySource?: string;
 };
+
+// Where the tiles' stations are, the most detailed first
+const STATION_SOURCE_LAYERS = [
+  'standard_railway_text_stations',
+  'standard_railway_text_stations_med',
+  'standard_railway_text_stations_low',
+];
+// How far from a stop a station of its name may be, without its OSM element
+const STATION_NAME_RADIUS_M = 1000;
+
+function metresBetween([lng1, lat1]: number[], [lng2, lat2]: number[]) {
+  const x = (lng2 - lng1) * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
+  return Math.hypot(x, lat2 - lat1) * 111_320;
+}
 
 export type FeaturePopup = {
   matches(feature: RenderedFeatureLike): boolean;
@@ -1818,7 +1845,7 @@ export function installOrmPopups(
     const osrmFeatures = renderedFeatures.filter(isOsrmFeature);
     const annotationFeatures = renderedFeatures.filter(isAnnotationFeature);
     const ormFeatures = renderedFeatures.filter(isOrmFeature);
-    const hasOtherFeature = renderedFeatures.some(isOtherFeature);
+    const hasOtherFeature = renderedFeatures.some((f) => isOtherFeature(f) || isStopLabel(f));
     if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || hasOtherFeature || ormFeatures.length > 0) {
       map.getCanvas().style.cursor = 'pointer';
 
@@ -1885,6 +1912,73 @@ export function installOrmPopups(
     return shown;
   }
 
+  // A stop's station in the tiles: by its OSM elements, else by its name near
+  // it; in the tiles loaded, so the map should be over it.
+  function stationOf(stop: StationStop): RenderedFeatureLike | null {
+    const source = options.railwaySource;
+    if (!source || !map.querySourceFeatures) return null;
+    const elements = new Set(stop.elements);
+    let named: { feature: RenderedFeatureLike; distance: number } | null = null;
+    for (const sourceLayer of STATION_SOURCE_LAYERS) {
+      for (const found of map.querySourceFeatures(source, { sourceLayer })) {
+        const properties = found.properties ?? {};
+        const geometry = found.geometry;
+        const feature: RenderedFeatureLike = { id: found.id, source, sourceLayer, properties, geometry };
+        if (elements.has(`${properties.osm_type}${properties.osm_id}`)) return feature;
+        if (properties.name !== stop.name && properties.localized_name !== stop.name) continue;
+        if (geometry?.type !== 'Point' || !Array.isArray(geometry.coordinates)) continue;
+        const distance = metresBetween(geometry.coordinates as number[], stop.position);
+        if (distance <= STATION_NAME_RADIUS_M && (!named || distance < named.distance)) named = { feature, distance };
+      }
+    }
+    return named?.feature ?? null;
+  }
+
+  // Opens a stop's station info box, as a click on the station would; from
+  // the stop alone when the tiles have no such station.
+  function openStation(stop: StationStop) {
+    const [element] = stop.elements;
+    const feature: RenderedFeatureLike = stationOf(stop) ?? {
+      source: options.railwaySource ?? '',
+      sourceLayer: STATION_SOURCE_LAYERS[0],
+      properties: {
+        feature: 'station',
+        name: stop.name,
+        ...(element ? { osm_type: element[0], osm_id: element.slice(1) } : {}),
+      },
+      geometry: { type: 'Point', coordinates: stop.position },
+    };
+    const at =
+      feature.geometry?.type === 'Point' && Array.isArray(feature.geometry.coordinates)
+        ? (feature.geometry.coordinates as Coordinates)
+        : stop.position;
+    const content = popupContent(feature, featuresCatalog, at);
+    if (!content) return;
+    options.extendContent?.(feature, content);
+    openInfoBox(at, content);
+  }
+
+  // From the route panel's list of stations: the map flies there first, so
+  // the station is looked up once it rests with its tiles in.
+  map.getContainer().addEventListener(STATION_OPEN_EVENT, (event) => {
+    const stop = (event as CustomEvent<StationStop>).detail;
+    if (!stop) return;
+    const settled = !map.isMoving?.() && map.areTilesLoaded?.() !== false;
+    if (settled || !map.once) openStation(stop);
+    else map.once('idle', () => openStation(stop));
+  });
+
+  const isStopLabel = (f: RenderedFeatureLike) => STOP_LABEL_LAYERS.includes(f.layer?.id ?? '');
+  const stopOfLabel = (f: RenderedFeatureLike): StationStop | null => {
+    const coordinates = f.geometry?.coordinates;
+    if (f.geometry?.type !== 'Point' || !Array.isArray(coordinates)) return null;
+    return {
+      name: stringValue(f.properties?.name),
+      position: coordinates as [number, number],
+      elements: stringValue(f.properties?.elements).split(',').filter(Boolean),
+    };
+  };
+
   // Click popup
   map.on('click', (event: PopupMapEvent) => {
     if (
@@ -1902,6 +1996,14 @@ export function installOrmPopups(
     const annotationFeatures = renderedFeatures.filter(isAnnotationFeature);
     const ormFeatures = renderedFeatures.filter(isOrmFeature);
     const other = osrmFeatures.length || annotationFeatures.length ? null : otherPopupOf(renderedFeatures);
+    // A stop's name, over the station whose own label it hides: its station.
+    const stopLabel =
+      osrmFeatures.length || annotationFeatures.length || other ? undefined : renderedFeatures.find(isStopLabel);
+    const stop = stopLabel && stopOfLabel(stopLabel);
+    if (stop) {
+      openStation(stop);
+      return;
+    }
     if (osrmFeatures.length === 0 && annotationFeatures.length === 0 && !other && ormFeatures.length === 0) return;
 
     const feature = osrmFeatures[0] || annotationFeatures[0] || other?.feature || ormFeatures[0];

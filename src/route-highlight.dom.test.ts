@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  STATION_OPEN_EVENT,
   installRouteHighlight,
   ROUTE_HIGHLIGHT_COLOR_STATE,
   ROUTE_HIGHLIGHT_ID_STATE,
@@ -222,7 +223,7 @@ describe('installRouteHighlight', () => {
     // The API's outline replaces the trace through z7 tiles, with the stops for their labels.
     const { features } = overview.setData.mock.lastCall[0];
     expect(features.map(({ geometry }: GeoJSON.Feature) => geometry.type)).toEqual(['LineString', 'Point', 'Point']);
-    expect(features[1].properties).toEqual({ kind: 'stop', name: '顾村公园', here: false, end: true });
+    expect(features[1].properties).toEqual({ kind: 'stop', name: '顾村公园', elements: 'N1', here: false, end: true });
     expect(fetched.some((url) => url.includes('.mvt'))).toBe(false);
 
     panel.querySelector<HTMLButtonElement>('.route-info-zoom').click();
@@ -233,8 +234,12 @@ describe('installRouteHighlight', () => {
       ],
       expect.anything(),
     );
+    const asked: unknown[] = [];
+    container.addEventListener(STATION_OPEN_EVENT, (event) => asked.push((event as CustomEvent).detail));
     panel.querySelector<HTMLButtonElement>('.route-info-station').click();
     expect(map.flyTo).toHaveBeenCalledWith({ center: [121.38, 31.35], zoom: 14 });
+    // and its info box, once there (popup.ts)
+    expect(asked).toEqual([{ name: '顾村公园', position: [121.38, 31.35], elements: ['N1'] }]);
 
     // Pointing at a station marks it on the map.
     const station = panel.querySelector('.route-info-stations li');

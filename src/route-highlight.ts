@@ -36,6 +36,12 @@ export const TRAIN_STOPS_STATE = 'trainRouteStops';
 const TRAIN_COLOR = '#2563eb';
 // Dispatched (bubbling) by popup route list items; detail is a RouteSelection.
 export const ROUTE_SELECT_EVENT = 'orm:routeselect';
+// Dispatched on the map's container to open a stop's station info box
+// (popup.ts); detail is a StationStop.
+export const STATION_OPEN_EVENT = 'orm:stationopen';
+// The layers naming a highlighted route's or a train's stops: a click on one
+// opens its station's info box, as the station's own label would.
+export const STOP_LABEL_LAYERS = ['route_highlight_stop_labels', 'train_route_stop_labels'];
 // The station a pointer is on in the route or timetable panel's list of stops.
 const STATION_HOVER_SOURCE = 'station_hover';
 
@@ -418,8 +424,8 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
   const highlight = routeHighlightLayers(layers.filter(isRailway)).map(withRailwayOverlayVisibility);
   if (highlight.length === 0) return style;
   const labels = [
-    stopLabelLayer('route_highlight_stop_labels', OVERVIEW_SOURCE, '#0f172a'),
-    stopLabelLayer('train_route_stop_labels', TRAIN_ROUTE_SOURCE, [
+    stopLabelLayer(STOP_LABEL_LAYERS[0], OVERVIEW_SOURCE, '#0f172a'),
+    stopLabelLayer(STOP_LABEL_LAYERS[1], TRAIN_ROUTE_SOURCE, [
       'case',
       ['==', ['get', 'here'], true],
       TRAIN_COLOR,
@@ -457,9 +463,14 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
 const OSM_RELATION = 'https://www.openstreetmap.org/relation/';
 const OSM_EDIT = 'https://www.openstreetmap.org/edit?relation=';
 
-type Stop = { name: string; position: [number, number] | null };
+type Stop = { name: string; position: [number, number] | null; elements?: string[] | null };
+// A stop to open the station info box of: its OSM station elements (N1) find
+// the tiles' station, else its name near its position.
+export type StationStop = { name: string; position: [number, number]; elements: string[] };
 
-// Stops with a position as labeled points; `here` is the stop to put first.
+// Stops with a position as labeled points, with their OSM station elements
+// (comma-separated) for the station a click on the label opens; `here` is
+// the stop to put first.
 export function stopFeatures(stops: Stop[], here: string | null = null): GeoJSON.Feature[] {
   return stops.flatMap((stop, index): GeoJSON.Feature[] =>
     stop.position
@@ -469,6 +480,7 @@ export function stopFeatures(stops: Stop[], here: string | null = null): GeoJSON
             properties: {
               kind: 'stop',
               name: stop.name,
+              elements: (stop.elements ?? []).join(','),
               here: stop.name === here,
               end: index === 0 || index === stops.length - 1,
             },
@@ -550,6 +562,8 @@ type PanelActions = {
   close(): void;
   zoomTo(bounds: Bounds): void;
   flyTo(position: [number, number]): void;
+  // Flies to a stop and opens its station's info box
+  openStation(stop: StationStop): void;
   hover(stop: Stop | null): void;
 };
 
@@ -719,7 +733,9 @@ class RoutePanel {
         if (position && name instanceof HTMLButtonElement) {
           name.type = 'button';
           name.title = `Show ${stop.name} on the map`;
-          name.addEventListener('click', () => this._actions.flyTo(position));
+          name.addEventListener('click', () =>
+            this._actions.openStation({ name: stop.name, position, elements: stop.elements ?? [] }),
+          );
         }
       }
     }
@@ -811,6 +827,10 @@ export function installRouteHighlight(map: RouteHighlightMap) {
     zoomTo: (bounds) =>
       map.fitBounds?.(bounds, { padding: { top: 64, right: 72, bottom: 48, left: 380 }, maxZoom: 14 }),
     flyTo: (center) => map.flyTo?.({ center, zoom: Math.max(map.getZoom?.() ?? 0, 14) }),
+    openStation: (stop) => {
+      map.flyTo?.({ center: stop.position, zoom: Math.max(map.getZoom?.() ?? 0, 14) });
+      container.dispatchEvent(new CustomEvent<StationStop>(STATION_OPEN_EVENT, { detail: stop }));
+    },
     hover: (stop) => setStationHover(map, stop),
   });
 

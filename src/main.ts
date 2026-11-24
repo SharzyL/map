@@ -821,6 +821,7 @@ async function init() {
         lookupLineLists: (query, signal) => lineListsNear(query, fetchRailwayTile, signal),
         extendContent: timetableButton,
         featurePopups: [anitabi],
+        railwaySource: ORM_SOURCE,
       });
       anitabiList.setInfoBox(popups.open);
       drainGpxQueue(map);

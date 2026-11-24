@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildFeatureCatalog, installOrmPopups, popupContent, popupRoom } from './popup.js';
 import { emitUiPanelOpen } from './ui-panels.js';
-import { ROUTE_SELECT_EVENT } from './route-highlight.js';
+import { ROUTE_SELECT_EVENT, STATION_OPEN_EVENT } from './route-highlight.js';
 
 // Attributes of a real light rail segment and station in Frankfurt (OpenRailwayMap tiles).
 const LINE_PROPERTIES = {
@@ -283,8 +283,14 @@ describe('installOrmPopups', () => {
   // A map whose click lands on the given features; returns the popups opened,
   // with the map container and a count of popups removed.
   function clickMap(
-    features: Array<{ source: string; sourceLayer?: string; properties?: Record<string, unknown> }>,
+    features: Array<{
+      source: string;
+      sourceLayer?: string;
+      layer?: { id: string };
+      properties?: Record<string, unknown>;
+    }>,
     options = {},
+    extras: Record<string, unknown> = {},
   ) {
     const handlers: Record<string, (event: unknown) => void> = {};
     const container = document.createElement('div');
@@ -298,6 +304,7 @@ describe('installOrmPopups', () => {
       on: (type: string, handler: (event: unknown) => void) => (handlers[type] = handler),
       off: () => {},
       project: () => ({ y: 100 }),
+      ...extras,
     };
     const opened: Node[] = [];
     let removed = 0;
@@ -357,6 +364,92 @@ describe('installOrmPopups', () => {
       { featurePopups },
     );
     expect([...opened]).toEqual([spot]);
+  });
+
+  // A station in the tiles, and the label of a highlighted route's stop at it
+  const station = (osmId: string, name: string, at: [number, number]) => ({
+    id: Number(osmId),
+    properties: { feature: 'station', station: 'train', name, osm_type: 'N', osm_id: osmId },
+    geometry: { type: 'Point', coordinates: at },
+  });
+  const stopLabel = (elements: string) => ({
+    source: 'route_highlight_overview',
+    layer: { id: 'route_highlight_stop_labels' },
+    properties: { kind: 'stop', name: '渋谷', elements },
+  });
+  const tiles = (...stations: ReturnType<typeof station>[]) =>
+    vi.fn((_source: string, { sourceLayer }: { sourceLayer: string }) =>
+      sourceLayer === 'standard_railway_text_stations' ? stations : [],
+    );
+  // A station's box is titled by its kind, and named in the row below
+  const nameOf = (node: Node) => (node as HTMLElement).querySelector('.orm-popup-label').textContent;
+
+  it('opens the station of a stop label, by its OSM element, over the line under it', () => {
+    const extendContent = vi.fn();
+    const querySourceFeatures = tiles(station('7', '渋谷 (other)', [8.6, 50.1]), station('42', '渋谷駅', [8.7, 50.1]));
+    const opened = clickMap(
+      [{ source: 'openrailwaymap', sourceLayer: 'railway_line_high', properties: LINE_PROPERTIES }, stopLabel('N42')],
+      { railwaySource: 'openrailwaymap', extendContent },
+      { querySourceFeatures },
+    );
+    expect(querySourceFeatures).toHaveBeenCalledWith('openrailwaymap', {
+      sourceLayer: 'standard_railway_text_stations',
+    });
+    expect(opened).toHaveLength(1);
+    expect(nameOf(opened[0])).toBe('渋谷駅');
+    expect((opened[0] as HTMLElement).querySelector('.orm-popup-section-title').textContent).toBe('Station');
+    // The Timetable button and the like, as for a click on the station
+    expect(extendContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceLayer: 'standard_railway_text_stations',
+        properties: expect.objectContaining({ osm_id: '42' }),
+      }),
+      opened[0],
+    );
+  });
+
+  it('takes the nearest station of the stop’s name when its element is not in the tiles', () => {
+    const querySourceFeatures = tiles(station('8', '渋谷', [9.6, 50.1]), station('9', '渋谷', [8.601, 50.1]));
+    const extendContent = vi.fn();
+    clickMap([stopLabel('N42')], { railwaySource: 'openrailwaymap', extendContent }, { querySourceFeatures });
+    expect(extendContent.mock.lastCall[0].properties.osm_id).toBe('9');
+  });
+
+  it('opens the stop alone when the tiles have no station for it', () => {
+    const extendContent = vi.fn();
+    const opened = clickMap(
+      [stopLabel('N42')],
+      { railwaySource: 'openrailwaymap', extendContent },
+      { querySourceFeatures: tiles(station('8', '渋谷', [9.6, 50.1])) },
+    );
+    expect(nameOf(opened[0])).toBe('渋谷');
+    expect(extendContent.mock.lastCall[0]).toMatchObject({
+      sourceLayer: 'standard_railway_text_stations',
+      properties: { feature: 'station', name: '渋谷', osm_type: 'N', osm_id: '42' },
+      geometry: { type: 'Point', coordinates: [8.6, 50.1] },
+    });
+  });
+
+  it('opens a station picked in the route panel once the map rests', () => {
+    let idle: () => void = null;
+    let moving = true;
+    const opened = clickMap(
+      [],
+      { railwaySource: 'openrailwaymap' },
+      {
+        querySourceFeatures: tiles(station('42', '渋谷駅', [8.6, 50.1])),
+        isMoving: () => moving,
+        once: (_type: string, listener: () => void) => (idle = listener),
+      },
+    );
+    opened.container.dispatchEvent(
+      new CustomEvent(STATION_OPEN_EVENT, { detail: { name: '渋谷', position: [8.6, 50.1], elements: ['N42'] } }),
+    );
+    expect(opened).toHaveLength(0);
+    moving = false;
+    idle();
+    expect(opened).toHaveLength(1);
+    expect(nameOf(opened[0])).toBe('渋谷駅');
   });
 
   it('looks up the lines of a line clicked while zoomed out and shows them', async () => {
