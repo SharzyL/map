@@ -284,6 +284,21 @@ function trainRouteLayers(lineRanges: SourceRange[]): StyleLayerLike[] {
       filter: kind('straight'),
       paint: { ...linePaint, 'line-dasharray': [1.5, 1.5] },
     },
+    // Before the route comes, its stops joined in order: thinner and fainter
+    // than a leg without a path, as only a guess at where the train goes.
+    {
+      id: 'train_route_sketch',
+      type: 'line',
+      source: TRAIN_ROUTE_SOURCE,
+      filter: kind('sketch'),
+      layout: LINE_LAYOUT,
+      paint: {
+        'line-color': TRAIN_COLOR,
+        'line-opacity': 0.55,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 10, 2, 16, 3],
+        'line-dasharray': [2, 2],
+      },
+    },
     {
       id: 'train_route_stops',
       type: 'circle',

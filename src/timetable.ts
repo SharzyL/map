@@ -365,22 +365,21 @@ class TimetablePanel {
   // for a route the API cannot give (an error, a train not routed yet) a note
   // above the stops says why it is not on the map.
   // The load status chip says "Loading route…" meanwhile (load-status.ts).
-  private _drawRoute(load: () => Promise<TrainRoute>, here: string | null) {
+  // Until the route comes, the stops joined in order stand in for it (and
+  // stay should it fail); `stops` in their order, with their positions.
+  private _drawRoute(
+    load: () => Promise<TrainRoute>,
+    here: string | null,
+    stops: Array<{ name: string; position: [number, number] | null; elements?: string[] | null }>,
+  ) {
     const signal = this._signal;
     if (!this._route) return;
+    this._route.sketch(stops, here, this._routePadding());
     const done = beginLoading(this._container, 'train-route', 'route');
     load()
       .then((route) => {
         if (signal.aborted) return;
-        // Clear of the panel: beside it on a wide screen, above the bottom sheet on a phone.
-        const map = this._container.getBoundingClientRect();
-        const panel = this.panel.getBoundingClientRect();
-        const margin = 48;
-        const padding =
-          panel.width < map.width * 0.6
-            ? { top: margin + 16, right: margin + 40, bottom: margin, left: panel.right - map.left + margin }
-            : { top: margin + 16, right: margin, bottom: map.bottom - panel.top + margin, left: margin };
-        this._route.show(route, here, padding);
+        this._route.show(route, here, this._routePadding());
       })
       .catch((error: unknown) => {
         if (signal.aborted) return;
@@ -391,11 +390,22 @@ class TimetablePanel {
         if (isRetryable(error))
           retryButton(note, () => {
             note.remove();
-            this._drawRoute(load, here);
+            this._drawRoute(load, here, stops);
           });
         this._body.insertBefore(note, this._body.querySelector('.timetable-stops'));
       })
       .finally(done);
+  }
+
+  // The map's room for a route clear of the panel: beside it on a wide screen,
+  // above the bottom sheet on a phone.
+  private _routePadding() {
+    const map = this._container.getBoundingClientRect();
+    const panel = this.panel.getBoundingClientRect();
+    const margin = 48;
+    return panel.width < map.width * 0.6
+      ? { top: margin + 16, right: margin + 40, bottom: margin, left: panel.right - map.left + margin }
+      : { top: margin + 16, right: margin, bottom: map.bottom - panel.top + margin, left: margin };
   }
 
   // The trainset 12306 assigns, asked once the train shows. It replaces the
@@ -693,7 +703,15 @@ class TimetablePanel {
     }
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
     const here = train.stops.find((stop) => stop.code === code)?.name ?? null;
-    this._drawRoute(() => trainRoute(code, gid, trainId, this._signal), here);
+    this._drawRoute(
+      () => trainRoute(code, gid, trainId, this._signal),
+      here,
+      train.stops.map((stop) => ({
+        name: stop.name,
+        position: stop.lon !== null && stop.lon !== undefined ? ([stop.lon, stop.lat] as [number, number]) : null,
+        elements: stop.osm ?? null,
+      })),
+    );
   }
 
   private async _renderCrStation(candidates: string[], name: string, date: string | null) {
@@ -949,7 +967,11 @@ class TimetablePanel {
       this._locate(item, stop.name, stop.position);
     });
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
-    this._drawRoute(() => crTrainRoute(run?.train ?? train, date, this._signal), stationName);
+    this._drawRoute(
+      () => crTrainRoute(run?.train ?? train, date, this._signal),
+      stationName,
+      stops.map((stop) => ({ name: stop.name, position: stop.position ?? null, elements: stop.elements ?? null })),
+    );
   }
 }
 

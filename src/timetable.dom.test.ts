@@ -271,7 +271,7 @@ function setup() {
     }),
   );
   const map = { getContainer: () => container, flyTo: vi.fn(), getZoom: () => 10 };
-  const route = { show: vi.fn(), hover: vi.fn(), clear: vi.fn() };
+  const route = { sketch: vi.fn(), show: vi.fn(), hover: vi.fn(), clear: vi.fn() };
   const panel = installTimetable(map, route);
   return { container, panel, requests, map, route };
 }
@@ -444,6 +444,17 @@ describe('timetable panel', () => {
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() => expect(root.querySelector('.timetable-route-missing .panel-retry')).not.toBeNull());
     expect(root.querySelector('.timetable-route-missing').textContent).toBe('Its track could not be loaded.Retry');
+    // Its stops joined stand in for the track, and stay since it failed
+    expect(route.sketch).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ name: '大船' }),
+        expect.objectContaining({ name: '渋谷' }),
+        expect.objectContaining({ name: '宇都宮' }),
+      ],
+      '渋谷',
+      expect.anything(),
+    );
+    expect(route.show).not.toHaveBeenCalled();
     // The load status said the route was loading, and no longer does
     expect(loads.map(({ id, label }) => [id, label])).toEqual([
       ['train-route', 'route'],

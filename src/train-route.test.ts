@@ -1,8 +1,8 @@
 import { featureFilter } from '@maplibre/maplibre-gl-style-spec';
 import { describe, expect, it, vi } from 'vitest';
 import { decodePolyline, type TrainRoute } from './norikae.js';
-import { NO_TRAIN_WAYS, TRAIN_ROUTE_SOURCE, TRAIN_ROUTE_STATE } from './route-highlight.js';
-import { installTrainRoute, trainRouteFeatures, trainWaysFilter } from './train-route.js';
+import { NO_TRAIN_WAYS, TRAIN_ROUTE_SOURCE, TRAIN_ROUTE_STATE, TRAIN_STOPS_STATE } from './route-highlight.js';
+import { framedBy, installTrainRoute, sketchFeatures, trainRouteFeatures, trainWaysFilter } from './train-route.js';
 
 const ROUTE: TrainRoute = {
   data_version: '2026-11-12T16:00:00Z',
@@ -42,6 +42,56 @@ describe('trainRouteFeatures', () => {
       here: true,
       end: true,
     });
+  });
+});
+
+// The stops of a train from 北京南 to 上海虹桥, one without a place
+const STOPS = [
+  { name: '北京南', position: [116.38, 39.86] as [number, number], elements: ['N539260172'] },
+  { name: '济南西', position: null, elements: null },
+  { name: '南京南', position: [118.8, 31.97] as [number, number], elements: ['N2'] },
+  { name: '上海虹桥', position: [121.32, 31.19] as [number, number], elements: ['N3'] },
+];
+
+describe('sketchFeatures', () => {
+  it('joins the placed stops in order, until the route comes', () => {
+    const { features } = sketchFeatures(STOPS, '北京南');
+    expect(features.map(({ properties }) => properties.kind)).toEqual(['sketch', 'stop', 'stop', 'stop']);
+    expect(features[0].geometry).toEqual({
+      type: 'LineString',
+      coordinates: [
+        [116.38, 39.86],
+        [118.8, 31.97],
+        [121.32, 31.19],
+      ],
+    });
+    // One placed stop: nothing to join
+    expect(sketchFeatures(STOPS.slice(0, 2), null).features.map(({ properties }) => properties.kind)).toEqual(['stop']);
+  });
+
+  it('tells a route the stops framed from one going further', () => {
+    const stops: [[number, number], [number, number]] = [
+      [116.38, 31.19],
+      [121.32, 39.86],
+    ];
+    expect(
+      framedBy(
+        [
+          [116.3, 31.0],
+          [121.5, 39.9],
+        ],
+        stops,
+      ),
+    ).toBe(true);
+    expect(
+      framedBy(
+        [
+          [113.0, 31.0],
+          [121.5, 39.9],
+        ],
+        stops,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -86,5 +136,51 @@ describe('installTrainRoute', () => {
     expect(map.setFilter).toHaveBeenLastCalledWith('train_route_line_0', NO_TRAIN_WAYS);
     expect(source.setData).toHaveBeenLastCalledWith({ type: 'FeatureCollection', features: [] });
     expect(state[TRAIN_ROUTE_STATE]).toBe(false);
+  });
+
+  it('sketches the stops first, then puts the route in their place without moving the map again', () => {
+    const source = { setData: vi.fn() };
+    const state: Record<string, unknown> = {};
+    const map = {
+      _styleInitialized: true,
+      isStyleLoaded: () => true,
+      once: () => {},
+      setGlobalStateProperty: (name: string, value: unknown) => (state[name] = value),
+      getStyle: () => ({ layers: [{ id: 'train_route_line_0' }] }),
+      getSource: (id: string) => (id === TRAIN_ROUTE_SOURCE ? source : undefined),
+      setFilter: vi.fn(),
+      fitBounds: vi.fn(),
+    };
+    const padding = { top: 1, right: 2, bottom: 3, left: 4 };
+    const drawer = installTrainRoute(map);
+    drawer.sketch(STOPS, '北京南', padding);
+    expect(source.setData.mock.lastCall[0].features[0].properties.kind).toBe('sketch');
+    expect(map.setFilter).toHaveBeenLastCalledWith('train_route_line_0', NO_TRAIN_WAYS);
+    // Other railways dim, and the stops' own labels give way, as for the route
+    expect(state[TRAIN_ROUTE_STATE]).toBe(true);
+    expect(state[TRAIN_STOPS_STATE]).toEqual(['北京南', 'N539260172', '济南西', '南京南', 'N2', '上海虹桥', 'N3']);
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds).toHaveBeenLastCalledWith(
+      [
+        [116.38, 31.19],
+        [121.32, 39.86],
+      ],
+      expect.objectContaining({ padding }),
+    );
+    // The route lies where the stops are: drawn, the map stays
+    drawer.show(ROUTE, '北京南', padding);
+    expect(source.setData.mock.lastCall[0].features.map((f: GeoJSON.Feature) => f.properties.kind)).not.toContain(
+      'sketch',
+    );
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    // A route going well past its stops' frame moves it
+    drawer.sketch(STOPS.slice(2), null, padding);
+    drawer.show({ ...ROUTE, bbox: [110, 25, 121.33, 39.87] }, null, padding);
+    expect(map.fitBounds).toHaveBeenCalledTimes(3);
+    // No placed stop, no sketch
+    drawer.clear();
+    source.setData.mockClear();
+    drawer.sketch([{ name: '济南西', position: null }], null, padding);
+    expect(source.setData).not.toHaveBeenCalled();
   });
 });
