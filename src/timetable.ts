@@ -615,7 +615,11 @@ class TimetablePanel {
       this._show(() => this._renderTrain(code, gid, departure.train_id, stationName, departure));
 
     // A list, or the printed timetable's layout.
-    const input = this._navToggle('時刻表形式', TIMETABLE_PRINTED_STORAGE_KEY, '駅の時刻表のように並べる');
+    const input = this._navToggle(
+      'ヨコ／タテ表示',
+      TIMETABLE_PRINTED_STORAGE_KEY,
+      'チェックで駅の時刻表のように時ごとに横へ並べる',
+    );
 
     const list = el('ol', 'timetable-departures timetable-jp-departures', this._body);
     let hour = '';

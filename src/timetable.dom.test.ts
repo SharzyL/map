@@ -373,7 +373,7 @@ describe('timetable panel', () => {
     const list = root.querySelector<HTMLElement>('.timetable-jp-departures');
     expect(printed.hidden).toBe(true);
     // It stays in view in the back button's row, which the list scrolls below.
-    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('時刻表形式');
+    expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('ヨコ／タテ表示');
     root.querySelector<HTMLInputElement>('.timetable-nav .timetable-toggle input').click();
     expect(printed.hidden).toBe(false);
     expect(list.hidden).toBe(true);
