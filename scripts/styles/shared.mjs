@@ -5,7 +5,7 @@ export const signals_railway_line = yaml.parse(fs.readFileSync('features/train_p
 export const loading_gauges = yaml.parse(fs.readFileSync('features/loading_gauge.yaml', 'utf8'))
 export const track_classes = yaml.parse(fs.readFileSync('features/track_class.yaml', 'utf8'))
 
-export const knownStyles = ['standard', 'speed', 'signals', 'electrification', 'track', 'operator', 'route']
+export const knownStyles = ['standard']
 
 export const defaultDate = new Date().getFullYear()
 

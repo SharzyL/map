@@ -2,21 +2,11 @@ import fs from 'fs'
 import { knownStyles, defaultDate } from './shared.mjs'
 import { sources } from './fragments/sources.mjs'
 import { standardLayers } from './fragments/standard.layers.mjs'
-import { speedLayers } from './fragments/speed.layers.mjs'
-import { signalsLayers } from './fragments/signals.layers.mjs'
-import { electrificationLayers } from './fragments/electrification.layers.mjs'
-import { trackLayers } from './fragments/track.layers.mjs'
-import { operatorLayers } from './fragments/operator.layers.mjs'
-import { routeLayers } from './fragments/route.layers.mjs'
 
+// Only upstream's standard style: the map draws its other views (speed,
+// electrification, gauge, ...) by recoloring this one (src/railway-colors.ts).
 const layers = {
   standard: standardLayers,
-  speed: speedLayers,
-  signals: signalsLayers,
-  electrification: electrificationLayers,
-  track: trackLayers,
-  operator: operatorLayers,
-  route: routeLayers,
 }
 
 const DATA_MAX_ZOOM = 15
