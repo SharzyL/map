@@ -720,10 +720,10 @@ class TimetablePanel {
     this._body.replaceChildren();
     const cars = [departure?.cars && `${departure.cars}両`, departure?.green_car && 'グリーン車'].filter(Boolean);
     this._facts([
-      ['列車', name],
+      ['種別', name],
       ['列車番号', departure?.train_number ?? null],
       ['路線', train.line],
-      ['両数', cars.join(' · ') || null],
+      ['編成', cars.join(' · ') || null],
       ['番線', departure?.track ? `${stationName} ${departure.track}番線` : null],
       ['停車駅', `${train.stops.length}駅`],
     ]);

@@ -320,7 +320,7 @@ describe('timetable panel', () => {
     expect(text(root, '.timetable-stop-time')).toEqual(['07:30', '08:01 – 08:02', '09:50']);
     expect(text(root, '.timetable-comment')).toEqual(['大宮−小山間快速。']);
     // The departure it was opened from knows its number, cars and track here.
-    expect(text(root, '.timetable-meta dt')).toEqual(['列車', '列車番号', '路線', '両数', '番線', '停車駅']);
+    expect(text(root, '.timetable-meta dt')).toEqual(['種別', '列車番号', '路線', '編成', '番線', '停車駅']);
     expect(text(root, '.timetable-meta dd')).toEqual([
       '快速',
       '2824Y',
