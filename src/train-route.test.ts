@@ -177,6 +177,16 @@ describe('installTrainRoute', () => {
     drawer.sketch(STOPS.slice(2), null, padding);
     drawer.show({ ...ROUTE, bbox: [110, 25, 121.33, 39.87] }, null, padding);
     expect(map.fitBounds).toHaveBeenCalledTimes(3);
+    // Once the route has replaced the sketch, a failure has nothing to dash
+    source.setData.mockClear();
+    drawer.unrouted();
+    expect(source.setData).not.toHaveBeenCalled();
+    // A route that cannot be had leaves the sketch, dashed as a leg without a path
+    drawer.sketch(STOPS, '北京南', padding);
+    drawer.unrouted();
+    const kinds = source.setData.mock.lastCall[0].features.map((f: GeoJSON.Feature) => f.properties.kind);
+    expect(kinds).toEqual(['straight', 'stop', 'stop', 'stop']);
+    expect(state[TRAIN_ROUTE_STATE]).toBe(true);
     // No placed stop, no sketch
     drawer.clear();
     source.setData.mockClear();

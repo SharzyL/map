@@ -366,7 +366,7 @@ class TimetablePanel {
   // above the stops says why it is not on the map.
   // The load status chip says "Loading route…" meanwhile (load-status.ts).
   // Until the route comes, the stops joined in order stand in for it (and
-  // stay should it fail); `stops` in their order, with their positions.
+  // stay, dashed, should it fail); `stops` in their order, with their positions.
   private _drawRoute(
     load: () => Promise<TrainRoute>,
     here: string | null,
@@ -383,6 +383,7 @@ class TimetablePanel {
       })
       .catch((error: unknown) => {
         if (signal.aborted) return;
+        this._route.unrouted();
         const note = el('p', 'timetable-comment timetable-route-missing');
         const message = el('span', undefined, note);
         message.textContent = routeMissingText(error);

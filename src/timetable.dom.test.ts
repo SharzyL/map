@@ -271,7 +271,7 @@ function setup() {
     }),
   );
   const map = { getContainer: () => container, flyTo: vi.fn(), getZoom: () => 10 };
-  const route = { sketch: vi.fn(), show: vi.fn(), hover: vi.fn(), clear: vi.fn() };
+  const route = { sketch: vi.fn(), show: vi.fn(), unrouted: vi.fn(), hover: vi.fn(), clear: vi.fn() };
   const panel = installTimetable(map, route);
   return { container, panel, requests, map, route };
 }
@@ -455,6 +455,8 @@ describe('timetable panel', () => {
       expect.anything(),
     );
     expect(route.show).not.toHaveBeenCalled();
+    // and turns dashed, not to pass for the track
+    expect(route.unrouted).toHaveBeenCalledTimes(1);
     // The load status said the route was loading, and no longer does
     expect(loads.map(({ id, label }) => [id, label])).toEqual([
       ['train-route', 'route'],

@@ -5,7 +5,8 @@
 // GeoJSON source: the outline below z7, the parts of ways it covers partly,
 // legs without a path as dashed straight lines, and its stops. Until the route
 // comes (sketch), its stops joined in order stand in for it, drawn as its line
-// is, and stay if it cannot be had. The layers and
+// is, and stay if it cannot be had, dashed then as a leg without a path is
+// (unrouted). The layers and
 // the dimming of other railways come with the route highlight's
 // (route-highlight.ts), as does the mark on the stop hovered in the timetable.
 import { decodePolyline, type TrainRoute } from './norikae.js';
@@ -108,8 +109,9 @@ export function installTrainRoute(map: TrainRouteMap) {
   const wayLayers = () => (map.getStyle().layers ?? []).filter(({ id }) => TRAIN_ROUTE_WAY_LAYER.test(id));
   let shown = false;
   let hovered = false;
-  // What the sketch framed, until the route replaces it
+  // What the sketch framed and drew, until the route replaces it
   let sketched: Bounds | null = null;
+  let sketchDrawn: { features: GeoJSON.FeatureCollection; stops: Stop[] } | null = null;
 
   const draw = (drawn: { features: GeoJSON.FeatureCollection; ways: number[]; stops: Stop[] } | null) => {
     const filter = trainWaysFilter(drawn ? [...new Set(drawn.ways)] : []);
@@ -125,8 +127,10 @@ export function installTrainRoute(map: TrainRouteMap) {
     sketch(stops: Stop[], here: string | null, padding: Padding) {
       const bounds = boundsOf(stops.flatMap((stop) => (stop.position ? [stop.position] : [])));
       if (!bounds) return;
-      draw({ features: sketchFeatures(stops, here), ways: [], stops });
+      const features = sketchFeatures(stops, here);
+      draw({ features, ways: [], stops });
       sketched = bounds;
+      sketchDrawn = { features, stops };
       map.fitBounds(bounds, { padding, maxZoom: 14, duration: 600 });
     },
     // Draws a train's route and fits the map to it, clear of the panel,
@@ -140,6 +144,18 @@ export function installTrainRoute(map: TrainRouteMap) {
       ];
       if (!sketched || !framedBy(bounds, sketched)) map.fitBounds(bounds, { padding, maxZoom: 14, duration: 600 });
       sketched = null;
+      sketchDrawn = null;
+    },
+    // The route could not be had: the sketch stays, dashed as a leg without a
+    // path, so it does not pass for the track.
+    unrouted() {
+      if (!sketchDrawn) return;
+      const features = sketchDrawn.features.features.map((feature) =>
+        feature.properties?.kind === 'sketch'
+          ? { ...feature, properties: { ...feature.properties, kind: 'straight' } }
+          : feature,
+      );
+      draw({ features: { type: 'FeatureCollection', features }, ways: [], stops: sketchDrawn.stops });
     },
     // Marks the stop a pointer is on in the timetable, or none.
     hover(stop: { name: string; position: [number, number] | null } | null) {
@@ -150,6 +166,7 @@ export function installTrainRoute(map: TrainRouteMap) {
     clear() {
       this.hover(null);
       sketched = null;
+      sketchDrawn = null;
       if (shown) draw(null);
     },
   };
