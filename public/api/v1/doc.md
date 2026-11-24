@@ -18,7 +18,9 @@ Japanese routes and timetables under `/api/v1/norikae`, China Railway under
 - Station names must be **Japanese** (e.g. `渋谷`, not `Shibuya`).
 - All dates/times are **Japan time** (JST, UTC+9). Times are `"HH:MM"`;
   `date` is `YYYY-MM-DD`. Times after midnight wrap (`"00:59"`), so compare
-  against the route's `departure` to detect overnight trips.
+  against the route's `departure` to detect overnight trips; except a train's
+  stop times (`…/trains/{train_id}`), which count the hours of its later days
+  on from 24 as Yahoo does (`"33:47"` is 09:47 the next morning).
 - Money is integer yen. Durations are integer minutes (`*_min`).
 - Every successful response includes `source_url`: the Yahoo page it was
   parsed from.

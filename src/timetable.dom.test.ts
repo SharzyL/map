@@ -412,6 +412,36 @@ describe('timetable panel', () => {
     expect(panel.panel.getAttribute('aria-hidden')).toBe('true');
   });
 
+  it('shows an overnight train’s later stops on the next day’s clock, marked +1', async () => {
+    // The fixture train as an overnight one, as Yahoo counts on past 24
+    const path = '/api/v1/norikae/stations/22715/timetables/1051/trains/33471';
+    const train = API[path] as { stops: Array<Record<string, unknown>> };
+    const stops = train.stops;
+    train.stops = [
+      { code: '23096', name: '大船', arrival: null, departure: '22:30' },
+      { ...stops[1], arrival: '23:01', departure: '23:02' },
+      { code: '23500', name: '宇都宮', arrival: '33:47', departure: '33:48' },
+      { code: '23600', name: '黒磯', arrival: '34:00', departure: null },
+    ];
+    try {
+      const { container, panel } = setup();
+      container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+      await vi.waitFor(() => expect(text(panel.panel, '.timetable-direction')).toHaveLength(2));
+      panel.panel.querySelector<HTMLButtonElement>('.timetable-direction').click();
+      await vi.waitFor(() => expect(text(panel.panel, '.timetable-time')).toHaveLength(2));
+      panel.panel.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
+      await vi.waitFor(() => expect(text(panel.panel, '.timetable-stop-name')).toHaveLength(4));
+      expect(text(panel.panel, '.timetable-stop-time')).toEqual([
+        '22:30',
+        '23:01 – 23:02',
+        '09:47 – 09:48+1',
+        '10:00+1',
+      ]);
+    } finally {
+      train.stops = stops;
+    }
+  });
+
   it('shows the error of a failed request', async () => {
     const { container, panel } = setup();
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '架空', codes: ['99999'] } }));

@@ -10,7 +10,7 @@ import {
   stationsNamed,
   type NorikaeStation,
 } from './norikae.js';
-import { directionLabel, nextCrTrainIndex, nextDepartureIndex } from './timetable.js';
+import { directionLabel, nextCrTrainIndex, nextDepartureIndex, trainStopClock } from './timetable.js';
 
 const station = (code: string, name: string, address = '東京'): NorikaeStation => ({
   code,
@@ -82,6 +82,18 @@ describe('next departure', () => {
     expect(nextDepartureIndex(table('weekday'), { minutes: 10 })).toBe(3);
     // After the last one, none
     expect(nextDepartureIndex(table('weekday'), { minutes: 50 })).toBe(-1);
+  });
+});
+
+describe('a train’s stop times', () => {
+  it('reads Yahoo’s hours past 24 as the next days’ clock', () => {
+    // サンライズ出雲: 東京 21:50, 宍道 33:47 the next morning
+    expect(trainStopClock('21:50', 21)).toEqual({ time: '21:50', days: 0 });
+    expect(trainStopClock('24:22', 21)).toEqual({ time: '00:22', days: 1 });
+    expect(trainStopClock('33:47', 21)).toEqual({ time: '09:47', days: 1 });
+    expect(trainStopClock(null, 21)).toBeNull();
+    // A train leaving after midnight is on its first day still
+    expect(trainStopClock('25:10', 24)).toEqual({ time: '01:10', days: 0 });
   });
 });
 

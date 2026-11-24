@@ -123,6 +123,19 @@ export function crBoundTabs(trains: Array<Pick<CrStationTrain, 'bound'>>) {
   );
 }
 
+// A train's stop times as Yahoo gives them count the hours of its later days
+// on from 24 (33:47 is 09:47 the next morning): the time on the clock, and how
+// many days after `start` (the hour count of its first stop) it falls.
+export function trainStopClock(time: string | null, start: number) {
+  if (!time) return null;
+  const hours = Number(time.slice(0, 2));
+  if (!Number.isFinite(hours)) return { time, days: 0 };
+  return {
+    time: `${String(hours % 24).padStart(2, '0')}${time.slice(2)}`,
+    days: Math.floor(hours / 24) - Math.floor(start / 24),
+  };
+}
+
 // The departure to highlight: the next one from now, on whichever day's table
 // shows, so a train's place in the day reads the same on each of them.
 export function nextDepartureIndex(table: Pick<DepartureTable, 'departures'>, now: { minutes: number } = japanNow()) {
@@ -682,6 +695,8 @@ class TimetablePanel {
     ]);
     for (const comment of train.comments) el('p', 'timetable-comment', this._body).textContent = comment;
     const list = el('ol', 'timetable-stops', this._body);
+    const first = train.stops.find((stop) => stop.departure ?? stop.arrival);
+    const start = Number((first?.departure ?? first?.arrival ?? '00').slice(0, 2)) || 0;
     for (const stop of train.stops) {
       const item = el('li', 'timetable-stop', list);
       if (stop.code === code) item.classList.add('timetable-stop-here');
@@ -695,10 +710,19 @@ class TimetablePanel {
           this._show(() => this._renderLines({ name: stop.name, codes: [stopCode] })),
         );
       }
-      el('span', 'timetable-stop-time', item).textContent = [stop.arrival, stop.departure]
+      const arrival = trainStopClock(stop.arrival, start);
+      const departure = trainStopClock(stop.departure, start);
+      const times = el('span', 'timetable-stop-time', item);
+      times.textContent = [arrival?.time, departure?.time]
         .map((time) => time ?? '')
         .join(' – ')
         .replace(/^ – | – $/g, '');
+      const days = (arrival ?? departure)?.days ?? 0;
+      if (days > 0) {
+        const day = el('span', 'timetable-stop-day', times);
+        day.textContent = `+${days}`;
+        day.title = `${days} day${days > 1 ? 's' : ''} after leaving its origin`;
+      }
       const position = stop.lon !== null && stop.lon !== undefined ? ([stop.lon, stop.lat] as [number, number]) : null;
       this._locate(item, stop.name, position);
     }
