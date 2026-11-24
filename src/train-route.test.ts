@@ -39,6 +39,7 @@ describe('trainRouteFeatures', () => {
       kind: 'stop',
       name: '北京南',
       elements: 'N539260172',
+      rank: 0,
       here: true,
       end: true,
     });

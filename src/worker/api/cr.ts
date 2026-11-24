@@ -7,6 +7,7 @@
 // Runtime-agnostic: the Worker entrypoint injects the query and fetch
 // functions, so tests run this module against SQLite and fixtures.
 
+import { withRanks } from './station-ranks.js';
 import {
   ApiError,
   type ApiResponse,
@@ -330,9 +331,10 @@ async function getRoute(q: Params, code: string, db: Query, today: string): Prom
   ).train;
   const parts = await db('SELECT body FROM route_cr_runs WHERE run = ? ORDER BY part', [run]);
   if (!parts.length) throw new ApiError(404, 'not_found', `no route for China Railway train ${run}`);
-  // Stored as the response itself, compressed
-  const text = await inflate(parts.map((p) => String(p.body)).join(''));
-  return { ...json(200, null, TTL), body: text };
+  // Stored as the response itself, compressed; its stops take their ranks here
+  const body = JSON.parse(await inflate(parts.map((p) => String(p.body)).join(''))) as { stops?: unknown };
+  if (Array.isArray(body.stops)) body.stops = await withRanks(body.stops as Array<{ elements?: unknown }>, db);
+  return json(200, body, TTL);
 }
 
 // '8辆' → 8, '208.95m' → 208.95

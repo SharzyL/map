@@ -76,11 +76,15 @@ SANIN = {
 }
 
 
+# How many routes stop at some stations: 東京 and a minor one
+RANKS = {f"N{i}": 1 for i in range(5000)} | {"N4011643454": 42}
+
+
 def make_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     sql = io.StringIO()
     rows = [("1972920", YAMANOTE), ("5", TOKAIDO), ("jp-15e84d7cdd", SANIN)]
-    relations_sql.write_sql(sql, VERSION, rows)
+    relations_sql.write_sql(sql, VERSION, rows, RANKS)
     conn.executescript(sql.getvalue())
     return conn
 
@@ -113,6 +117,12 @@ class RelationsSqlTest(unittest.TestCase):
         for (size,) in self.conn.execute("SELECT length(CAST(body AS BLOB)) FROM osm_relations"):
             self.assertLessEqual(size, relations_sql.BODY_PART)
 
+    def test_station_ranks_come_back(self) -> None:
+        rank = self.conn.execute("SELECT rank FROM osm_station_ranks WHERE element = 'N4011643454'")
+        self.assertEqual(rank.fetchone(), (42,))
+        # Many, over several statements, all there
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM osm_station_ranks").fetchone(), (5001,))
+
     def test_parts_keep_characters_whole(self) -> None:
         text = "東海道" * 20 + "x"
         parts = relations_sql.parts(text, 10)
@@ -132,7 +142,7 @@ class RelationsSqlTest(unittest.TestCase):
             listing = [{"results": [{"name": name} for (name,) in conn.execute(relations_sql.OLD_TABLES_SQL)]}]
         self.assertEqual(
             relations_sql.drop_old("2026-11-19T18:00:00Z", listing),
-            "DROP TABLE osm_relations_202611121800;",
+            "DROP TABLE osm_relations_202611121800;DROP TABLE osm_station_ranks_202611121800;",
         )
 
     def test_bad_version_is_refused(self) -> None:

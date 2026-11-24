@@ -13,6 +13,7 @@ import {
   ROUTE_HIGHLIGHT_ID_STATE,
   ROUTE_STOPS_STATE,
   routeListFilter,
+  STOP_LABEL_ORDER,
   stopKeys,
   TRAIN_ROUTE_STATE,
   TRAIN_STOPS_STATE,
@@ -62,6 +63,24 @@ describe('addRouteHighlightToStyle', () => {
     expect(validateStyleMin(styled)).toEqual([]);
     expect(styled.state?.[ROUTE_HIGHLIGHT_ID_STATE]).toEqual({ default: '' });
     expect(styled.state?.[ROUTE_HIGHLIGHT_COLOR_STATE]).toEqual({ default: '' });
+  });
+
+  it('places stop labels where the train was opened first, then the ends, then the busiest', () => {
+    const order = createExpression(STOP_LABEL_ORDER as never);
+    if (order.result !== 'success') throw new Error('invalid');
+    const key = (properties: Record<string, unknown>) =>
+      order.value.evaluate({ zoom: 10 }, { type: 1, properties, geometry: [] } as never) as number;
+    const keys = [
+      key({ here: true, end: false, rank: 0 }),
+      key({ here: false, end: true, rank: 1 }),
+      key({ here: false, end: false, rank: 40 }),
+      key({ here: false, end: false, rank: 3 }),
+      key({ here: false, end: false }),
+    ];
+    expect([...keys].sort((a, b) => a - b)).toEqual(keys);
+    expect(styled.layers.find((layer) => layer.id === 'route_highlight_stop_labels')).toMatchObject({
+      layout: { 'symbol-sort-key': STOP_LABEL_ORDER },
+    });
   });
 
   it('draws a train’s sketched route as its line will be drawn once it comes', () => {

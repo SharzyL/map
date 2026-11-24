@@ -7,6 +7,7 @@
 
 import { ApiError, DataUnavailable, errorResponse, json, type ApiResponse, type Query } from './core.js';
 import { route, type Train } from './jp-assemble.js';
+import { withRanks } from './station-ranks.js';
 
 // The train's own path, and /route
 export const TRAIN_ROUTE = /^(\/api\/v1\/norikae\/stations\/[^/]+\/timetables\/[^/]+\/trains\/[^/]+)\/route$/;
@@ -23,6 +24,7 @@ export async function trainRoute(train: Train, db: Query): Promise<ApiResponse> 
   let body: Record<string, unknown>;
   try {
     body = await route(train, db);
+    body.stops = await withRanks(body.stops as Array<{ elements?: unknown }>, db);
   } catch (e) {
     if (e instanceof DataUnavailable) return unavailable();
     throw e;

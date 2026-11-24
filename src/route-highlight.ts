@@ -164,8 +164,17 @@ const isMaster = ['==', ['get', 'kind'], 'master'];
 
 // The names of a highlighted route's or train's stops, from the API's stop
 // list. They go above every other layer, so they are placed before (and push
-// aside) the other railway and base map labels, which fade meanwhile; the
-// stop the train was opened at, and then the ends, win among themselves.
+// aside) the other railway and base map labels, which fade meanwhile; among
+// themselves the stop the train was opened at wins, then the ends, then the
+// busiest stations (`rank`: how many routes stop there).
+export const STOP_LABEL_ORDER = [
+  'case',
+  ['==', ['get', 'here'], true],
+  -2000000,
+  ['==', ['get', 'end'], true],
+  -1000000,
+  ['-', 0, ['to-number', ['get', 'rank'], 0]],
+];
 function stopLabelLayer(id: string, source: string, color: unknown): StyleLayerLike {
   return {
     id,
@@ -180,7 +189,7 @@ function stopLabelLayer(id: string, source: string, color: unknown): StyleLayerL
       'text-radial-offset': 0.7,
       'text-justify': 'auto',
       'text-padding': 4,
-      'symbol-sort-key': ['case', ['==', ['get', 'here'], true], 0, ['==', ['get', 'end'], true], 1, 2],
+      'symbol-sort-key': STOP_LABEL_ORDER,
     },
     paint: {
       'text-color': color,
@@ -480,7 +489,7 @@ export function addRouteHighlightToStyle<T extends StyleLike>(style: T, railwayS
 const OSM_RELATION = 'https://www.openstreetmap.org/relation/';
 const OSM_EDIT = 'https://www.openstreetmap.org/edit?relation=';
 
-type Stop = { name: string; position: [number, number] | null; elements?: string[] | null };
+type Stop = { name: string; position: [number, number] | null; elements?: string[] | null; rank?: number | null };
 // A stop to open the station info box of: its OSM station elements (N1) find
 // the tiles' station, else its name near its position.
 export type StationStop = { name: string; position: [number, number]; elements: string[] };
@@ -498,6 +507,7 @@ export function stopFeatures(stops: Stop[], here: string | null = null): GeoJSON
               kind: 'stop',
               name: stop.name,
               elements: (stop.elements ?? []).join(','),
+              rank: stop.rank ?? 0,
               here: stop.name === here,
               end: index === 0 || index === stops.length - 1,
             },

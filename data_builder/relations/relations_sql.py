@@ -6,8 +6,10 @@ Usage, once a version is imported (standard library only):
     python3 relations_sql.py --drop-old <version> < wrangler-json-of-that-listing
 
 Each relation's JSON is split into parts under D1's statement limit, in a table named by the
-data version (osm_relations_202611121800 ...); the file ends by pointing the osm_relations and
-osm_version views at it, so a failed import leaves the previous version serving.
+data version (osm_relations_202611121800 ...), and the stations' ranks (how many passenger
+routes stop there) go to osm_station_ranks_<version>; the file ends by pointing the
+osm_relations, osm_station_ranks and osm_version views at them, so a failed import leaves the
+previous version serving.
 """
 
 import json
@@ -15,7 +17,11 @@ import re
 import sys
 
 TABLE_COLUMNS = "id TEXT, part INTEGER, body TEXT, PRIMARY KEY (id, part)"
-OLD_TABLES_SQL = "SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'osm_relations_[0-9]*'"
+RANK_COLUMNS = "element TEXT PRIMARY KEY, rank INTEGER"
+OLD_TABLES_SQL = (
+    "SELECT name FROM sqlite_master WHERE type = 'table' "
+    "AND (name GLOB 'osm_relations_[0-9]*' OR name GLOB 'osm_station_ranks_[0-9]*')"
+)
 MAX_STATEMENT = 90_000  # D1 rejects statements over 100 KB
 BODY_PART = 40_000  # bytes of JSON per row
 
@@ -50,8 +56,23 @@ def parts(text, size=BODY_PART):
     return out
 
 
-def write_sql(out, version, rows):
-    """rows: (id, body) -> one data version's table, then the views switched to it"""
+def write_rows(out, head, values):
+    """INSERT statements of `head` and the values, each under the statement limit"""
+    batch, size = [], len(head)
+    for v in values:
+        n = len(v.encode()) + 1
+        if batch and size + n > MAX_STATEMENT:
+            out.write(head + ",".join(batch) + ";\n")
+            batch, size = [], len(head)
+        batch.append(v)
+        size += n
+    if batch:
+        out.write(head + ",".join(batch) + ";\n")
+
+
+def write_sql(out, version, rows, ranks=None):
+    """rows: (id, body), ranks: {station element: rank} -> one data version's
+    tables, then the views switched to them"""
     table = f"osm_relations_{table_suffix(version)}"
     out.write(
         f"DROP TABLE IF EXISTS {table};\nCREATE TABLE {table} ({TABLE_COLUMNS}) WITHOUT ROWID;\n"
@@ -79,9 +100,19 @@ def write_sql(out, version, rows):
             stats["parts"] += 1
     if batch:
         out.write(head + ",".join(batch) + ";\n")
+    rank_table = f"osm_station_ranks_{table_suffix(version)}"
+    out.write(
+        f"DROP TABLE IF EXISTS {rank_table};\nCREATE TABLE {rank_table} ({RANK_COLUMNS}) WITHOUT ROWID;\n"
+    )
+    write_rows(
+        out,
+        f"INSERT INTO {rank_table} VALUES ",
+        (f"({value(e)},{int(n)})" for e, n in sorted((ranks or {}).items())),
+    )
     # Last, so a partial import never switches the views
     out.write(
         f"DROP VIEW IF EXISTS osm_relations;\nCREATE VIEW osm_relations AS SELECT * FROM {table};\n"
+        f"DROP VIEW IF EXISTS osm_station_ranks;\nCREATE VIEW osm_station_ranks AS SELECT * FROM {rank_table};\n"
         f"DROP VIEW IF EXISTS osm_version;\nCREATE VIEW osm_version AS SELECT {value(version)} AS version;\n"
     )
     return stats

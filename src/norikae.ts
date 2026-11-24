@@ -166,7 +166,7 @@ export type TrainRoute = {
   ways: number[];
   partial: string[];
   overview: string[];
-  stops: Array<{ name: string; position: [number, number] | null; elements: string[] | null }>;
+  stops: Array<{ name: string; position: [number, number] | null; elements: string[] | null; rank?: number | null }>;
   legs: Array<{
     from: string;
     to: string;
@@ -205,7 +205,14 @@ export type RelationDetails = {
   length_m?: number;
   overview: string[];
   ways?: number[];
-  stops?: Array<{ name: string; position: [number, number] | null; elements: string[] | null; km: number | null }>;
+  // `rank`: how many routes stop at the station, which labels are placed by
+  stops?: Array<{
+    name: string;
+    position: [number, number] | null;
+    elements: string[] | null;
+    km: number | null;
+    rank?: number | null;
+  }>;
   routes?: RelationSummary[];
 };
 

@@ -23,6 +23,10 @@ track in the extract, and Japan's official lines (jp-<hash>, line-groups.sh).
 Stations are railway=station, halt and tram_stop elements;
 public_transport=station alone is as often a bus terminal or a pier. A
 route's stops are its stop and platform members in order, one per station.
+Every stop carries a rank: how many passenger routes stop at its station
+(the stations of a stop area share it), which the map places stop labels
+by, the busiest first. The ranks of all stations go to D1 too
+(osm_station_ranks), for the stops of a train's route.
 A line's stations are:
 - OSM lines: the stations it lists as members (Chinese lines mostly do),
   and those with a station node within 100 m of its track, a stop position
@@ -546,6 +550,7 @@ class Builder:
         self.platform_of_point = platforms
         self.platform_tree = cKDTree(xyz(points)) if points else None
         self._names = {}
+        self._ranks = None
 
     # ---- elements
     def tags(self, elem):
@@ -774,12 +779,34 @@ class Builder:
                     grew = True
         return [w for w in way_ids if w in kept]
 
+    def station_ranks(self) -> dict:
+        """How many passenger routes stop at each station element: those whose
+        stop or platform members belong to its station (a stop area's stations
+        share theirs)"""
+        if self._ranks is None:
+            routes = defaultdict(set)
+            for rid, (tags, members) in self.relations.items():
+                if tags.get("type") != "route" or tags.get("route") not in ROUTES:
+                    continue
+                for t, i, role in members:
+                    if role.split("_")[0] in STOP_ROLES:
+                        for e in self.stations_of((t, i)):
+                            routes[e].add(rid)
+            self._ranks = {e: len(rids) for e, rids in routes.items()}
+        return self._ranks
+
+    def rank(self, elems) -> int:
+        """A stop's rank: the busiest of its station elements"""
+        ranks = self.station_ranks()
+        return max((ranks.get(e, 0) for e in elems), default=0)
+
     def entry(self, elems, position, km=None) -> dict:
         return {
             "name": self.station_name(elems) if elems else None,
             "position": [round(position[0], 6), round(position[1], 6)],
             "elements": [ref(e) for e in sorted(elems, key=elem_sort_key)],
             "km": km,
+            "rank": self.rank(elems),
         }
 
     def route_stops(self, rid) -> list:
@@ -808,6 +835,7 @@ class Builder:
                     last["elements"] = [
                         ref(e) for e in sorted(last_elems, key=elem_sort_key)
                     ]
+                    last["rank"] = self.rank(last_elems)
                     if is_stop and not last_is_stop:
                         last["position"] = [round(p[0], 6), round(p[1], 6)]
                         last["km"] = railway_km(self.tags(elem))
@@ -1104,11 +1132,13 @@ def main():
             yield row
         yield from builder.official_lines_rows(groups_dir, n02_stations)
 
+    ranks = {ref(e): n for e, n in builder.station_ranks().items()}
     with open(out_path, "w", encoding="utf-8") as out:
-        stats = write_sql(out, version, rows())
+        stats = write_sql(out, version, rows(), ranks)
     print(
         f"{out_path}: data {version}, {stats['rows']} relations in {stats['parts']} rows, "
         f"{stats['bytes'] / 1e6:.1f} MB of JSON (largest {stats['largest'][1]}, "
+        f"{len(ranks)} station ranks, "
         f"{stats['largest'][0] / 1e3:.0f} KB), {time.time() - start:.0f} s"
     )
 

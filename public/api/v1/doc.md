@@ -400,20 +400,20 @@ GET /api/v1/norikae/stations/22715/timetables/1051/trains/33471/route
   "ways": [123456789, 123456790],
   "partial": ["<polyline>"],
   "overview": ["<polyline>"],
-  "stops": [{ "name": "大船", "position": [139.5314, 35.3533], "elements": ["N263267206"] }],
+  "stops": [{ "name": "大船", "position": [139.5314, 35.3533], "elements": ["N263267206"], "rank": 23 }],
   "legs": [{ "from": "大船", "to": "戸塚", "line": "湘南新宿ライン", "method": "line" }]
 }
 ```
 
-| Field          |                                                                                                                                                                                                   |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `data_version` | the OSM data's time (its `osmosis_replication_timestamp`)                                                                                                                                         |
-| `bbox`         | `[west, south, east, north]` of the route                                                                                                                                                         |
-| `ways`         | OSM railway ways the train covers end to end                                                                                                                                                      |
-| `partial`      | the parts of ways it covers only partly, as geometry                                                                                                                                              |
-| `overview`     | the whole route simplified to about 300 m, for small scales                                                                                                                                       |
-| `stops`        | each stop: where the route meets it (`[lon, lat]`) and its OSM station elements                                                                                                                   |
-| `legs`         | the route between consecutive stops: `line`, the OSM route it follows (`null` if none); `method`, `line` (along it) or `straight` (no route found; `straight` is a straight line to draw instead) |
+| Field          |                                                                                                                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data_version` | the OSM data's time (its `osmosis_replication_timestamp`)                                                                                                                                           |
+| `bbox`         | `[west, south, east, north]` of the route                                                                                                                                                           |
+| `ways`         | OSM railway ways the train covers end to end                                                                                                                                                        |
+| `partial`      | the parts of ways it covers only partly, as geometry                                                                                                                                                |
+| `overview`     | the whole route simplified to about 300 m, for small scales                                                                                                                                         |
+| `stops`        | each stop: where the route meets it (`[lon, lat]`), its OSM station elements and `rank`, how many OSM passenger routes stop at the station (`null` without elements or before the ranks are loaded) |
+| `legs`         | the route between consecutive stops: `line`, the OSM route it follows (`null` if none); `method`, `line` (along it) or `straight` (no route found; `straight` is a straight line to draw instead)   |
 
 Geometry is a Google encoded polyline with precision 6 (latitude first); a
 line in several pieces is an array of them. Errors are the train endpoint's,
@@ -770,8 +770,8 @@ GET /api/v1/relations/1972920
   "overview": ["{er}bAuw}oiGryQt|Ajs…"],
   "ways": [781158785, 211240840],
   "stops": [
-    { "name": "品川", "position": [139.738507, 35.628654], "elements": ["N4011643454"], "km": null },
-    { "name": "大崎", "position": [139.728663, 35.619475], "elements": ["N241815384"], "km": null }
+    { "name": "品川", "position": [139.738507, 35.628654], "elements": ["N4011643454"], "km": null, "rank": 31 },
+    { "name": "大崎", "position": [139.728663, 35.619475], "elements": ["N241815384"], "km": null, "rank": 14 }
   ]
 }
 ```
@@ -788,8 +788,10 @@ GET /api/v1/relations/1972920
   by side, joined into as few pieces as possible.
 - `stops`: stations in order, each with its `name`, `position`, the station
   elements it belongs to (`railway=station`, `halt` or `tram_stop`, through
-  its stop area, else the nearest within 300 m) and `km`, the stop
-  position's `railway:position` when tagged.
+  its stop area, else the nearest within 300 m), `km`, the stop
+  position's `railway:position` when tagged, and `rank`, how many OSM
+  passenger routes stop at the station (the busiest of its elements; a
+  stop area's stations share theirs), which the map places labels by.
   - A route: its stop and platform members in member order, one per station,
     placed at the stop position.
   - A line: the stations it lists as members, and those of its kind of track

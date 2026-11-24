@@ -75,8 +75,13 @@ const TABLES: Record<string, Value[][]> = {
   ],
 };
 
-function makeDb(): DatabaseSync {
+// relations_sql.py's, by the relations step: routes stopping at 1 and 2
+function makeDb({ ranks = true } = {}): DatabaseSync {
   const db = new DatabaseSync(':memory:');
+  if (ranks) {
+    db.exec('CREATE TABLE osm_station_ranks (element TEXT PRIMARY KEY, rank INTEGER) WITHOUT ROWID');
+    db.exec("INSERT INTO osm_station_ranks VALUES ('N1', 12), ('N2', 3)");
+  }
   for (const [t, cols] of Object.entries(JP_TABLES)) {
     db.exec(`CREATE TABLE jp_${t} (${cols}) WITHOUT ROWID`);
     for (const row of TABLES[t]) {
@@ -121,7 +126,15 @@ describe('trainRoute', () => {
       ['駅1', '駅2', 'JRテスト線 普通', 'line'],
       ['駅2', '駅3', 'JRテスト線 普通', 'line'],
     ]);
-    expect(body.stops[1]).toEqual({ name: '駅2', position: [139.011, 35.0], elements: ['N2'] });
+    expect(body.stops[1]).toEqual({ name: '駅2', position: [139.011, 35.0], elements: ['N2'], rank: 3 });
+    // The busiest station first among the labels; one no route stops at, 0
+    expect(body.stops.map((s: any) => s.rank)).toEqual([12, 3, 0]);
+  });
+
+  it('routes without the stations’ ranks before they are imported', async () => {
+    const [status, body] = await route(train('普通', ['1', '2', '3']), makeDb({ ranks: false }));
+    expect(status).toBe(200);
+    expect(body.stops.map((s: any) => s.rank)).toEqual([null, null, null]);
   });
 
   it('keeps a conventional train off the 新幹線', async () => {
@@ -148,7 +161,7 @@ describe('trainRoute', () => {
     const [status, body] = await route(train('普通', ['1', '9']), db);
     expect(status).toBe(200);
     expect(body.legs[0].method).toBe('straight');
-    expect(body.stops[1]).toEqual({ name: '駅9', position: null, elements: [] });
+    expect(body.stops[1]).toEqual({ name: '駅9', position: null, elements: [], rank: null });
   });
 
   it('answers 503 without the data', async () => {

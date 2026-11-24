@@ -329,6 +329,18 @@ class BuildTest(unittest.TestCase):
             },
         )  # fmt: skip
 
+    def test_stops_ranked_by_the_routes_stopping_there(self) -> None:
+        # Only route 200 carries passengers: its stations rank 1, 乙町 too by
+        # sharing 甲's stop area, and the line's other stations 0
+        self.assertEqual([s["rank"] for s in self.bodies["200"]["stops"]], [1, 1, 1])
+        line = {s["name"]: s["rank"] for s in self.bodies["100"]["stops"]}
+        self.assertEqual(line["甲"], 1)
+        builder = br.Builder(self.tmp / "net.opl")
+        self.assertEqual(
+            {br.ref(e): n for e, n in builder.station_ranks().items()},
+            {"N11": 1, "N21": 1, "N12": 1, "N13": 1},
+        )
+
     def test_route_master(self) -> None:
         body = self.bodies["300"]
         self.assertEqual(body["relation"]["kind"], "master")
