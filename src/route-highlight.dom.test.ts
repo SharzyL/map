@@ -9,6 +9,7 @@ import {
   ROUTE_SELECT_EVENT,
   type RouteSelection,
 } from './route-highlight.js';
+import { LOAD_TASK_EVENT, type LoadTaskDetail } from './load-status.js';
 import { forgetResponses } from './norikae.js';
 import { tilesInBounds } from './route-trace.js';
 import { UI_PANEL_OPEN_EVENT } from './ui-panels.js';
@@ -195,6 +196,22 @@ describe('installRouteHighlight', () => {
     panel.querySelectorAll<HTMLButtonElement>('.route-info-routes .route-info-select')[1].click();
     expect(state[ROUTE_HIGHLIGHT_ID_STATE]).toBe('900821542');
     expect(panel.querySelector('.route-info-title').textContent).toBe('15');
+  });
+
+  it('says in the load status that the route is loading until its details are in, or not', async () => {
+    relations['900821540'] = SHANGHAI_15;
+    const { map, container } = createMap();
+    const loads: LoadTaskDetail[] = [];
+    container.addEventListener(LOAD_TASK_EVENT, (event) => loads.push((event as CustomEvent<LoadTaskDetail>).detail));
+    installRouteHighlight(map as never);
+    selectRoute(container, ROUTE);
+    expect(loads).toEqual([expect.objectContaining({ id: 'route-highlight', label: 'route' })]);
+    await vi.waitFor(() => expect(loads).toHaveLength(2));
+    expect(loads[1]).toEqual({ ...loads[0], label: null });
+    // One the API does not have is done too (its outline traced from tiles)
+    selectRoute(container, { ...ROUTE, id: '1' });
+    selectRoute(container, { ...ROUTE, id: '2' });
+    await vi.waitFor(() => expect(loads.filter((load) => load.label === null)).toHaveLength(3));
   });
 
   it('fills the panel from the relations API: details, outline, extent and stations', async () => {

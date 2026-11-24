@@ -12,6 +12,7 @@
 import { mapZoomOutputs } from './map-layers.js';
 import { createPanelShell, el, retryButton } from './map-panel.js';
 import { withRailwayOverlayVisibility } from './railway-filter.js';
+import { beginLoading } from './load-status.js';
 import { decodePolyline, isRetryable, relationDetails, type RelationDetails } from './norikae.js';
 import { ROUTE_TRACE_ZOOM, tilesInBounds, traceRoute, type RouteGeometry } from './route-trace.js';
 import { setGlobalStatePropertyWhenReady } from './style-ready.js';
@@ -882,20 +883,26 @@ export function installRouteHighlight(map: RouteHighlightMap) {
   // Details and the zoomed-out outline from the railway relations API; without
   // them (an error, or a relation it does not have), the outline is traced
   // from z7 tiles.
+  // The load status chip says "Loading route…" meanwhile (load-status.ts).
   async function describe(route: RouteSelection, signal: AbortSignal) {
-    let details: RelationDetails | null = null;
+    const done = beginLoading(container, 'route-highlight', 'route');
     try {
-      details = await relationDetails(route.id, signal);
-    } catch (error) {
+      let details: RelationDetails | null = null;
+      try {
+        details = await relationDetails(route.id, signal);
+      } catch (error) {
+        if (signal.aborted) return;
+        panel.failed(error, () => describe(route, signal).catch(() => {}));
+        await traceOverview(route, signal);
+        return;
+      }
       if (signal.aborted) return;
-      panel.failed(error, () => describe(route, signal).catch(() => {}));
-      await traceOverview(route, signal);
-      return;
+      panel.fill(details);
+      overview()?.setData(overviewGeometry(details.overview, details.stops ?? [], details.relation.kind === 'master'));
+      setStopKeys(stopKeys(details.stops ?? []));
+    } finally {
+      done();
     }
-    if (signal.aborted) return;
-    panel.fill(details);
-    overview()?.setData(overviewGeometry(details.overview, details.stops ?? [], details.relation.kind === 'master'));
-    setStopKeys(stopKeys(details.stops ?? []));
   }
 
   // Set only on a change: each one reloads the railway tiles.

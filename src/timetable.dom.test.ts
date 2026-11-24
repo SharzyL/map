@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LOAD_TASK_EVENT, type LoadTaskDetail } from './load-status.js';
 import { forgetResponses, type CrTrainSchedule, type CrTrainset, type TrainRoute } from './norikae.js';
 import {
   crBoundTabs,
@@ -435,15 +436,24 @@ describe('timetable panel', () => {
     await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
 
     // A train whose track failed to load gets its own Retry.
+    const loads: LoadTaskDetail[] = [];
+    container.addEventListener(LOAD_TASK_EVENT, (event) => loads.push((event as CustomEvent<LoadTaskDetail>).detail));
     failOnce.set('/api/v1/norikae/stations/22715/timetables/1051/trains/33471/route', 503);
     root.querySelector<HTMLButtonElement>('.timetable-direction').click();
     await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
     root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
     await vi.waitFor(() => expect(root.querySelector('.timetable-route-missing .panel-retry')).not.toBeNull());
     expect(root.querySelector('.timetable-route-missing').textContent).toBe('Its track could not be loaded.Retry');
+    // The load status said the route was loading, and no longer does
+    expect(loads.map(({ id, label }) => [id, label])).toEqual([
+      ['train-route', 'route'],
+      ['train-route', null],
+    ]);
     root.querySelector<HTMLButtonElement>('.timetable-route-missing .panel-retry').click();
     await vi.waitFor(() => expect(route.show).toHaveBeenCalledWith(ROUTE, '渋谷', expect.anything()));
     expect(root.querySelector('.timetable-route-missing')).toBeNull();
+    await vi.waitFor(() => expect(loads.at(-1)).toMatchObject({ id: 'train-route', label: null }));
+    expect(loads).toHaveLength(4);
   });
 });
 

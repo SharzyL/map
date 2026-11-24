@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installLoadStatus, loadGroups, loadStatusText, type GroupStatus, type LoadStatusMap } from './load-status.js';
+import {
+  beginLoading,
+  installLoadStatus,
+  loadGroups,
+  loadStatusText,
+  type GroupStatus,
+  type LoadStatusMap,
+} from './load-status.js';
 
 const SOURCES = {
   openmaptiles: { type: 'vector' },
@@ -104,6 +111,62 @@ describe('loadStatusText', () => {
     expect(loadStatusText({ railways: { ...idle, failed: 1 }, map: { ...idle, failed: 1 } })?.text).toBe(
       '2 map and railway tiles failed to load',
     );
+  });
+});
+
+describe('loadStatusText with other loads', () => {
+  const idle: GroupStatus = { loading: false, pending: 0, failed: 0 };
+  const loading = (pending: number | null): GroupStatus => ({ loading: true, pending, failed: 0 });
+
+  it('names what else is loading before the tiles', () => {
+    expect(loadStatusText({ railways: idle, map: idle }, ['route'])?.text).toBe('Loading route…');
+    expect(loadStatusText({ railways: loading(12), map: idle }, ['route'])?.text).toBe(
+      'Loading route and railways… 12 tiles left',
+    );
+    expect(loadStatusText({ railways: loading(3), map: loading(4) }, ['route', 'route'])?.text).toBe(
+      'Loading route, map and railways… 7 tiles left',
+    );
+    // Failed tiles still come first, for their Retry
+    expect(loadStatusText({ railways: { ...idle, failed: 2 }, map: idle }, ['route'])?.failed).toBe(true);
+  });
+});
+
+describe('beginLoading', () => {
+  it('shows a load in the chip once it has lasted a moment, until it is done', () => {
+    const { container, install } = createMap({ tileManagers: true });
+    install();
+    const done = beginLoading(container, 'route-highlight', 'route');
+    vi.advanceTimersByTime(100);
+    expect(shownText(container)).toBeNull();
+    vi.advanceTimersByTime(400);
+    expect(shownText(container)).toBe('Loading route…');
+    done();
+    vi.advanceTimersByTime(20);
+    expect(shownText(container)).toBeNull();
+  });
+
+  it('keeps a newer load of the same thing when an older one ends', () => {
+    const { container, install } = createMap({ tileManagers: true });
+    install();
+    const first = beginLoading(container, 'route-highlight', 'route');
+    const second = beginLoading(container, 'route-highlight', 'route');
+    first();
+    vi.advanceTimersByTime(500);
+    expect(shownText(container)).toBe('Loading route…');
+    second();
+    second();
+    vi.advanceTimersByTime(20);
+    expect(shownText(container)).toBeNull();
+  });
+
+  it('never shows a load shorter than the delay', () => {
+    const { container, install } = createMap({ tileManagers: true });
+    install();
+    const done = beginLoading(container, 'train-route', 'route');
+    vi.advanceTimersByTime(200);
+    done();
+    vi.advanceTimersByTime(1000);
+    expect(shownText(container)).toBeNull();
   });
 });
 

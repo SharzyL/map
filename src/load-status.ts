@@ -12,6 +12,10 @@
 // back to MapLibre's public API: whether a source is loaded (isSourceLoaded),
 // and failed tiles remembered from its error events until they load after all
 // or Retry, which cannot tell when a failed tile leaves the view.
+//
+// Other things the map waits for say so in the same chip (beginLoading): a
+// highlighted route's details and outline, a train's track. "Loading route…",
+// or "Loading route and railways… 12 tiles left" with tiles still coming.
 import { el } from './map-panel.js';
 
 export type LoadGroup = 'railways' | 'map';
@@ -33,6 +37,34 @@ export type LoadStatusMap = {
 };
 
 const SHOW_DELAY_MS = 400;
+
+// Dispatched on the map's container by beginLoading.
+export const LOAD_TASK_EVENT = 'orm:loadtask';
+// `label` names what loads ("route"), null once it is done; `token` tells one
+// load of an `id` from the next, so an older one ending clears nothing.
+export type LoadTaskDetail = { id: string; token: number; label: string | null };
+
+let nextToken = 0;
+
+// Says in the load status chip that `label` is loading, until the function it
+// returns is called. A newer load of the same `id` takes its place.
+export function beginLoading(target: EventTarget, id: string, label: string) {
+  const token = ++nextToken;
+  const send = (detail: LoadTaskDetail) =>
+    target.dispatchEvent(new CustomEvent<LoadTaskDetail>(LOAD_TASK_EVENT, { detail }));
+  send({ id, token, label });
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    send({ id, token, label: null });
+  };
+}
+
+// "a", "a and b", "a, b and c"
+function listed(items: string[]) {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
 // Tile states (MapLibre's TileState) still waiting for data.
 const PENDING_STATES = new Set(['loading', 'reloading', 'expired']);
 // Left out: sources whose data is already in the page (annotations, imports,
@@ -59,16 +91,19 @@ export type GroupStatus = { loading: boolean; pending: number | null; failed: nu
 
 const tiles = (count: number) => `${count} ${count === 1 ? 'tile' : 'tiles'}`;
 
-// The chip's text, or null to hide it. Failures come first: they need Retry.
-export function loadStatusText(status: Record<LoadGroup, GroupStatus>): { text: string; failed: boolean } | null {
+// The chip's text, or null to hide it: the tasks loading (beginLoading) with
+// the tiles. Failures come first: they need Retry.
+export function loadStatusText(
+  status: Record<LoadGroup, GroupStatus>,
+  tasks: string[] = [],
+): { text: string; failed: boolean } | null {
   const { railways, map } = status;
   if (railways.failed || map.failed) {
     const what = railways.failed && map.failed ? 'map and railway' : railways.failed ? 'railway' : 'map';
     const count = railways.failed + map.failed;
     return { text: `${count} ${what} ${count === 1 ? 'tile' : 'tiles'} failed to load`, failed: true };
   }
-  const what =
-    railways.loading && map.loading ? 'map and railways' : railways.loading ? 'railways' : map.loading ? 'map' : '';
+  const what = listed([...new Set(tasks), ...(map.loading ? ['map'] : []), ...(railways.loading ? ['railways'] : [])]);
   if (!what) return null;
   const pending = [railways, map].reduce((sum, group) => sum + (group.loading ? (group.pending ?? 0) : 0), 0);
   return { text: `Loading ${what}…${pending ? ` ${tiles(pending)} left` : ''}`, failed: false };
@@ -88,6 +123,16 @@ export function installLoadStatus(
   // For the fallback: failed tiles by source, as tile keys from error events.
   const failedTiles = new Map<string, Set<unknown>>();
   let tileManagersBroken = false;
+
+  // What else is loading (beginLoading), by id
+  const tasks = new Map<string, { token: number; label: string }>();
+  map.getContainer().addEventListener(LOAD_TASK_EVENT, (event) => {
+    const { id, token, label } = (event as CustomEvent<LoadTaskDetail>).detail ?? {};
+    if (!id) return;
+    if (label) tasks.set(id, { token, label });
+    else if (tasks.get(id)?.token === token) tasks.delete(id);
+    schedule();
+  });
 
   const chip = el('div', 'load-status', map.getContainer());
   chip.setAttribute('role', 'status');
@@ -155,8 +200,12 @@ export function installLoadStatus(
     frame = 0;
     statuses = new Map([...groupOf.keys()].map((id) => [id, sourceStatus(id)]));
     const status = { railways: groupStatus('railways'), map: groupStatus('map') };
-    loadingSince = status.railways.loading || status.map.loading ? (loadingSince ?? Date.now()) : null;
-    const shown = loadStatusText(status);
+    const loading = status.railways.loading || status.map.loading || tasks.size > 0;
+    loadingSince = loading ? (loadingSince ?? Date.now()) : null;
+    const shown = loadStatusText(
+      status,
+      [...tasks.values()].map(({ label }) => label),
+    );
     // Loading shows once it has lasted a moment; check again then.
     const waiting = shown && !shown.failed && Date.now() - loadingSince < SHOW_DELAY_MS;
     clearTimeout(timer);

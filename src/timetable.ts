@@ -15,6 +15,7 @@
 // A train's view draws its route on the map (train-route.ts) and gives each
 // stop the API placed on OSM a button that flies the map there; pointing at a
 // stop marks it on the map.
+import { beginLoading } from './load-status.js';
 import { createPanelShell, el, retryButton } from './map-panel.js';
 import {
   addDays,
@@ -363,9 +364,11 @@ class TimetablePanel {
   // Draws a train's route once the API has it, unless the view changed meanwhile;
   // for a route the API cannot give (an error, a train not routed yet) a note
   // above the stops says why it is not on the map.
+  // The load status chip says "Loading route…" meanwhile (load-status.ts).
   private _drawRoute(load: () => Promise<TrainRoute>, here: string | null) {
     const signal = this._signal;
     if (!this._route) return;
+    const done = beginLoading(this._container, 'train-route', 'route');
     load()
       .then((route) => {
         if (signal.aborted) return;
@@ -391,7 +394,8 @@ class TimetablePanel {
             this._drawRoute(load, here);
           });
         this._body.insertBefore(note, this._body.querySelector('.timetable-stops'));
-      });
+      })
+      .finally(done);
   }
 
   // The trainset 12306 assigns, asked once the train shows. It replaces the
