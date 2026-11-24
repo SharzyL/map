@@ -4,8 +4,8 @@
 // here per train, the one place a highlight edits layers), and the rest is a
 // GeoJSON source: the outline below z7, the parts of ways it covers partly,
 // legs without a path as dashed straight lines, and its stops. Until the route
-// comes (sketch), its stops joined in order stand in for it, faint and dashed,
-// and stay if it cannot be had. The layers and
+// comes (sketch), its stops joined in order stand in for it, drawn as its line
+// is, and stay if it cannot be had. The layers and
 // the dimming of other railways come with the route highlight's
 // (route-highlight.ts), as does the mark on the stop hovered in the timetable.
 import { decodePolyline, type TrainRoute } from './norikae.js';

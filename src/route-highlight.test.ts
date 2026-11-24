@@ -64,6 +64,13 @@ describe('addRouteHighlightToStyle', () => {
     expect(styled.state?.[ROUTE_HIGHLIGHT_COLOR_STATE]).toEqual({ default: '' });
   });
 
+  it('draws a train’s sketched route as its line will be drawn once it comes', () => {
+    const layer = (id: string) => styled.layers.find((candidate) => candidate.id === id) as { paint?: unknown };
+    expect(layer('train_route_sketch').paint).toEqual(layer('train_route_partial_line').paint);
+    expect(layer('train_route_sketch_casing').paint).toEqual(layer('train_route_partial_casing').paint);
+    expect(layer('train_route_sketch').paint).toEqual(layer('train_route_line_0').paint);
+  });
+
   it('highlights lines and stations from every source and zoom that draws them', () => {
     const ranges = (prefix: string) =>
       highlight
