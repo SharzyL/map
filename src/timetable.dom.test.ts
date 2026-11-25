@@ -8,6 +8,7 @@ import {
   crLineTabs,
   crLinesBetweenStops,
   installTimetable,
+  reportUrl,
   timetableButton,
   TIMETABLE_OPEN_EVENT,
   timetableRequestFor,
@@ -443,6 +444,40 @@ describe('timetable panel', () => {
     }
   });
 
+  it('links each view to a new issue about what it shows, beside its source', async () => {
+    const { container, panel } = setup();
+    const root = panel.panel;
+    const issue = () => {
+      const link = root.querySelector<HTMLAnchorElement>('.timetable-footer .timetable-report');
+      const url = new URL(link.href);
+      return { text: link.textContent, title: url.searchParams.get('title'), body: url.searchParams.get('body') };
+    };
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+    await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
+    expect(issue()).toMatchObject({ text: 'Report error', title: 'Timetable error at 渋谷' });
+    root.querySelector<HTMLButtonElement>('.timetable-direction').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
+    expect(issue().title).toBe('Timetable error at 渋谷 (ＪＲ湘南新宿ライン 新宿・高崎・宇都宮方面)');
+    root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
+    await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toHaveLength(3));
+    // The source and the report on one line
+    expect(text(root, '.timetable-footer > a')).toEqual(['Yahoo!乗換案内', 'Report error']);
+    const { title, body } = issue();
+    expect(title).toBe('Route error on train 2824Y (快速, ＪＲ湘南新宿ライン)');
+    expect(body).toContain('- Train: 2824Y 快速 on ＪＲ湘南新宿ライン');
+    expect(body).toContain('- Opened at: 渋谷 (Yahoo code 22715, train 33471)');
+    expect(body).toContain('- Data: Yahoo!乗換案内 (https://transit.yahoo.co.jp/timetable/22715/1051/33471)');
+    expect(body).toContain(`- Map: ${window.location.href}`);
+  });
+
+  it('shows no report link for a view that failed to load', async () => {
+    const { container, panel } = setup();
+    failOnce.set('/api/v1/norikae/stations/22715/timetables', 502);
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+    await vi.waitFor(() => expect(panel.panel.querySelector('.timetable-error')).not.toBeNull());
+    expect(panel.panel.querySelector<HTMLElement>('.timetable-footer').hidden).toBe(true);
+  });
+
   it('shows the error of a failed request', async () => {
     const { container, panel } = setup();
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '架空', codes: ['99999'] } }));
@@ -498,6 +533,29 @@ describe('timetable panel', () => {
     expect(root.querySelector('.timetable-route-missing')).toBeNull();
     await vi.waitFor(() => expect(loads.at(-1)).toMatchObject({ id: 'train-route', label: null }));
     expect(loads).toHaveLength(4);
+  });
+});
+
+describe('reportUrl', () => {
+  it('opens a new issue with the title and a template saying where', () => {
+    const url = new URL(
+      reportUrl({ title: 'Route error on train G1', details: ['Train: G1'] }, 'https://map.test/#10/39/116'),
+    );
+    expect(url.origin + url.pathname).toBe('https://github.com/SharzyL/map/issues/new');
+    expect(url.searchParams.get('title')).toBe('Route error on train G1');
+    expect(url.searchParams.get('body')).toBe(
+      [
+        '**What is wrong**',
+        '',
+        '<!-- What the timetable or the map shows, and what it should show -->',
+        '',
+        '**Where**',
+        '',
+        '- Train: G1',
+        '- Map: https://map.test/#10/39/116',
+        '',
+      ].join('\n'),
+    );
   });
 });
 
@@ -661,13 +719,17 @@ describe('China Railway timetable', () => {
     expect(root.querySelector('.timetable-summary').textContent).toBe(
       'Z156/Z157 · 泰州 → 哈尔滨西 · 2026-11-15 周日始发',
     );
+    const report = new URL(root.querySelector<HTMLAnchorElement>('.timetable-report').href).searchParams;
+    expect(report.get('title')).toBe('Route error on train Z156/Z157');
+    expect(report.get('body')).toContain('- Train: Z156/Z157 (泰州 → 哈尔滨西)');
+    expect(report.get('body')).toContain('- Leaves its origin: 2026-11-15');
     // 12306 has no trainset for it, so that row goes.
     await vi.waitFor(() => expect(root.querySelector('.timetable-trainset')).toBeNull());
     expect(requests).toContain('/api/v1/cr/trainsets/Z156%2FZ157?date=2026-11-15');
     // The train and its first stop are in the header: the facts say the rest.
     expect(text(root, '.timetable-meta dt')).toEqual(['停站', '开行日期', '担当车底']);
     expect(text(root, '.timetable-meta dd')).toEqual([
-      '3站 · 全程 2400 公里',
+      '3站 · 全程 2400 km',
       '2024-04-02 – 2026-11-24',
       '25T · 上局南京段',
     ]);
@@ -683,7 +745,7 @@ describe('China Railway timetable', () => {
     expect(root.querySelector('.timetable-nav .timetable-toggle').textContent).toBe('线路和里程');
     expect(toggle.checked).toBe(false);
     expect(stopList.classList.contains('timetable-show-lines')).toBe(false);
-    expect(text(root, '.timetable-stop-km')).toEqual(['0 公里', '1200 公里', '2400 公里']);
+    expect(text(root, '.timetable-stop-km')).toEqual(['0 km', '1200 km', '2400 km']);
     expect(text(root, '.timetable-stop-lines')).toEqual(['京沪线', '京哈线']);
     toggle.click();
     expect(stopList.classList.contains('timetable-show-lines')).toBe(true);

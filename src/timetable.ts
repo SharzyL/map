@@ -61,6 +61,31 @@ export type TimetableRequest =
   | { name: string; cr: string[] }
   | { name: string; crTrain: string; date: string };
 type Source = { text: string; href?: string };
+// What an error report from a view starts with: its issue's title, and what
+// it is about, a line each.
+type Report = { title: string; details: string[] };
+
+const ISSUES = 'https://github.com/SharzyL/map/issues/new';
+
+// A new issue on the map's repository about what a view shows, its body a
+// template to fill in, with where it was found: the view's details, the map
+// as it was (`map`, the page's address, which keeps the view), the data.
+export function reportUrl(report: Report, map: string) {
+  const body = [
+    '**What is wrong**',
+    '',
+    '<!-- What the timetable or the map shows, and what it should show -->',
+    '',
+    '**Where**',
+    '',
+    ...report.details.map((detail) => `- ${detail}`),
+    `- Map: ${map}`,
+    '',
+  ].join('\n');
+  return `${ISSUES}?${new URLSearchParams({ title: report.title, body })}`;
+}
+const sourceDetail = (source: Source | null) =>
+  source && `Data: ${source.text}${source.href ? ` (${source.href})` : ''}`;
 
 // The panel speaks the language of the timetable it shows: Japanese for
 // Yahoo's, Chinese for China Railway's. What every view says, in each.
@@ -265,6 +290,9 @@ class TimetablePanel {
   private readonly _nav: HTMLElement;
   private readonly _body: HTMLElement;
   private readonly _source: HTMLAnchorElement;
+  private readonly _footer: HTMLElement;
+  private readonly _report: HTMLAnchorElement;
+  private _reported: Report | null = null;
   private readonly _map: TimetableMap;
   private readonly _route: TrainRouteDrawer | null;
   private _abort: AbortController | null = null;
@@ -293,9 +321,19 @@ class TimetablePanel {
     // stays in view however far the list is scrolled.
     this._nav = el('div', 'timetable-nav');
     this.panel.insertBefore(this._nav, this._body);
-    this._source = el('a', 'timetable-source', this.panel);
+    // The data's source, and a link to report an error in what the view shows.
+    this._footer = el('div', 'timetable-footer', this.panel);
+    this._footer.hidden = true;
+    this._source = el('a', 'timetable-source', this._footer);
     this._source.target = '_blank';
     this._source.rel = 'noopener noreferrer';
+    this._report = el('a', 'timetable-report', this._footer);
+    this._report.target = '_blank';
+    this._report.rel = 'noopener noreferrer';
+    // The map's address only now, as it is when the link is followed.
+    this._report.addEventListener('click', () => {
+      if (this._reported) this._report.href = reportUrl(this._reported, window.location.href);
+    });
     this.panel.inert = true;
   }
 
@@ -350,6 +388,9 @@ class TimetablePanel {
 
   private _run({ render: view, lang }: { render: View; lang: Lang }) {
     this._lang = lang;
+    // A view sets its own source and report link; none while it loads.
+    this._footer.hidden = true;
+    this._reported = null;
     this._abort?.abort();
     this._abort = new AbortController();
     const signal = this._abort.signal;
@@ -537,14 +578,25 @@ class TimetablePanel {
     return facts;
   }
 
-  private _setHeader(title: string, summary: string, source: Source | null) {
+  // The view's title and summary, and in its footer the data's source and
+  // what an error report from it is about.
+  private _setHeader(title: string, summary: string, source: Source | null, report: Report | null = null) {
     this._title.textContent = title;
     this._summary.textContent = summary;
     this._source.hidden = !source;
-    if (!source) return;
-    this._source.textContent = source.text;
-    if (source.href) this._source.href = source.href;
-    else this._source.removeAttribute('href');
+    if (source) {
+      this._source.textContent = source.text;
+      if (source.href) this._source.href = source.href;
+      else this._source.removeAttribute('href');
+    }
+    this._reported = report && { ...report, details: [...report.details, sourceDetail(source)].filter(Boolean) };
+    this._report.hidden = !report;
+    if (this._reported) {
+      this._report.textContent = 'Report error';
+      this._report.title = 'Report an error in this timetable or route on GitHub';
+      this._report.href = reportUrl(this._reported, window.location.href);
+    }
+    this._footer.hidden = !source && !report;
   }
 
   private async _renderLines(request: YahooRequest) {
@@ -564,7 +616,10 @@ class TimetablePanel {
     if (signal.aborted) return;
     this._setBack();
     this._body.replaceChildren();
-    this._setHeader(request.name, '路線', tables.length === 1 ? yahooSource(tables[0].source_url) : null);
+    this._setHeader(request.name, '路線', tables.length === 1 ? yahooSource(tables[0].source_url) : null, {
+      title: `Timetable error at ${request.name}`,
+      details: [`Station: ${request.name} (Yahoo codes ${tables.map((table) => table.station.code).join(', ')})`],
+    });
     for (const table of tables) {
       const section = el('section', 'timetable-station', this._body);
       if (tables.length > 1) el('h3', 'timetable-station-name', section).textContent = table.station.name;
@@ -588,7 +643,14 @@ class TimetablePanel {
     const signal = this._signal;
     const table = await departures(code, gid, day, signal);
     if (signal.aborted) return;
-    this._setHeader(stationName, `${table.line} ${directionLabel(table.direction)}`, yahooSource(table.source_url));
+    this._setHeader(stationName, `${table.line} ${directionLabel(table.direction)}`, yahooSource(table.source_url), {
+      title: `Timetable error at ${stationName} (${table.line} ${directionLabel(table.direction)})`,
+      details: [
+        `Station: ${stationName} (Yahoo code ${code})`,
+        `Line: ${table.line} ${directionLabel(table.direction)}`,
+        `Day: ${DAY_LABELS[table.day as TimetableDay] ?? table.day}`,
+      ],
+    });
     this._setBack('路線');
     this._body.replaceChildren();
 
@@ -715,7 +777,14 @@ class TimetablePanel {
     const train = await trainStops(code, gid, trainId, signal);
     if (signal.aborted) return;
     const name = departure?.name ?? train.name;
-    this._setHeader(stationName, [name, train.line].filter(Boolean).join(' · '), yahooSource(train.source_url));
+    const number = departure?.train_number;
+    this._setHeader(stationName, [name, train.line].filter(Boolean).join(' · '), yahooSource(train.source_url), {
+      title: `Route error on train ${number ?? name}${number ? ` (${[name, train.line].filter(Boolean).join(', ')})` : ''}`,
+      details: [
+        `Train: ${[number, name].filter(Boolean).join(' ')}${train.line ? ` on ${train.line}` : ''}`,
+        `Opened at: ${stationName} (Yahoo code ${code}, train ${trainId})`,
+      ],
+    });
     this._setBack('時刻表');
     this._body.replaceChildren();
     const cars = [departure?.cars && `${departure.cars}両`, departure?.green_car && 'グリーン車'].filter(Boolean);
@@ -795,7 +864,10 @@ class TimetablePanel {
     }
     const station = table.station.name;
     const trainCount = `${table.trains.length}趟`;
-    this._setHeader(station, `${crDateLabel(table.date)} · ${trainCount}`, crSource(table.data_version));
+    this._setHeader(station, `${crDateLabel(table.date)} · ${trainCount}`, crSource(table.data_version), {
+      title: `Timetable error at ${station}`,
+      details: [`Station: ${station} (${table.station.telecode})`, `Date: ${table.date}`],
+    });
 
     const today = chinaNow().date;
     const days = this._navGroup('日期');
@@ -953,12 +1025,20 @@ class TimetablePanel {
       stationName ?? run?.train ?? train,
       [stationName && (run?.train ?? train), route, leaves].filter(Boolean).join(' · '),
       crSource(schedule.data_version),
+      {
+        title: `Route error on train ${run?.train ?? train}`,
+        details: [
+          `Train: ${run?.train ?? train}${route ? ` (${route})` : ''}`,
+          `Leaves its origin: ${date}`,
+          ...(stationName ? [`Opened at: ${stationName}`] : []),
+        ],
+      },
     );
     this._setBack('车次');
     this._body.replaceChildren();
     const last = stops[stops.length - 1];
     const facts = this._facts([
-      ['停站', [`${stops.length}站`, last && `全程 ${last.km} 公里`].filter(Boolean).join(' · ')],
+      ['停站', [`${stops.length}站`, last && `全程 ${last.km} km`].filter(Boolean).join(' · ')],
       ['开行日期', run ? `${run.service.from} – ${run.service.to ?? '另行通知'}` : null],
       ['担当车底', rollingStockLabel(run?.rolling_stock)],
     ]);
@@ -1018,7 +1098,7 @@ class TimetablePanel {
         day.textContent = `+${stop.day - 1}`;
         day.title = this._ui.daysAfter(stop.day - 1);
       }
-      el('span', 'timetable-stop-km', item).textContent = `${stop.km} 公里`;
+      el('span', 'timetable-stop-km', item).textContent = `${stop.km} km`;
       const platform = el('span', 'timetable-platform', item);
       platform.textContent = stop.platform ?? '';
       if (stop.platform) platform.title = `站台/检票口 ${stop.platform}`;
