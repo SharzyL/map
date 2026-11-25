@@ -92,21 +92,27 @@ export type GroupStatus = { loading: boolean; pending: number | null; failed: nu
 const tiles = (count: number) => `${count} ${count === 1 ? 'tile' : 'tiles'}`;
 
 // The chip's text, or null to hide it: the tasks loading (beginLoading) with
-// the tiles. Failures come first: they need Retry.
+// the tiles, and whether anything is still loading (its spinner). Failures
+// come first, since they need Retry, followed by what is still loading.
 export function loadStatusText(
   status: Record<LoadGroup, GroupStatus>,
   tasks: string[] = [],
-): { text: string; failed: boolean } | null {
+): { text: string; failed: boolean; loading: boolean } | null {
   const { railways, map } = status;
-  if (railways.failed || map.failed) {
-    const what = railways.failed && map.failed ? 'map and railway' : railways.failed ? 'railway' : 'map';
-    const count = railways.failed + map.failed;
-    return { text: `${count} ${what} ${count === 1 ? 'tile' : 'tiles'} failed to load`, failed: true };
-  }
   const what = listed([...new Set(tasks), ...(map.loading ? ['map'] : []), ...(railways.loading ? ['railways'] : [])]);
-  if (!what) return null;
   const pending = [railways, map].reduce((sum, group) => sum + (group.loading ? (group.pending ?? 0) : 0), 0);
-  return { text: `Loading ${what}…${pending ? ` ${tiles(pending)} left` : ''}`, failed: false };
+  if (railways.failed || map.failed) {
+    const failedWhat = railways.failed && map.failed ? 'map and railway' : railways.failed ? 'railway' : 'map';
+    const count = railways.failed + map.failed;
+    const still = !what ? '' : pending ? ` · ${tiles(pending)} still loading` : ' · still loading';
+    return {
+      text: `${count} ${failedWhat} ${count === 1 ? 'tile' : 'tiles'} failed to load${still}`,
+      failed: true,
+      loading: !!what,
+    };
+  }
+  if (!what) return null;
+  return { text: `Loading ${what}…${pending ? ` ${tiles(pending)} left` : ''}`, failed: false, loading: true };
 }
 
 const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
@@ -214,7 +220,7 @@ export function installLoadStatus(
     if (chip.hidden) return;
     chip.classList.toggle('load-status-failed', shown.failed);
     label.textContent = shown.text;
-    spinner.hidden = shown.failed;
+    spinner.hidden = !shown.loading;
     retry.hidden = !shown.failed;
   };
   const schedule = () => {

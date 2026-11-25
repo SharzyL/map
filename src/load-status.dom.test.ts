@@ -104,13 +104,20 @@ describe('loadStatusText', () => {
       'Loading map and railways… 7 tiles left',
     );
     expect(loadStatusText({ railways: loading(null), map: idle })?.text).toBe('Loading railways…');
+    // With what is still loading after them
     expect(loadStatusText({ railways: { loading: true, pending: 2, failed: 3 }, map: loading(5) })).toEqual({
-      text: '3 railway tiles failed to load',
+      text: '3 railway tiles failed to load · 7 tiles still loading',
       failed: true,
+      loading: true,
     });
-    expect(loadStatusText({ railways: { ...idle, failed: 1 }, map: { ...idle, failed: 1 } })?.text).toBe(
-      '2 map and railway tiles failed to load',
+    expect(loadStatusText({ railways: { loading: true, pending: null, failed: 1 }, map: idle })?.text).toBe(
+      '1 railway tile failed to load · still loading',
     );
+    expect(loadStatusText({ railways: { ...idle, failed: 1 }, map: { ...idle, failed: 1 } })).toEqual({
+      text: '2 map and railway tiles failed to load',
+      failed: true,
+      loading: false,
+    });
   });
 });
 
@@ -127,7 +134,11 @@ describe('loadStatusText with other loads', () => {
       'Loading route, map and railways… 7 tiles left',
     );
     // Failed tiles still come first, for their Retry
-    expect(loadStatusText({ railways: { ...idle, failed: 2 }, map: idle }, ['route'])?.failed).toBe(true);
+    expect(loadStatusText({ railways: { ...idle, failed: 2 }, map: idle }, ['route'])).toEqual({
+      text: '2 railway tiles failed to load · still loading',
+      failed: true,
+      loading: true,
+    });
   });
 });
 
@@ -192,6 +203,23 @@ describe('installLoadStatus with tile managers', () => {
     vi.advanceTimersByTime(20);
     expect(shownText(container)).toBeNull();
     expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('says how many tiles are still loading beside the failed ones, with both its spinner and Retry', () => {
+    const { map, container, tileStates, install } = createMap({ tileManagers: true });
+    install();
+    tileStates.openrailwaymap = { a: 'errored', b: 'loading', c: 'loading', d: 'loaded' };
+    map.fire('error', tileEvent('openrailwaymap', 'a'));
+    vi.advanceTimersByTime(20);
+    expect(shownText(container)).toBe('1 railway tile failed to load · 2 tiles still loading');
+    expect(retry(container).hidden).toBe(false);
+    expect(chip(container).querySelector<HTMLElement>('.load-status-spinner').hidden).toBe(false);
+
+    tileStates.openrailwaymap = { a: 'errored', b: 'loaded', c: 'loaded', d: 'loaded' };
+    map.fire('idle');
+    vi.advanceTimersByTime(20);
+    expect(shownText(container)).toBe('1 railway tile failed to load');
+    expect(chip(container).querySelector<HTMLElement>('.load-status-spinner').hidden).toBe(true);
   });
 
   it('reports failed tiles in view, forgets them once out of view, and Retry reloads their source', () => {
