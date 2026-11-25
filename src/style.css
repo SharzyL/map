@@ -2694,9 +2694,10 @@ button.timetable-stop-name:focus-visible {
   white-space: nowrap;
 }
 
-/* China Railway: the lines a train changes between at the station, and in
-   its stops the numbers it changes between; inline, on the text's baseline. */
-.timetable-line-change,
+/* China Railway: the line a train runs on at the station (or the lines it
+   changes between), and in its stops the numbers it changes between; inline,
+   on the text's baseline. */
+.timetable-train-line,
 .timetable-number-change {
   margin-left: 6px;
   font-size: 11px;
@@ -2706,7 +2707,7 @@ button.timetable-stop-name:focus-visible {
   font-weight: 600;
 }
 
-.timetable-line-change {
+.timetable-train-line {
   color: #94a3b8;
 }
 

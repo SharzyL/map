@@ -998,9 +998,12 @@ class TimetablePanel {
       if (isHighSpeedTrain(train.train)) numberCell.classList.add('timetable-highspeed');
       const destination = el('span', 'timetable-destination', button);
       destination.textContent = `${train.origin} → ${train.destination}`;
-      // A train changing lines here says so.
-      if (train.line_in && train.line_out && train.line_in !== train.line_out)
-        el('span', 'timetable-line-change', destination).textContent = `${train.line_in}→${train.line_out}`;
+      // The line it runs on here, or the lines it changes between.
+      const lines =
+        train.line_in && train.line_out && train.line_in !== train.line_out
+          ? `${train.line_in}→${train.line_out}`
+          : (train.line ?? train.line_out ?? train.line_in);
+      if (lines) el('span', 'timetable-train-line', destination).textContent = lines;
       el('span', 'timetable-platform', button).textContent = train.platform ?? '';
       button.title = [
         number !== train.train && `全程车次 ${train.train}`,

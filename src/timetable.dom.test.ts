@@ -711,8 +711,9 @@ describe('China Railway timetable', () => {
     expect(text(root, '.timetable-time')).toEqual(['06:02', '08:00', '09:11']);
     expect(root.querySelector('.timetable-time-arrival').textContent).toBe('09:11');
     expect(text(root, '.timetable-platform')).toEqual(['10', '7', '']);
-    // A train changing lines here says so; the full number and its direction are on hover.
-    expect(text(root, '.timetable-line-change')).toEqual(['京沪→京哈']);
+    // The line each train runs on here, or the lines it changes between; the
+    // full number and its direction are on hover.
+    expect(text(root, '.timetable-train-line')).toEqual(['京沪→京哈', '京广高速']);
     expect(root.querySelector<HTMLElement>('.timetable-departure-button').title).toBe(
       '全程车次 Z156/Z157 · 京哈 下行 · 站台/检票口 10',
     );
