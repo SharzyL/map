@@ -34,6 +34,27 @@ describe('addRailwayHoverToStyle', () => {
     expect(added.sources).toHaveProperty(RAILWAY_HOVER_SOURCE);
   });
 
+  it('goes under a route highlight added before it, which keeps its color while pointed at', () => {
+    const highlighted = {
+      ...style,
+      layers: [
+        ...style.layers.slice(0, 3),
+        { id: 'route_highlight_overview_line', type: 'line', source: 'route' },
+        // The highlight's lines from the railway tiles themselves
+        { id: 'route_highlight_line_0', type: 'line', source: 'orm', 'source-layer': 'railway_line_high' },
+        style.layers[3],
+      ],
+    };
+    const ids = addRailwayHoverToStyle(highlighted, ['orm']).layers.map(({ id }) => id);
+    expect(ids.slice(2, 7)).toEqual([
+      'line_high',
+      'railway_hover_area',
+      'railway_hover_line',
+      'railway_hover_point',
+      'route_highlight_overview_line',
+    ]);
+  });
+
   it('leaves a style without railway lines alone', () => {
     expect(addRailwayHoverToStyle(style, ['other'])).toBe(style);
   });

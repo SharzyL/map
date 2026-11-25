@@ -540,10 +540,10 @@ async function loadStyle(
   ]);
   const ormStyle = rewriteOrmStyle(ormStyleRaw, tileUrl);
   const railwaySources = (ormStyle.metadata?.ormRewrittenSources as string[] | undefined) ?? [];
-  // The hover overlay right above the railway lines, the route highlight's
-  // lines below it, so a highlighted route still shows what is pointed at.
-  const merged = addRouteHighlightToStyle(
-    addRailwayHoverToStyle(
+  // The hover overlay right above the railway lines and under the route
+  // highlight's (railway-hover.ts).
+  const merged = addRailwayHoverToStyle(
+    addRouteHighlightToStyle(
       applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter),
       railwaySources,
     ),

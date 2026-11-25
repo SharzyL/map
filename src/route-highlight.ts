@@ -324,6 +324,10 @@ function trainRouteLayers(lineRanges: SourceRange[]): StyleLayerLike[] {
   ];
 }
 
+// The layers drawing a highlighted route or a train's track (some of them the
+// railway tiles' own lines, filtered), which others go under.
+export const isRouteHighlightLayer = (id: string | undefined) => /^(route_highlight|train_route)_/.test(id ?? '');
+
 function routeHighlightLayers(layers: StyleLayerLike[]): StyleLayerLike[] {
   const lineRanges = sourceRanges(layers, (sourceLayer) => sourceLayer === LINE_SOURCE_LAYER);
   const stationRanges = sourceRanges(layers, (sourceLayer) => sourceLayer.startsWith(STATION_SOURCE_LAYER_PREFIX));

@@ -12,6 +12,7 @@
 // hundreds of milliseconds on the main thread.
 import { withRailwayOverlayVisibility } from './railway-filter.js';
 import { RAILWAY_HOVER_COLOR } from './railway-colors.js';
+import { isRouteHighlightLayer } from './route-highlight.js';
 
 export const RAILWAY_HOVER_SOURCE = 'railway-hover';
 const LINE_SOURCE_LAYER = 'railway_line_high';
@@ -64,19 +65,25 @@ export function railwayHoverLayers(areaColor: unknown = AREA_COLOR): StyleLayerL
 }
 
 // Adds the hover layers right above the last railway line layer, so a lit
-// line covers the lines and the station icons and labels stay on top of it.
+// line covers the lines and the station icons and labels stay on top of it,
+// but under a highlighted route (route-highlight.ts, whose lines are railway
+// lines too), which keeps its color while pointed at: the pointer stays over
+// it once a route in its info box is picked.
 export function addRailwayHoverToStyle<T extends StyleLike>(style: T, railwaySources: readonly string[]): T {
   const layers = style.layers || [];
   const railway = new Set(railwaySources);
-  const insertAt =
+  const afterLines =
     layers.findLastIndex(
       (layer) =>
         !!layer.source &&
         railway.has(layer.source) &&
         layer.type === 'line' &&
-        layer['source-layer'] === LINE_SOURCE_LAYER,
+        layer['source-layer'] === LINE_SOURCE_LAYER &&
+        !isRouteHighlightLayer(layer.id),
     ) + 1;
-  if (insertAt === 0) return style;
+  if (afterLines === 0) return style;
+  const highlight = layers.findIndex((layer) => isRouteHighlightLayer(layer.id));
+  const insertAt = highlight >= 0 ? Math.min(highlight, afterLines) : afterLines;
   const sources = { ...((style.sources as Record<string, unknown>) || {}) };
   sources[RAILWAY_HOVER_SOURCE] = { type: 'geojson', data: EMPTY };
   const area = layers.find((layer) => layer.id === AREA_LAYER)?.paint as Record<string, unknown> | undefined;
