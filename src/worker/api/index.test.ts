@@ -8,6 +8,8 @@ import basicHtml from './fixtures/basic.html?raw';
 import ferryHtml from './fixtures/ferry.html?raw';
 import linesHtml from './fixtures/lines.html?raw';
 import noStationHtml from './fixtures/no_station.html?raw';
+import statusLinesHtml from './fixtures/status-lines.html?raw';
+import statusTimetableHtml from './fixtures/status-timetable.html?raw';
 import suggestJson from './fixtures/suggest.json?raw';
 import timetableHtml from './fixtures/timetable.html?raw';
 import trainHtml from './fixtures/train.html?raw';
@@ -273,6 +275,29 @@ describe('stations', () => {
       new FakeYahoo(trainHtml),
     );
     expect(body.line).toBe('ＪＲ山手線外回り');
+  });
+});
+
+describe('service notices', () => {
+  it('gives the lines of a station with notices, fetched and kept for minutes', async () => {
+    const yahoo = new FakeYahoo(statusLinesHtml);
+    const { resp, body } = await call('/api/v1/norikae/stations/21338/status', yahoo);
+    expect(resp.status).toBe(200);
+    expect(resp.headers['cache-control']).toBe('public, max-age=180');
+    // Not the lines page the timetable keeps for a day
+    expect(yahoo.calls.at(-1)).toEqual(['https://transit.yahoo.co.jp/timetable/21338?diainfo=1', 180]);
+    expect(body.source_url).toBe('https://transit.yahoo.co.jp/timetable/21338');
+    expect(body.lines.map((line: { line: string }) => line.line)).toEqual(['ＪＲ陸羽西線', 'ＪＲ陸羽東線']);
+  });
+
+  it('gives a direction’s line and its notices', async () => {
+    const yahoo = new FakeYahoo(statusTimetableHtml);
+    const { resp, body } = await call('/api/v1/norikae/stations/21338/timetables/510/status', yahoo);
+    expect(resp.status).toBe(200);
+    expect(yahoo.calls.at(-1)).toEqual(['https://transit.yahoo.co.jp/timetable/21338/510?diainfo=1', 180]);
+    expect(body.line).toBe('陸羽東線');
+    expect(body.notices[0].message).toContain('鳴子温泉〜新庄駅間の運転を見合わせています');
+    expect(body.url).toBe('https://transit.yahoo.co.jp/traininfo/detail/460/0/');
   });
 });
 

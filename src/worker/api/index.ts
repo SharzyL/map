@@ -23,8 +23,10 @@ import { dispatchSearch, SEARCH_PATH } from './search.js';
 const ENDPOINTS = [
   '/norikae/routes',
   '/norikae/stations',
+  '/norikae/stations/{code}/status',
   '/norikae/stations/{code}/timetables',
   '/norikae/stations/{code}/timetables/{gid}',
+  '/norikae/stations/{code}/timetables/{gid}/status',
   '/norikae/stations/{code}/timetables/{gid}/trains/{train_id}',
   '/norikae/stations/{code}/timetables/{gid}/trains/{train_id}/route',
   '/cr/stations',

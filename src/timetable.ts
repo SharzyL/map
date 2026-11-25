@@ -31,6 +31,10 @@ import {
   minutesOf,
   NorikaeError,
   stationLines,
+  stationStatus,
+  directionStatus,
+  type DirectionStatus,
+  type ServiceNotice,
   trainRoute,
   trainStops,
   type CrLine,
@@ -62,6 +66,60 @@ export type TimetableRequest =
   | { name: string; cr: string[] }
   | { name: string; crTrain: string; date: string };
 type Source = { text: string; href?: string };
+
+// A service notice's weight, for its color: a suspension (運転見合わせ, which
+// Yahoo may file under その他 and say only in the message), a delay, service
+// back to normal, or anything else.
+type NoticeSeverity = 'stop' | 'delay' | 'normal' | 'info';
+export function noticeSeverity({ status, message }: ServiceNotice): NoticeSeverity {
+  const text = `${status} ${message}`;
+  if (/見合わせ|運休|運転中止|不通/.test(text)) return 'stop';
+  if (/遅延|遅れ/.test(text)) return 'delay';
+  if (/再開|平常/.test(text)) return 'normal';
+  return 'info';
+}
+const SEVERITY_LABELS: Record<NoticeSeverity, string> = {
+  stop: '運転見合わせ',
+  delay: '遅延',
+  normal: '運転再開',
+  info: '運行情報',
+};
+const SEVERITY_ORDER: NoticeSeverity[] = ['stop', 'delay', 'info', 'normal'];
+// The weightiest of a line's notices; a line flagged without one is 'info'.
+const worstSeverity = (notices: ServiceNotice[]) =>
+  SEVERITY_ORDER.find((severity) => notices.some((notice) => noticeSeverity(notice) === severity)) ?? 'info';
+
+// When a notice was updated: the time today in Japan, else the date too.
+export function noticeUpdated(updated: string | null, now = new Date()) {
+  if (!updated) return null;
+  const [date, time] = updated.split(' ');
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(now);
+  const [, month, day] = date.split('-').map(Number);
+  return `${date === today ? '' : `${month}/${day} `}${time}更新`;
+}
+
+// A direction's notices, a box each, with the line's page on Yahoo.
+function noticeBoxes(status: DirectionStatus) {
+  const boxes = el('div', 'timetable-notices');
+  for (const notice of status.notices) {
+    const box = el('div', 'timetable-notice', boxes);
+    box.dataset.severity = noticeSeverity(notice);
+    const head = el('div', 'timetable-notice-head', box);
+    el('span', 'timetable-notice-status', head).textContent = [notice.status, notice.cause].filter(Boolean).join(' · ');
+    const updated = noticeUpdated(notice.updated);
+    if (updated) el('span', 'timetable-notice-updated', head).textContent = updated;
+    el('p', 'timetable-notice-message', box).textContent = notice.message;
+    if (notice.range) el('div', 'timetable-notice-range', box).textContent = notice.range;
+    if (status.url) {
+      const link = el('a', 'timetable-notice-link', box);
+      link.href = status.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = '運行情報の詳細';
+    }
+  }
+  return boxes;
+}
 
 // High-speed rail, drawn in the map's high-speed purple: in Japan a 新幹線
 // line; in China a G train. (D and C trains run on high-speed and
@@ -656,6 +714,7 @@ class TimetablePanel {
 
   private _renderStationLines(name: string, table: StationLines) {
     this._body.replaceChildren();
+    const badgeSlots = new Map<string, { slot: HTMLElement; gid: string | null }>();
     this._setHeader(name, '路線', yahooSource(table.source_url), {
       title: `Timetable error at ${table.station.name}`,
       details: [`Station: ${table.station.name} (Yahoo code ${table.station.code})`],
@@ -667,6 +726,7 @@ class TimetablePanel {
       const lineName = el('div', 'timetable-line-name', group);
       lineName.textContent = line.name;
       if (isHighSpeedLine(line.name)) lineName.classList.add('timetable-highspeed');
+      badgeSlots.set(line.name, { slot: lineName, gid: line.directions[0]?.gid ?? null });
       for (const { direction, gid } of line.directions) {
         const button = el('button', 'timetable-direction', group);
         button.type = 'button';
@@ -676,6 +736,49 @@ class TimetablePanel {
         );
       }
     }
+    // A badge by each line with a service notice, once they come (a station's
+    // other tab, picked meanwhile, has its own). The station's page only flags
+    // some lines (a suspension among them), whose notices their direction's
+    // page has.
+    const signal = this._signal;
+    const label = (badge: HTMLElement, notices: ServiceNotice[]) => {
+      const severity = worstSeverity(notices);
+      badge.dataset.severity = severity;
+      badge.textContent = SEVERITY_LABELS[severity];
+      badge.title = notices.map(({ message }) => message).join('\n') || '運行情報があります';
+    };
+    stationStatus(table.station.code, signal).then(
+      ({ lines }) => {
+        if (!section.isConnected) return;
+        for (const status of lines) {
+          const line = badgeSlots.get(status.line);
+          if (!line) continue;
+          const badge = el('span', 'timetable-notice-badge', line.slot);
+          label(badge, status.notices);
+          if (status.notices.length > 0 || !line.gid) continue;
+          directionStatus(table.station.code, line.gid, signal).then(
+            ({ notices }) => {
+              if (notices.length > 0 && section.isConnected) label(badge, notices);
+            },
+            () => {},
+          );
+        }
+      },
+      () => {},
+    );
+  }
+
+  // A direction's service notices at the top of its view, once they come;
+  // nothing when it has none or they cannot be had.
+  private _showNotices(code: string, gid: string) {
+    const signal = this._signal;
+    directionStatus(code, gid, signal).then(
+      (status) => {
+        if (signal.aborted || status.notices.length === 0) return;
+        this._body.insertBefore(noticeBoxes(status), this._body.firstChild);
+      },
+      () => {},
+    );
   }
 
   private async _renderDepartures(code: string, gid: string, stationName: string, day: TimetableDay | null) {
@@ -692,6 +795,7 @@ class TimetablePanel {
     });
     this._setBack('路線');
     this._body.replaceChildren();
+    this._showNotices(code, gid);
 
     const days = this._navGroup('曜日');
     for (const [value, label] of Object.entries(DAY_LABELS) as Array<[TimetableDay, string]>) {
@@ -826,6 +930,7 @@ class TimetablePanel {
     });
     this._setBack('時刻表');
     this._body.replaceChildren();
+    this._showNotices(code, gid);
     const cars = [departure?.cars && `${departure.cars}両`, departure?.green_car && 'グリーン車'].filter(Boolean);
     this._facts([
       ['種別', name],

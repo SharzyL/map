@@ -2,7 +2,13 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LOAD_TASK_EVENT, type LoadTaskDetail } from './load-status.js';
-import { forgetResponses, type CrTrainSchedule, type CrTrainset, type TrainRoute } from './norikae.js';
+import {
+  forgetResponses,
+  type CrTrainSchedule,
+  type CrTrainset,
+  type ServiceNotice,
+  type TrainRoute,
+} from './norikae.js';
 import {
   crBoundTabs,
   crLineTabs,
@@ -10,6 +16,8 @@ import {
   installTimetable,
   isHighSpeedLine,
   isHighSpeedTrain,
+  noticeSeverity,
+  noticeUpdated,
   reportUrl,
   timetableButton,
   TIMETABLE_OPEN_EVENT,
@@ -511,6 +519,84 @@ describe('timetable panel', () => {
     expect(tabs().map((tab) => tab.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
   });
 
+  it('marks lines with service notices, and says what at the top of a direction and its trains', async () => {
+    const delay = {
+      status: '列車遅延',
+      message: '大雨の影響で、列車に遅れが出ています。',
+      cause: '大雨',
+      range: '上下方面[全区間]',
+      updated: '2026-11-25 11:00',
+    };
+    API['/api/v1/norikae/stations/22715/status'] = {
+      source_url: 'https://transit.yahoo.co.jp/timetable/22715',
+      lines: [
+        { line: 'ＪＲ湘南新宿ライン', notices: [delay], url: 'https://transit.yahoo.co.jp/traininfo/detail/25/0/' },
+      ],
+    };
+    API['/api/v1/norikae/stations/22715/timetables/1051/status'] = {
+      source_url: 'https://transit.yahoo.co.jp/timetable/22715/1051',
+      line: '湘南新宿ライン',
+      notices: [delay],
+      url: 'https://transit.yahoo.co.jp/traininfo/detail/25/0/',
+    };
+    try {
+      const { container, panel } = setup();
+      const root = panel.panel;
+      container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+      await vi.waitFor(() => expect(text(root, '.timetable-notice-badge')).toEqual(['遅延']));
+      const badge = root.querySelector<HTMLElement>('.timetable-line-name .timetable-notice-badge');
+      expect(badge.dataset.severity).toBe('delay');
+      expect(badge.title).toBe('大雨の影響で、列車に遅れが出ています。');
+
+      root.querySelector<HTMLButtonElement>('.timetable-direction').click();
+      await vi.waitFor(() => expect(root.querySelector('.timetable-notice')).not.toBeNull());
+      // First in the view, above the departures
+      expect(root.querySelector('.timetable-body').firstElementChild.className).toBe('timetable-notices');
+      expect(text(root, '.timetable-notice-status')).toEqual(['列車遅延 · 大雨']);
+      expect(text(root, '.timetable-notice-message')).toEqual(['大雨の影響で、列車に遅れが出ています。']);
+      expect(text(root, '.timetable-notice-range')).toEqual(['上下方面[全区間]']);
+      expect(root.querySelector<HTMLAnchorElement>('.timetable-notice-link').href).toBe(
+        'https://transit.yahoo.co.jp/traininfo/detail/25/0/',
+      );
+
+      root.querySelectorAll<HTMLButtonElement>('.timetable-departure-button')[1].click();
+      await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toHaveLength(3));
+      await vi.waitFor(() => expect(text(root, '.timetable-notice-message')).toHaveLength(1));
+    } finally {
+      delete API['/api/v1/norikae/stations/22715/status'];
+      delete API['/api/v1/norikae/stations/22715/timetables/1051/status'];
+    }
+  });
+
+  it('asks a line the station only flags for its notices, by its direction', async () => {
+    API['/api/v1/norikae/stations/22715/status'] = {
+      source_url: 'https://transit.yahoo.co.jp/timetable/22715',
+      lines: [{ line: 'ＪＲ湘南新宿ライン', notices: [], url: null }],
+    };
+    API['/api/v1/norikae/stations/22715/timetables/1051/status'] = {
+      source_url: 'https://transit.yahoo.co.jp/timetable/22715/1051',
+      line: '湘南新宿ライン',
+      notices: [
+        {
+          status: 'その他',
+          message: '大雨の影響で、運転を見合わせています。',
+          cause: null,
+          range: null,
+          updated: null,
+        },
+      ],
+      url: null,
+    };
+    try {
+      const { container, panel } = setup();
+      container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+      await vi.waitFor(() => expect(text(panel.panel, '.timetable-notice-badge')).toEqual(['運転見合わせ']));
+    } finally {
+      delete API['/api/v1/norikae/stations/22715/status'];
+      delete API['/api/v1/norikae/stations/22715/timetables/1051/status'];
+    }
+  });
+
   it('shows no report link for a view that failed to load', async () => {
     const { container, panel } = setup();
     failOnce.set('/api/v1/norikae/stations/22715/timetables', 502);
@@ -593,6 +679,31 @@ describe('high-speed rail', () => {
       false,
       false,
     ]);
+  });
+});
+
+describe('service notices', () => {
+  const notice = (status: string, message: string): ServiceNotice => ({
+    status,
+    message,
+    cause: null,
+    range: null,
+    updated: null,
+  });
+
+  it('weighs a notice by what it says, a suspension filed under その他 included', () => {
+    expect(noticeSeverity(notice('運転見合わせ', '大雨の影響で、運転を見合わせています。'))).toBe('stop');
+    expect(noticeSeverity(notice('その他', '鳴子温泉〜新庄駅間の運転を見合わせています。'))).toBe('stop');
+    expect(noticeSeverity(notice('列車遅延', '列車に遅れが出ています。'))).toBe('delay');
+    expect(noticeSeverity(notice('運転再開', '運転を再開しました。'))).toBe('normal');
+    expect(noticeSeverity(notice('その他', 'ダイヤが乱れています。'))).toBe('info');
+  });
+
+  it('says when it was updated, with the date unless today in Japan', () => {
+    const now = new Date('2026-11-25T03:00:00Z'); // 12:00 in Japan
+    expect(noticeUpdated('2026-11-25 11:00', now)).toBe('11:00更新');
+    expect(noticeUpdated('2026-11-24 23:40', now)).toBe('11/24 23:40更新');
+    expect(noticeUpdated(null, now)).toBeNull();
   });
 });
 

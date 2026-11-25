@@ -33,6 +33,8 @@ const TTL_TIMETABLE = 3600;
 // Without ?day=, Yahoo serves "today's" schedule — keep short so it rolls over
 const TTL_TIMETABLE_TODAY = 600;
 const TTL_TRAIN = 3600;
+// Service notices change within minutes
+const TTL_STATUS = 180;
 
 const MAX_VIA = 3;
 const MAX_PAGE = 20;
@@ -271,6 +273,26 @@ async function getTrain(code: string, gid: string, trainId: string, fetch: Fetch
   return json(200, { source_url: url, ...data, station, stops }, TTL_TRAIN);
 }
 
+// The lines of a station with service notices
+async function getStationStatus(code: string, fetch: Fetcher): Promise<ApiResponse> {
+  const url = timetable.linesUrl(code);
+  const html = await get(fetch, timetable.statusUrl(url), TTL_STATUS, `station ${code} not found`);
+  const lines = parse('timetable lines', () => timetable.parseStationStatus(html));
+  return json(200, { source_url: url, lines }, TTL_STATUS);
+}
+
+// A direction's line and its service notices
+async function getDirectionStatus(code: string, gid: string, fetch: Fetcher): Promise<ApiResponse> {
+  const url = timetable.timetableUrl(code, gid, null);
+  const html = await get(fetch, timetable.statusUrl(url), TTL_STATUS, `timetable ${code}/${gid} not found`);
+  const status = parse('timetable', () => timetable.parseDirectionStatus(html));
+  return json(
+    200,
+    { source_url: url, line: status?.line ?? null, notices: status?.notices ?? [], url: status?.url ?? null },
+    TTL_STATUS,
+  );
+}
+
 // ── Dispatch ────────────────────────────────────────────
 
 const STATION = `^${NORIKAE_PREFIX}stations/(\\d+)/timetables`;
@@ -278,6 +300,8 @@ const PATHS: Array<[string, RegExp, string[]]> = [
   ['routes', new RegExp(`^${NORIKAE_PREFIX}routes$`), ROUTE_PARAMS],
   ['stations', new RegExp(`^${NORIKAE_PREFIX}stations$`), ['q', 'type']],
   ['lines', new RegExp(`${STATION}$`), []],
+  ['station-status', new RegExp(`^${NORIKAE_PREFIX}stations/(\\d+)/status$`), []],
+  ['direction-status', new RegExp(`${STATION}/(\\d+)/status$`), []],
   ['timetable', new RegExp(`${STATION}/(\\d+)$`), ['day', 'hours']],
   ['train', new RegExp(`${STATION}/(\\d+)/trains/(\\d+)$`), []],
 ];
@@ -296,6 +320,8 @@ export async function dispatchNorikae(
     if (name === 'routes') return getRoutes(q, fetch, now);
     if (name === 'stations') return getStations(q, fetch);
     if (name === 'lines') return getLines(m[1], fetch);
+    if (name === 'station-status') return getStationStatus(m[1], fetch);
+    if (name === 'direction-status') return getDirectionStatus(m[1], m[2], fetch);
     if (name === 'timetable') return getTimetable(q, m[1], m[2], fetch);
     return getTrain(m[1], m[2], m[3], fetch);
   }

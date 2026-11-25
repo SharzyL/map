@@ -45,7 +45,9 @@ Japanese routes and timetables under `/api/v1/norikae`, China Railway under
 | `GET /api/v1/norikae/routes`                                                   | Route search between stations            |
 | `GET /api/v1/norikae/stations?q=`                                              | Find station codes by name               |
 | `GET /api/v1/norikae/stations/{code}/timetables`                               | Lines and directions at a station        |
+| `GET /api/v1/norikae/stations/{code}/status`                                   | Service notices of a station's lines     |
 | `GET /api/v1/norikae/stations/{code}/timetables/{gid}`                         | Departure timetable for one direction    |
+| `GET /api/v1/norikae/stations/{code}/timetables/{gid}/status`                  | Service notices of one direction's line  |
 | `GET /api/v1/norikae/stations/{code}/timetables/{gid}/trains/{train_id}`       | Stop-by-stop schedule of one train       |
 | `GET /api/v1/norikae/stations/{code}/timetables/{gid}/trains/{train_id}/route` | The track one train runs on, as OSM ways |
 
@@ -265,6 +267,70 @@ GET /api/v1/norikae/stations/22715/timetables
       ]
     }
   ]
+}
+```
+
+---
+
+### `GET /api/v1/norikae/stations/{code}/status`
+
+Service notices (運行情報, from レスキューナウ as Yahoo shows them) of the
+station's lines: only the lines that have one, named as in
+`/timetables`. A line Yahoo flags without saying what about comes with no
+`notices`; its notice is in its direction's status (below). Kept for 3
+minutes.
+
+```
+GET /api/v1/norikae/stations/21338/status
+```
+
+```json
+{
+  "source_url": "https://transit.yahoo.co.jp/timetable/21338",
+  "lines": [
+    {
+      "line": "ＪＲ陸羽西線",
+      "notices": [
+        {
+          "status": "列車遅延",
+          "message": "大雨の影響で、列車に遅れが出ています。",
+          "cause": "大雨",
+          "range": "上下方面[全区間]",
+          "updated": "2026-11-25 11:00"
+        }
+      ],
+      "url": "https://transit.yahoo.co.jp/traininfo/detail/461/0/"
+    },
+    { "line": "ＪＲ陸羽東線", "notices": [], "url": "https://transit.yahoo.co.jp/traininfo/detail/460/0/" }
+  ]
+}
+```
+
+`status` is Yahoo's: 列車遅延, 運転見合わせ, 運転再開, その他 and others.
+`updated` is Japan time. `url` is Yahoo's page about the line's service.
+
+---
+
+### `GET /api/v1/norikae/stations/{code}/timetables/{gid}/status`
+
+The service notices of one direction's line, as above; `line` is Yahoo's
+name for it in its service information (`陸羽東線`), and `notices` is empty
+when there are none. Kept for 3 minutes.
+
+```json
+{
+  "source_url": "https://transit.yahoo.co.jp/timetable/21338/510",
+  "line": "陸羽東線",
+  "notices": [
+    {
+      "status": "その他",
+      "message": "大雨災害の影響で、鳴子温泉〜新庄駅間の運転を見合わせています。代行輸送を行っています。",
+      "cause": "大雨災害",
+      "range": "上下方面[鳴子温泉〜新庄]",
+      "updated": "2026-11-25 05:00"
+    }
+  ],
+  "url": "https://transit.yahoo.co.jp/traininfo/detail/460/0/"
 }
 ```
 
@@ -981,6 +1047,7 @@ clients:
 | ---------------------------------------------------------- | ------ |
 | Routes                                                     | 5 min  |
 | Station search, line lists                                 | 1 day  |
+| Service notices (`.../status`)                             | 3 min  |
 | Timetable with `day`                                       | 1 hour |
 | Timetable without `day` (today's)                          | 10 min |
 | Train schedule, train route                                | 1 hour |
@@ -990,4 +1057,5 @@ clients:
 | Railway relations (`/api/v1/relations/*`)                  | 1 day  |
 | anitabi (`/api/v1/anitabi/*`)                              | 1 hour |
 
-Results are scheduled times; real-time delays are not reflected.
+Results are scheduled times; real-time delays are not reflected, beyond the
+service notices of the `status` endpoints.

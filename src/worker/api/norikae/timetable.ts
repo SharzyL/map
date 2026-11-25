@@ -80,6 +80,25 @@ export interface Train {
   stops: TrainStop[];
 }
 
+// A line's service notice (運行情報, レスキューナウ's, as Yahoo shows it): its
+// status (列車遅延, 運転見合わせ, 運転再開, その他, ...), what it says, the cause
+// (大雨), where (上下方面[全区間]), and when it was last updated (JST).
+export interface Notice {
+  status: string;
+  message: string;
+  cause: string | null;
+  range: string | null;
+  updated: string | null;
+}
+
+// A line's notices and Yahoo's page about them. A line the page flags without
+// saying what about has no notices.
+export interface LineStatus {
+  line: string;
+  notices: Notice[];
+  url: string | null;
+}
+
 // The pages' JSON is only loosely typed; `need` reads a key that must be there
 type Obj = Record<string, any>;
 
@@ -127,6 +146,13 @@ export function timetableUrl(code: string, gid: string, kind: string | null): st
   let url = `${TIMETABLE_URL}/${code}/${gid}`;
   if (kind) url += `?kind=${kind}`;
   return url;
+}
+
+// A page fetched for its service notices, cached apart from the timetables
+// (the edge cache goes by URL), since notices change within minutes; Yahoo
+// ignores the parameter.
+export function statusUrl(pageUrl: string): string {
+  return `${pageUrl}${pageUrl.includes('?') ? '&' : '?'}diainfo=1`;
 }
 
 export function trainUrl(code: string, gid: string, trainId: string): string {
@@ -245,5 +271,76 @@ export function parseTrain(html: string, code: string, gid: string | null = null
       arrival: hhmm(need(stop, 'arrivalTime')),
       departure: hhmm(need(stop, 'departureTime')),
     })),
+  };
+}
+
+// ── Service notices ─────────────────────────────────
+
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+function notices(diainfo: unknown): Notice[] {
+  if (!Array.isArray(diainfo)) return [];
+  return diainfo
+    .filter((info: Obj) => text(info?.message) || text(info?.status))
+    .map((info: Obj) => ({
+      status: text(info.status) ?? 'その他',
+      message: text(info.message) ?? '',
+      cause: text(info.causeName),
+      range: text(info.impactRange),
+      updated: text(info.updateDate)?.slice(0, 16) ?? null,
+    }));
+}
+
+const detailUrl = (railId: unknown, rangeId: unknown) =>
+  text(String(railId ?? '')) ? `${BASE_URL}/traininfo/detail/${railId}/${text(String(rangeId ?? '')) ?? '0'}/` : null;
+
+// Yahoo's line names, ＪＲ山手線 or 奥羽本線[新庄～青森], compared without their
+// JR and the stretch.
+const lineKey = (name: string) =>
+  name
+    .normalize('NFKC')
+    .replace(/\[.*\]$/, '')
+    .replace(/^JR/, '')
+    .trim();
+
+// A station's lines with notices, from its lines page: the notices of the lines
+// it lists by name (`railNameDiaInfo`), and the lines it only flags by Yahoo's
+// line code (`DiaInfo`, a 運転見合わせ among them, so not to be left out), named
+// as the page's line list does.
+export function parseStationStatus(html: string): LineStatus[] {
+  const page = pageProps(html);
+  const named: Obj = page.railNameDiaInfo ?? {};
+  const statuses: LineStatus[] = Object.entries(named).map(([line, info]: [string, Obj]) => ({
+    line,
+    notices: notices(info?.diainfo),
+    url: detailUrl(info?.railId, info?.rangeId),
+  }));
+  const listed = new Set(Object.values(named).map((info: Obj) => String(info?.railId ?? '')));
+  let lines: string[] = [];
+  try {
+    lines = routeInfos(need(page, 'directionDetail')).map((route) => String(need(route, 'railName')));
+  } catch {
+    lines = [];
+  }
+  const flagged: Obj[] = page.lipFeature?.TransitSearchInfo?.Detail?.StationInfo?.DiaInfo ?? [];
+  for (const rail of Array.isArray(flagged) ? flagged : []) {
+    const code = String(rail?.RailCode ?? '');
+    if (!code || listed.has(code)) continue;
+    const name = text(rail?.RailName);
+    const line = name && lines.find((candidate) => lineKey(candidate) === lineKey(name));
+    if (!line || statuses.some((status) => status.line === line)) continue;
+    statuses.push({ line, notices: [], url: detailUrl(code, rail?.RailRangeCode) });
+  }
+  return statuses;
+}
+
+// A direction's line and its notices, from its timetable page (`diainfoByRail`).
+export function parseDirectionStatus(html: string): LineStatus | null {
+  const rail: Obj | undefined = pageProps(html).diainfoByRail;
+  if (!rail) return null;
+  return {
+    line: text(rail.displayName) ?? text(rail.railName) ?? '',
+    notices: notices(rail.diainfo),
+    url: text(rail.pcUrl1) ?? detailUrl(rail.railCode, rail.railRangeCode),
   };
 }

@@ -8,7 +8,20 @@ import timetableHtml from '../fixtures/timetable.html?raw';
 import timetableExpected from '../fixtures/timetable.expected.json';
 import trainHtml from '../fixtures/train.html?raw';
 import trainExpected from '../fixtures/train.expected.json';
-import { parseLines, parseSearch, parseTimetable, parseTrain, searchUrl, timetableUrl, trainUrl } from './timetable.js';
+import statusLinesHtml from '../fixtures/status-lines.html?raw';
+import statusTimetableHtml from '../fixtures/status-timetable.html?raw';
+import {
+  parseDirectionStatus,
+  parseLines,
+  parseSearch,
+  parseStationStatus,
+  parseTimetable,
+  parseTrain,
+  searchUrl,
+  statusUrl,
+  timetableUrl,
+  trainUrl,
+} from './timetable.js';
 
 // The *.expected.json files are what the Python API returned for the same fixtures
 
@@ -72,5 +85,63 @@ describe('Yahoo timetable pages', () => {
     expect(timetableUrl('22715', '1051', '1')).toBe('https://transit.yahoo.co.jp/timetable/22715/1051?kind=1');
     expect(timetableUrl('22715', '1051', null)).toBe('https://transit.yahoo.co.jp/timetable/22715/1051');
     expect(trainUrl('22715', '1051', '33471')).toBe('https://transit.yahoo.co.jp/timetable/22715/1051/33471');
+  });
+});
+
+// 新庄 on a day of heavy rain: 陸羽西線 delayed, 陸羽東線 suspended between
+// 鳴子温泉 and 新庄 since a flood.
+describe('Yahoo service notices', () => {
+  it('reads the lines of a station with notices, those it only flags too', () => {
+    expect(parseStationStatus(statusLinesHtml)).toEqual([
+      {
+        line: 'ＪＲ陸羽西線',
+        notices: [
+          {
+            status: '列車遅延',
+            message: '大雨の影響で、列車に遅れが出ています。',
+            cause: '大雨',
+            range: '上下方面[全区間]',
+            updated: '2026-11-25 11:00',
+          },
+        ],
+        url: 'https://transit.yahoo.co.jp/traininfo/detail/461/0/',
+      },
+      // The page names 陸羽東線's notice by its line code only.
+      { line: 'ＪＲ陸羽東線', notices: [], url: 'https://transit.yahoo.co.jp/traininfo/detail/460/0/' },
+    ]);
+  });
+
+  it('reads a direction’s line and its notices', () => {
+    expect(parseDirectionStatus(statusTimetableHtml)).toEqual({
+      line: '陸羽東線',
+      notices: [
+        {
+          status: 'その他',
+          message: '大雨災害の影響で、鳴子温泉〜新庄駅間の運転を見合わせています。代行輸送を行っています。',
+          cause: '大雨災害',
+          range: '上下方面[鳴子温泉〜新庄]',
+          updated: '2026-11-25 05:00',
+        },
+      ],
+      url: 'https://transit.yahoo.co.jp/traininfo/detail/460/0/',
+    });
+  });
+
+  it('reads the notices of another day: 渋谷, its lines page from November 12', () => {
+    expect(
+      parseStationStatus(linesHtml).map(({ line, notices }) => [line, notices.map(({ status }) => status)]),
+    ).toEqual([
+      ['ＪＲ湘南新宿ライン', ['列車遅延']],
+      ['東急田園都市線', []],
+    ]);
+  });
+
+  it('fetches the pages for notices apart from the timetables', () => {
+    expect(statusUrl('https://transit.yahoo.co.jp/timetable/21338')).toBe(
+      'https://transit.yahoo.co.jp/timetable/21338?diainfo=1',
+    );
+    expect(statusUrl('https://transit.yahoo.co.jp/timetable/21338/510?kind=1')).toBe(
+      'https://transit.yahoo.co.jp/timetable/21338/510?kind=1&diainfo=1',
+    );
   });
 });

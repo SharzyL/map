@@ -26,6 +26,21 @@ export type StationLines = {
   station: YahooStation;
   lines: Array<{ name: string; directions: Array<{ direction: string; gid: string }> }>;
 };
+// A line's service notice (運行情報), as Yahoo shows レスキューナウ's.
+export type ServiceNotice = {
+  // 列車遅延, 運転見合わせ, 運転再開, その他, ...
+  status: string;
+  message: string;
+  cause: string | null;
+  // Where and which way: 上下方面[鳴子温泉〜新庄]
+  range: string | null;
+  // Japan time, YYYY-MM-DD HH:MM
+  updated: string | null;
+};
+export type LineStatus = { line: string; notices: ServiceNotice[]; url: string | null };
+export type StationStatus = { source_url: string; lines: LineStatus[] };
+export type DirectionStatus = { source_url: string; line: string | null; notices: ServiceNotice[]; url: string | null };
+
 export type Departure = {
   time: string;
   train_id: string;
@@ -270,6 +285,20 @@ export function searchStations(name: string, signal?: AbortSignal) {
 
 export function stationLines(code: string, signal?: AbortSignal) {
   return get<StationLines>(`/norikae/stations/${encodeURIComponent(code)}/timetables`, {}, signal);
+}
+
+// The station's lines with service notices, a few minutes old at most.
+export function stationStatus(code: string, signal?: AbortSignal) {
+  return get<StationStatus>(`/norikae/stations/${encodeURIComponent(code)}/status`, {}, signal);
+}
+
+// The service notices of a direction's line.
+export function directionStatus(code: string, gid: string, signal?: AbortSignal) {
+  return get<DirectionStatus>(
+    `/norikae/stations/${encodeURIComponent(code)}/timetables/${encodeURIComponent(gid)}/status`,
+    {},
+    signal,
+  );
 }
 
 export function departures(code: string, gid: string, day: TimetableDay | null, signal?: AbortSignal) {

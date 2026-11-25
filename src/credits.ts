@@ -73,6 +73,11 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
     title: 'Services',
     credits: [
       { name: 'Yahoo!乗換案内', href: 'https://transit.yahoo.co.jp/', use: 'Station timetables in Japan' },
+      {
+        name: 'レスキューナウ',
+        href: 'https://www.rescuenow.co.jp/',
+        use: 'Service notices (運行情報) in Japan, through Yahoo!乗換案内',
+      },
       { name: 'Photon by komoot', href: 'https://photon.komoot.io/', use: 'Search' },
       { name: 'OSRM', href: 'https://project-osrm.org/', use: 'Routes drawn with the Route tool' },
       {
