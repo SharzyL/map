@@ -2547,14 +2547,44 @@ button.timetable-stop-locate:focus-visible {
   line-height: 1.45;
 }
 
+/* What opens another view looks like a link, as the route panel's stations
+   do: a direction, a stop's station (not a stop without a timetable, a span). */
+.timetable-direction,
+button.timetable-stop-name {
+  color: #1d4ed8;
+}
+
 .timetable-direction:hover,
 .timetable-direction:focus-visible,
+button.timetable-stop-name:hover,
+button.timetable-stop-name:focus-visible {
+  background: #eff6ff;
+  text-decoration: underline;
+  outline: none;
+}
+
 .timetable-departure-button:hover,
-.timetable-departure-button:focus-visible,
-.timetable-stop-name:hover,
-.timetable-stop-name:focus-visible {
+.timetable-departure-button:focus-visible {
   background: #f1f5f9;
   outline: none;
+}
+
+/* A departure opens its train: a chevron at the row's end says so. */
+.timetable-departure-button::after {
+  content: '';
+  align-self: center;
+  justify-self: end;
+  width: 5px;
+  height: 5px;
+  margin-right: 2px;
+  border-top: 1.5px solid #94a3b8;
+  border-right: 1.5px solid #94a3b8;
+  transform: rotate(45deg);
+}
+
+.timetable-departure-button:hover::after,
+.timetable-departure-button:focus-visible::after {
+  border-color: #475569;
 }
 
 .timetable-days {
@@ -2727,7 +2757,7 @@ button.timetable-stop-locate:focus-visible {
 /* Japan: the train's name (red for a type other than the line's usual one),
    badges for trains starting here and with a Green Car, cars, and the track */
 .timetable-jp-departures .timetable-departure-button {
-  grid-template-columns: 44px auto minmax(0, 1fr) auto 24px;
+  grid-template-columns: 44px auto minmax(0, 1fr) auto 24px 8px;
 }
 
 .timetable-jp-departures .timetable-platform {
@@ -2868,7 +2898,7 @@ button.timetable-stop-locate:focus-visible {
 }
 
 .timetable-cr-trains .timetable-departure-button {
-  grid-template-columns: 40px minmax(52px, auto) minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(52px, auto) minmax(0, 1fr) auto 8px;
 }
 
 .timetable-train-number {
@@ -2998,11 +3028,19 @@ button.timetable-stop-locate:focus-visible {
   text-decoration: none;
 }
 
+/* Links look like links; a source without a page (China Railway's data
+   version) stays plain. */
+.timetable-source[href],
+.timetable-report {
+  color: #1d4ed8;
+}
+
 .timetable-report {
   margin-left: auto;
 }
 
-.timetable-source:hover,
+.timetable-source[href]:hover,
+.timetable-source[href]:focus-visible,
 .timetable-report:hover,
 .timetable-report:focus-visible {
   text-decoration: underline;
