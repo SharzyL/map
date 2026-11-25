@@ -19,6 +19,7 @@ import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import { addRailwayHoverToStyle } from './railway-hover.js';
 import { isGpuInitializationError, showMapUnavailable } from './map-unavailable.js';
+import { installSteadyTileZoom } from './tile-zoom.js';
 import { lineListsNear } from './route-trace.js';
 import { installTimetable, timetableButton } from './timetable.js';
 import { installTrainRoute } from './train-route.js';
@@ -835,6 +836,8 @@ async function init() {
     const runMapReadySetup = () => {
       if (didRunMapReadySetup) return;
       didRunMapReadySetup = true;
+      // Tiles at the map's own zoom near the middle of the view (tile-zoom.ts)
+      installSteadyTileZoom(map);
       const popups = installOrmPopups(map, maplibregl, featuresCatalog, {
         lookupLineLists: (query, signal) => lineListsNear(query, fetchRailwayTile, signal),
         extendContent: timetableButton,
