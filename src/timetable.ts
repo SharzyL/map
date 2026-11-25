@@ -61,6 +61,12 @@ export type TimetableRequest =
   | { name: string; cr: string[] }
   | { name: string; crTrain: string; date: string };
 type Source = { text: string; href?: string };
+
+// High-speed rail, drawn in the map's high-speed purple: in Japan a 新幹線
+// line; in China a G train. (D and C trains run on high-speed and
+// conventional lines alike, and nothing in the timetable tells them apart.)
+export const isHighSpeedLine = (name: string) => name.includes('新幹線');
+export const isHighSpeedTrain = (train: string) => train.startsWith('G');
 // What an error report from a view starts with: its issue's title, and what
 // it is about, a line each.
 type Report = { title: string; details: string[] };
@@ -626,7 +632,9 @@ class TimetablePanel {
       if (table.lines.length === 0) el('div', 'timetable-status', section).textContent = '路線がありません。';
       for (const line of table.lines) {
         const group = el('div', 'timetable-line', section);
-        el('div', 'timetable-line-name', group).textContent = line.name;
+        const lineName = el('div', 'timetable-line-name', group);
+        lineName.textContent = line.name;
+        if (isHighSpeedLine(line.name)) lineName.classList.add('timetable-highspeed');
         for (const { direction, gid } of line.directions) {
           const button = el('button', 'timetable-direction', group);
           button.type = 'button';
@@ -985,7 +993,9 @@ class TimetablePanel {
       }
       // The number it runs under here (Z156 of Z156/Z157), as the station shows it.
       const number = train.departure_number ?? train.arrival_number ?? train.train;
-      el('span', 'timetable-kind timetable-train-number', button).textContent = number;
+      const numberCell = el('span', 'timetable-kind timetable-train-number', button);
+      numberCell.textContent = number;
+      if (isHighSpeedTrain(train.train)) numberCell.classList.add('timetable-highspeed');
       const destination = el('span', 'timetable-destination', button);
       destination.textContent = `${train.origin} → ${train.destination}`;
       // A train changing lines here says so.

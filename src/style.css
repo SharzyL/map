@@ -2565,19 +2565,29 @@ button.timetable-stop-locate:focus-visible {
 }
 
 /* What opens another view looks like a link, as the route panel's stations
-   do: a direction, a stop's station (not a stop without a timetable, a span). */
-.timetable-direction,
+   do: a stop's station (not a stop without a timetable, a span). A station's
+   directions, a list of nothing else, need only their hover. */
 button.timetable-stop-name {
   color: #1d4ed8;
 }
 
-.timetable-direction:hover,
-.timetable-direction:focus-visible,
 button.timetable-stop-name:hover,
 button.timetable-stop-name:focus-visible {
   background: #eff6ff;
   text-decoration: underline;
   outline: none;
+}
+
+.timetable-direction:hover,
+.timetable-direction:focus-visible {
+  background: #eff6ff;
+  outline: none;
+}
+
+/* High-speed rail, in the map's high-speed purple (scripts/styles/shared.mjs) */
+.timetable-highspeed,
+.timetable-train-number.timetable-highspeed {
+  color: #9b19d4;
 }
 
 .timetable-departure-button:hover,

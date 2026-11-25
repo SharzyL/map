@@ -8,6 +8,8 @@ import {
   crLineTabs,
   crLinesBetweenStops,
   installTimetable,
+  isHighSpeedLine,
+  isHighSpeedTrain,
   reportUrl,
   timetableButton,
   TIMETABLE_OPEN_EVENT,
@@ -536,6 +538,25 @@ describe('timetable panel', () => {
   });
 });
 
+describe('high-speed rail', () => {
+  it('is a 新幹線 line in Japan and a G train in China', () => {
+    expect(['東海道新幹線', '北陸新幹線', 'ＪＲ山手線外回り', '成田エクスプレス'].map(isHighSpeedLine)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    // D and C trains run on conventional lines too.
+    expect(['G301', 'D1', 'C2001', 'Z156/Z157', 'K2550'].map(isHighSpeedTrain)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+});
+
 describe('reportUrl', () => {
   it('opens a new issue with the title and a template saying where', () => {
     const url = new URL(
@@ -625,6 +646,8 @@ describe('China Railway timetable', () => {
     container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['北京西'] } }));
     const root = panel.panel;
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    // The G train in the map's high-speed purple
+    expect(text(root, '.timetable-train-number.timetable-highspeed')).toEqual(['G301']);
     // Two rows in the back row, under the date: lines, then directions.
     const [lineRow, boundRow] = Array.from(root.querySelectorAll<HTMLElement>('.timetable-nav .timetable-directions'));
     const tabs = (row: HTMLElement) => Array.from(row.querySelectorAll<HTMLButtonElement>('button'));
