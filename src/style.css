@@ -2447,8 +2447,11 @@ button.timetable-stop-locate:focus-visible {
 }
 
 /* A row of tabs heading the list below it (a station's Yahoo stations): no
-   rule between them. */
+   rule between them, and as much room under the tabs (to the first line's
+   name, past the body's padding and the name's half-leading) as above them. */
 .timetable-nav-joined {
+  min-height: 0;
+  padding: 10px 12px 0;
   border-bottom: 0;
 }
 
