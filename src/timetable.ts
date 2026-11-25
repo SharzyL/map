@@ -427,6 +427,7 @@ class TimetablePanel {
 
   private _setBack(label = this._ui.back) {
     this._nav.replaceChildren();
+    this._nav.classList.remove('timetable-nav-joined');
     this._nav.hidden = this._history.length < 2;
     if (this._nav.hidden) return;
     const button = el('button', 'timetable-back', this._nav);
@@ -631,6 +632,8 @@ class TimetablePanel {
     let picked = tables.find((table) => table.station.code === kept) ?? tables[0];
     const row = tables.length > 1 ? this._navGroup('駅') : null;
     row?.classList.add('timetable-directions');
+    // The tabs head the list they pick, with no rule between.
+    this._nav.classList.toggle('timetable-nav-joined', !!row);
     const tabs = row
       ? tables.map((table) => {
           const button = el('button', 'timetable-day', row);

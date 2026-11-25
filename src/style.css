@@ -2446,6 +2446,12 @@ button.timetable-stop-locate:focus-visible {
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
+/* A row of tabs heading the list below it (a station's Yahoo stations): no
+   rule between them. */
+.timetable-nav-joined {
+  border-bottom: 0;
+}
+
 /* A view's day buttons follow the back button, and its switches sit at the
    right of the row, which wraps on a narrow panel. */
 .timetable-nav .timetable-toggle {
