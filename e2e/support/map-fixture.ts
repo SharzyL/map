@@ -348,7 +348,7 @@ async function fulfillHtml(route: Route) {
   });
 }
 
-async function routeExternalMapResources(page: Page, options: ExternalRouteOptions = {}) {
+export async function routeExternalMapResources(page: Page, options: ExternalRouteOptions = {}) {
   await page.route('https://tiles.openfreemap.org/styles/liberty', (route) => fulfillJson(route, baseStyle));
   await page.route('https://tiles.mapterhorn.com/tilejson.json', (route) =>
     fulfillJson(route, {

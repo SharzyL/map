@@ -18,6 +18,7 @@ import { installLocate, type DemTileLike } from './cursor-position.js';
 import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
 import { addRailwayHoverToStyle } from './railway-hover.js';
+import { isGpuInitializationError, showMapUnavailable } from './map-unavailable.js';
 import { lineListsNear } from './route-trace.js';
 import { installTimetable, timetableButton } from './timetable.js';
 import { installTrainRoute } from './train-route.js';
@@ -520,6 +521,10 @@ function isMapResourceLoadError(event: MapLibreErrorEvent): boolean {
 
 function installMapLibreErrorLogging(map: maplibregl.Map) {
   map.on('error', (event: MapLibreErrorEvent) => {
+    // A lost GPU context that could not be restored: the map is gone.
+    if (isGpuInitializationError((event as { error?: unknown }).error)) {
+      showMapUnavailable(map.getContainer(), (event as { error?: unknown }).error);
+    }
     if (isMapResourceLoadError(event)) {
       console.debug('MapLibre resource load skipped:', event);
       return;
@@ -871,6 +876,9 @@ async function init() {
     installMapLibreErrorLogging(map);
   } catch (error) {
     console.error(error);
+    // Without WebGL 2 (or anything else stopping the map), say so rather
+    // than leave the page blank.
+    showMapUnavailable(document.querySelector<HTMLElement>('#map') ?? document.body, error);
   }
 }
 

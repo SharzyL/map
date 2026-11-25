@@ -4911,3 +4911,70 @@ a.credits-name:hover {
     font-size: 16px !important;
   }
 }
+
+/* In the map's place when it cannot be drawn (map-unavailable.ts): no WebGL 2,
+   or another error stopping it from starting. */
+.map-unavailable {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #f1f5f9;
+  overflow-y: auto;
+}
+
+.map-unavailable-card {
+  box-sizing: border-box;
+  width: min(460px, 100%);
+  padding: 20px 22px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.map-unavailable-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.map-unavailable-text {
+  margin: 0 0 6px;
+}
+
+.map-unavailable-tips {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.map-unavailable-tips li + li {
+  margin-top: 4px;
+}
+
+.map-unavailable-detail {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.map-unavailable-link {
+  color: #1d4ed8;
+}
+
+.map-unavailable-reload {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
