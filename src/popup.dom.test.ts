@@ -489,6 +489,24 @@ describe('installOrmPopups', () => {
     expect(opened.removed()).toBe(1);
   });
 
+  it('closes a line’s info box when a line or route in it is picked, for the route panel', () => {
+    const opened = clickMap([
+      { source: 'openrailwaymap', sourceLayer: 'railway_line_high', properties: LINE_PROPERTIES },
+    ]);
+    // MapLibre puts the box in the map's container.
+    opened.container.appendChild(opened.element());
+    const picked = vi.fn();
+    opened.container.addEventListener(ROUTE_SELECT_EVENT, picked);
+    opened.element().querySelector<HTMLElement>('[data-route-id]').click();
+    expect(picked).toHaveBeenCalledTimes(1);
+    expect(opened.removed()).toBe(1);
+    // A route picked anywhere else (the route panel's list) leaves it be.
+    const elsewhere = document.createElement('button');
+    opened.container.appendChild(elsewhere);
+    elsewhere.dispatchEvent(new CustomEvent(ROUTE_SELECT_EVENT, { bubbles: true, detail: { id: 'r1' } }));
+    expect(opened.removed()).toBe(1);
+  });
+
   it('collapses the info box to its title and closes it from its sheet buttons', () => {
     const opened = clickMap([
       { source: 'openrailwaymap', sourceLayer: 'standard_railway_text_stations', properties: STATION_PROPERTIES },

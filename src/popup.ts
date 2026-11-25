@@ -1763,6 +1763,12 @@ export function installOrmPopups(
       popup = null;
     }
   });
+  // So does the route panel, for a route or line picked in the info box.
+  map.getContainer().addEventListener(ROUTE_SELECT_EVENT, (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest('.orm-popup')) return;
+    popup?.remove();
+    popup = null;
+  });
 
   // Railway features are the ones whose source layer has a catalog entry.
   const isOrmFeature = (f: RenderedFeatureLike) => Boolean(f.sourceLayer && featuresCatalog[f.sourceLayer]);
