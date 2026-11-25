@@ -87,8 +87,9 @@ export type LayerManagerMap = {
   getZoom(): number;
   getLayer(layerId: string): MapStyleLayer | undefined;
   getSource(sourceId?: string): object | undefined;
-  setLayoutProperty(layerId: string, name: string, value: LayerStyleValue): void;
-  setPaintProperty(layerId: string, name: string, value: LayerStyleValue): void;
+  // MapLibre types each property's value; this takes any.
+  setLayoutProperty(layerId: string, name: string, value: unknown): unknown;
+  setPaintProperty(layerId: string, name: string, value: unknown): unknown;
   getPaintProperty(layerId: string, name: string): unknown;
   removeLayer(layerId: string): void;
   removeSource(sourceId?: string): void;

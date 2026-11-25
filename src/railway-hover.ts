@@ -104,7 +104,9 @@ export type HoverFeature = {
 export function toHoverFeature(feature: HoverFeature): GeoJSON.Feature | null {
   const geometry = feature.geometry;
   if (!geometry) return null;
-  return { type: 'Feature', geometry: geometry as GeoJSON.Geometry, properties: feature.properties ?? {} };
+  // A plain copy: MapLibre 6 gives queried features properties without a
+  // prototype, which its own worker messages cannot carry.
+  return { type: 'Feature', geometry: geometry as GeoJSON.Geometry, properties: { ...feature.properties } };
 }
 
 // Draws the given features as hovered, none for an empty list.

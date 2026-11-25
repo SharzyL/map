@@ -1,6 +1,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import mlcontour from 'maplibre-contour';
 import type { GlobalContourTileOptions } from 'maplibre-contour/dist/types';
 import { installGpxDragDrop, drainGpxQueue, processOrQueueGpx, processOrQueueGeoJson, mergeBounds } from './gpx.js';
@@ -45,6 +46,10 @@ import { installMapLayers } from './map-layers-panel.js';
 import { addAnitabiToStyle, installAnitabi } from './anitabi-layer.js';
 import { installAnitabiList } from './anitabi-list.js';
 import type * as ScreenshotFixtureModule from './screenshot-fixture.js';
+
+// MapLibre looks for its worker next to its own module, which the bundle does
+// not keep; the worker is a module of its own, served as an asset.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const LOCAL_ORM_PREFIX = '/orm';
 const STYLE_URL = `${LOCAL_ORM_PREFIX}/style/standard.json?v=${__STYLE_HASH__}`;
@@ -647,20 +652,22 @@ function addSpriteImage(map: maplibregl.Map, id: string, atlases: SpriteAtlas[])
   }
 }
 
-// Fills ORM icons MapLibre reports missing from the style's sprites, which
-// hold only the icons the standard style is known to use
-// (scripts/styles/sprite-subset.mjs). The full atlases load on the first such
-// miss rather than up front, so they never delay the map. Base map icons that
-// OpenFreeMap's sprite lacks are not ours to fill and must not trigger the
-// download.
+// Fills ORM icons missing from the style's sprites, which hold only the icons
+// the standard style is known to use (scripts/styles/sprite-subset.mjs). The
+// full atlases load on the first such miss rather than up front, so they never
+// delay the map; MapLibre waits for the resolver before drawing the symbol
+// without its icon. Base map icons that OpenFreeMap's sprite lacks are not ours
+// to fill and must not trigger the download.
 function installSpriteFallback(map: maplibregl.Map) {
   let atlases: Promise<SpriteAtlas[]> | null = null;
-  map.on('styleimagemissing', (e) => {
-    if (!SPRITE_ATLASES.some(({ prefix }) => e.id.startsWith(prefix))) return;
+  map.setMissingStyleImageResolver(async (id) => {
+    if (!SPRITE_ATLASES.some(({ prefix }) => id.startsWith(prefix))) return;
     atlases ??= loadSpriteAtlases();
-    atlases
-      .then((loaded) => addSpriteImage(map, e.id, loaded))
-      .catch((error) => console.warn('Sprite fallback failed:', error));
+    try {
+      addSpriteImage(map, id, await atlases);
+    } catch (error) {
+      console.warn('Sprite fallback failed:', error);
+    }
   });
 }
 

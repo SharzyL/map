@@ -35,17 +35,17 @@ function settingsWith(patch: (settings: RailwayFilterSettings) => void) {
 }
 
 function lineVisible(properties: Properties, settings = defaultRailwayFilterSettings()) {
-  const filter = featureFilter(RAILWAY_LINE_FILTER as never, railwayFilterGlobalState(settings));
+  const filter = featureFilter(RAILWAY_LINE_FILTER as never, 'filter', railwayFilterGlobalState(settings));
   return filter.filter({ zoom: 12 }, { type: 2, properties } as never);
 }
 
 function stationVisible(properties: Properties, settings = defaultRailwayFilterSettings()) {
-  const filter = featureFilter(RAILWAY_STATION_FILTER as never, railwayFilterGlobalState(settings));
+  const filter = featureFilter(RAILWAY_STATION_FILTER as never, 'filter', railwayFilterGlobalState(settings));
   return filter.filter({ zoom: 12 }, { type: 1, properties } as never);
 }
 
 function stationAreaVisible(properties: Properties, settings = defaultRailwayFilterSettings()) {
-  const filter = featureFilter(RAILWAY_STATION_AREA_FILTER as never, railwayFilterGlobalState(settings));
+  const filter = featureFilter(RAILWAY_STATION_AREA_FILTER as never, 'filter', railwayFilterGlobalState(settings));
   return filter.filter({ zoom: 14 }, { type: 3, properties } as never);
 }
 
@@ -285,7 +285,7 @@ describe('applyRailwayFilterToStyle', () => {
     expect(validateStyleMin(styled)).toEqual([]);
     expect(styled.sources).not.toHaveProperty('openhistoricalmap');
     const layer = styled.layers.find((it) => it.id === 'railway_line_main_high_fill_present') as LineLayerSpecification;
-    const parsed = createExpression(layer.layout.visibility, latest.layout_line.visibility as never, {
+    const parsed = createExpression(layer.layout.visibility, 'test', latest.layout_line.visibility as never, {
       date: Number(styled.state.date.default),
       railwayOverlay: true,
       showConstructionInfrastructure: true,
@@ -312,7 +312,7 @@ describe('applyRailwayFilterToStyle', () => {
     const cover = switched.find(({ id }) => id === 'railway_line_light_rail_tunnel_cover');
     const visibility = (shown: boolean) => {
       const state = { date: 2026, railwayOverlay: true, railwayTunnelsAndBridges: shown };
-      const parsed = createExpression(cover.layout.visibility, latest.layout_line.visibility as never, state);
+      const parsed = createExpression(cover.layout.visibility, 'test', latest.layout_line.visibility as never, state);
       expect(parsed.result).toBe('success');
       return (parsed.value as { evaluate(globals: object): unknown }).evaluate({ zoom: 12 });
     };

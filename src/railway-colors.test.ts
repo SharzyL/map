@@ -23,7 +23,7 @@ const CLASS_SPEC = {
 };
 
 function evaluate(value: unknown, spec: unknown, properties: Properties, state: Record<string, unknown> = {}) {
-  const parsed = createExpression(value, spec as never, state);
+  const parsed = createExpression(value, 'test', spec as never, state);
   expect(parsed.result).toBe('success');
   return (parsed.value as { evaluate(globals: object, feature: object): unknown }).evaluate(
     { zoom: 12 },

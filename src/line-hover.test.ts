@@ -9,7 +9,7 @@ const ROUTE = '12231217\u001e#BBA786\u001e15号线：顾村公园 -> 紫竹高�
 function inLine(properties: Record<string, unknown>, line: HoveredLine) {
   const filter = lineFilter(line);
   if (!filter) return false;
-  return featureFilter(filter as never).filter({ zoom: 12 }, { type: 2, properties } as never);
+  return featureFilter(filter as never, 'filter').filter({ zoom: 12 }, { type: 2, properties } as never);
 }
 
 describe('hoveredLineOf', () => {

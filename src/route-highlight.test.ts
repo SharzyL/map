@@ -24,7 +24,9 @@ const LINE_ROUTES =
   '5611108\u001e#76232F\u001e11号线：迪士尼 -> 嘉定北\u001d5611110\u001e#76232F\u001e11号线：迪士尼 -> 花桥';
 
 function onRoute(routeId: string, properties: Record<string, unknown>) {
-  const filter = featureFilter(routeListFilter('line_routes') as never, { [ROUTE_HIGHLIGHT_ID_STATE]: routeId });
+  const filter = featureFilter(routeListFilter('line_routes') as never, 'filter', {
+    [ROUTE_HIGHLIGHT_ID_STATE]: routeId,
+  });
   return filter.filter({ zoom: 12 }, { type: 2, properties } as never);
 }
 
@@ -66,7 +68,7 @@ describe('addRouteHighlightToStyle', () => {
   });
 
   it('places stop labels where the train was opened first, then the ends, then the busiest', () => {
-    const order = createExpression(STOP_LABEL_ORDER as never);
+    const order = createExpression(STOP_LABEL_ORDER as never, 'test');
     if (order.result !== 'success') throw new Error('invalid');
     const key = (properties: Record<string, unknown>) =>
       order.value.evaluate({ zoom: 10 }, { type: 1, properties, geometry: [] } as never) as number;
@@ -112,7 +114,7 @@ describe('addRouteHighlightToStyle', () => {
   it('highlights a line segment by its routes or its railway lines', () => {
     const line = highlight.find((layer) => layer.id === 'route_highlight_line_0');
     const matches = (id: string, properties: Record<string, unknown>) =>
-      featureFilter((line as unknown as { filter: never }).filter, { [ROUTE_HIGHLIGHT_ID_STATE]: id }).filter(
+      featureFilter((line as unknown as { filter: never }).filter, 'filter', { [ROUTE_HIGHLIGHT_ID_STATE]: id }).filter(
         { zoom: 12 },
         {
           type: 2,
@@ -162,8 +164,8 @@ describe('addRouteHighlightToStyle', () => {
   ) {
     const layer = styled.layers.find((candidate) => candidate.id === layerId);
     const value = (layer.paint as Record<string, unknown>)[property];
-    const spec = latest[`paint_${layer.type}`][property];
-    const expression = createExpression(value, spec);
+    const spec = (latest as unknown as Record<string, Record<string, never>>)[`paint_${layer.type}`][property];
+    const expression = createExpression(value, 'test', spec);
     if (expression.result !== 'success') throw new Error(JSON.stringify(expression.value));
     return expression.value.evaluate(
       { zoom: 12, globalState: { [ROUTE_HIGHLIGHT_ID_STATE]: routeId, ...state } } as never,
@@ -182,7 +184,7 @@ describe('addRouteHighlightToStyle', () => {
   // Whether a layer's filter keeps a feature.
   function shown(layerId: string, properties: Record<string, unknown>, state: Record<string, unknown> = {}) {
     const layer = styled.layers.find((candidate) => candidate.id === layerId);
-    const filter = featureFilter((layer as { filter?: unknown }).filter as never, {
+    const filter = featureFilter((layer as { filter?: unknown }).filter as never, 'filter', {
       [ROUTE_HIGHLIGHT_ID_STATE]: '',
       ...state,
     });
@@ -214,7 +216,8 @@ describe('addRouteHighlightToStyle', () => {
     const layer = styled.layers.find((candidate) => candidate.id === layerId);
     const expression = createExpression(
       (layer.layout as Record<string, unknown>)['text-field'],
-      latest.layout_symbol['text-field'],
+      'test',
+      latest.layout_symbol['text-field'] as never,
     );
     if (expression.result !== 'success') throw new Error(JSON.stringify(expression.value));
     const value = expression.value.evaluate(

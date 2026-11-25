@@ -65,7 +65,7 @@ vi.mock('maplibre-gl', () => {
     }
   }
 
-  return { default: { Marker } };
+  return { Marker };
 });
 
 type TestSource = {

@@ -11,7 +11,7 @@ import TrashIcon from 'lucide/dist/esm/icons/trash-2.mjs';
 import TypeIcon from 'lucide/dist/esm/icons/type.mjs';
 import UndoIcon from 'lucide/dist/esm/icons/undo-2.mjs';
 import XIcon from 'lucide/dist/esm/icons/x.mjs';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { canSubmitAnnotationDraft, resolveAnnotationDraftCompletion } from './annotation-draft.js';
 import { defaultAnnotationFeatureLabel } from './annotation-labels.js';
 import {

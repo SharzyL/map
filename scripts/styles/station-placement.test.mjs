@@ -6,7 +6,7 @@ const style = JSON.parse(fs.readFileSync(new URL('../../public/orm/style/standar
 const layer = (id) => style.layers.find((candidate) => candidate.id === id)
 
 function sortKey(id, properties) {
-  const parsed = createExpression(layer(id).layout['symbol-sort-key'], latest.layout_symbol['symbol-sort-key'])
+  const parsed = createExpression(layer(id).layout['symbol-sort-key'], 'test', latest.layout_symbol['symbol-sort-key'])
   expect(parsed.result).toBe('success')
   return parsed.value.evaluate({ zoom: 9 }, { type: 1, properties })
 }

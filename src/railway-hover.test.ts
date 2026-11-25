@@ -40,9 +40,9 @@ describe('addRailwayHoverToStyle', () => {
 
   it('has valid paint', () => {
     for (const layer of railwayHoverLayers()) {
-      const spec = (latest as Record<string, Record<string, unknown>>)[`paint_${layer.type}`];
+      const spec = (latest as unknown as Record<string, Record<string, unknown>>)[`paint_${layer.type}`];
       for (const [name, value] of Object.entries(layer.paint as Record<string, unknown>)) {
-        expect(createExpression(value, spec[name] as never).result, `${layer.id} ${name}`).toBe('success');
+        expect(createExpression(value, 'test', spec[name] as never).result, `${layer.id} ${name}`).toBe('success');
       }
     }
   });
@@ -58,13 +58,20 @@ describe('setRailwayHover', () => {
       { geometry: { type: 'Point', coordinates: [1, 2] }, properties: { name: 'A' } },
       { geometry: null, properties: {} },
     ]);
+    // As MapLibre 6 queries them, properties without a prototype
+    const bare = Object.assign(Object.create(null) as Record<string, unknown>, { name: 'B' });
+    setRailwayHover(map, [{ geometry: { type: 'Point', coordinates: [3, 4] }, properties: bare }]);
     setRailwayHover(map, []);
     expect(data).toEqual([
       {
         type: 'FeatureCollection',
         features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [1, 2] }, properties: { name: 'A' } }],
       },
+      { type: 'FeatureCollection', features: [expect.anything()] },
       { type: 'FeatureCollection', features: [] },
     ]);
+    const plain = (data[1] as GeoJSON.FeatureCollection).features[0].properties;
+    expect(Object.getPrototypeOf(plain)).toBe(Object.prototype);
+    expect(plain).toEqual({ name: 'B' });
   });
 });

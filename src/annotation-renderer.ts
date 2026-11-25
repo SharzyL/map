@@ -1,4 +1,4 @@
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import createIconElement from 'lucide/dist/esm/createElement.mjs';
 import ChevronDownIcon from 'lucide/dist/esm/icons/chevron-down.mjs';
 import CloudSunIcon from 'lucide/dist/esm/icons/cloud-sun.mjs';

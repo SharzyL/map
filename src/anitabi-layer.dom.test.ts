@@ -55,7 +55,7 @@ describe('style', () => {
   });
 
   it('thins spots by priority as anitabi does', () => {
-    const filter = featureFilter(ANITABI_PRIORITY_FILTER as never);
+    const filter = featureFilter(ANITABI_PRIORITY_FILTER as never, 'filter');
     const shown = (priority: number, zoom: number) =>
       filter.filter({ zoom }, { type: 1, properties: { priority }, geometry: [] } as never);
     expect([shown(70000, 1), shown(50000, 1), shown(50000, 2)]).toEqual([true, false, true]);
@@ -64,7 +64,7 @@ describe('style', () => {
 
   it('shows only the selected work’s spots, all of them at every zoom', () => {
     const shown = (aid: number, priority: number, zoom: number, anitabiWork: number) =>
-      featureFilter(ANITABI_FILTER as never, { anitabiWork }).filter({ zoom }, {
+      featureFilter(ANITABI_FILTER as never, 'filter', { anitabiWork }).filter({ zoom }, {
         type: 1,
         properties: { aid, priority },
         geometry: [],

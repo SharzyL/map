@@ -45,7 +45,10 @@ function isVisible(layer: Layer, settings: Partial<MapLayerSettings> = {}) {
   // Wrappers nest: ['case', condition, <inner visibility>, 'none'].
   const evaluateVisibility = (value: unknown): boolean => {
     if (!Array.isArray(value)) return value !== 'none';
-    const shown = featureFilter(value[1] as never, state).filter({ zoom: 10 }, { type: 1, properties: {} } as never);
+    const shown = featureFilter(value[1] as never, 'filter', state).filter({ zoom: 10 }, {
+      type: 1,
+      properties: {},
+    } as never);
     return evaluateVisibility(shown ? value[2] : value[3]);
   };
   return evaluateVisibility(visibility);
@@ -128,7 +131,7 @@ function evaluate(
   zoom = 10,
 ) {
   const state = mapLayerGlobalState({ ...defaultMapLayerSettings(), ...settings });
-  const parsed = createExpression(value, spec as never, state);
+  const parsed = createExpression(value, 'test', spec as never, state);
   expect(parsed.result).toBe('success');
   return (parsed.value as { evaluate(globals: object, feature: object): unknown }).evaluate(
     { zoom },
@@ -343,6 +346,7 @@ describe('hybrid styling', () => {
     const shown = (settings: Partial<MapLayerSettings>, properties: object) =>
       featureFilter(
         filtered.filter as never,
+        'filter',
         mapLayerGlobalState({ ...defaultMapLayerSettings(), ...settings }),
       ).filter({ zoom: 11 } as never, { type: 2, properties } as never);
     expect(shown({}, district)).toBe(true);

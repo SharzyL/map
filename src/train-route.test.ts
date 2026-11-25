@@ -98,7 +98,7 @@ describe('sketchFeatures', () => {
 
 describe('trainWaysFilter', () => {
   const picks = (filter: unknown, osmId: number) =>
-    featureFilter(filter as never).filter({ zoom: 12 }, { type: 2, properties: { osm_id: osmId } } as never);
+    featureFilter(filter as never, 'filter').filter({ zoom: 12 }, { type: 2, properties: { osm_id: osmId } } as never);
 
   it('picks the route’s ways from the tiles, or none', () => {
     expect(picks(trainWaysFilter([43046288, 43046300]), 43046300)).toBe(true);
