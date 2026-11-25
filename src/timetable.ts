@@ -40,6 +40,7 @@ import {
   type CrTrainset,
   type Departure,
   type DepartureTable,
+  type StationLines,
   type TrainRoute,
   type TimetableDay,
 } from './norikae.js';
@@ -306,6 +307,9 @@ class TimetablePanel {
   private _lang: Lang = 'ja';
   // The line and direction tabs picked at a China Railway station, kept across its days.
   private _crFilter: { station: string; line: string | null; bound: string | null } | null = null;
+  // The Yahoo station picked among those of one station's lines view
+  // (新宿 and 新宿(東京メトロ)), kept while going to its departures and back.
+  private _jpPick: { name: string; code: string } | null = null;
   private _open = false;
 
   constructor(map: TimetableMap, route: TrainRouteDrawer | null) {
@@ -621,28 +625,52 @@ class TimetablePanel {
     const tables = await Promise.all(stations.map(({ code }) => stationLines(code, signal)));
     if (signal.aborted) return;
     this._setBack();
-    this._body.replaceChildren();
-    this._setHeader(request.name, '路線', tables.length === 1 ? yahooSource(tables[0].source_url) : null, {
-      title: `Timetable error at ${request.name}`,
-      details: [`Station: ${request.name} (Yahoo codes ${tables.map((table) => table.station.code).join(', ')})`],
-    });
-    for (const table of tables) {
-      const section = el('section', 'timetable-station', this._body);
-      if (tables.length > 1) el('h3', 'timetable-station-name', section).textContent = table.station.name;
-      if (table.lines.length === 0) el('div', 'timetable-status', section).textContent = '路線がありません。';
-      for (const line of table.lines) {
-        const group = el('div', 'timetable-line', section);
-        const lineName = el('div', 'timetable-line-name', group);
-        lineName.textContent = line.name;
-        if (isHighSpeedLine(line.name)) lineName.classList.add('timetable-highspeed');
-        for (const { direction, gid } of line.directions) {
-          const button = el('button', 'timetable-direction', group);
+    // A station Yahoo lists as several (新宿 and 新宿(東京メトロ)) shows one at
+    // a time, picked in a row of tabs in the back row, as China Railway's lines.
+    const kept = this._jpPick?.name === request.name ? this._jpPick.code : null;
+    let picked = tables.find((table) => table.station.code === kept) ?? tables[0];
+    const row = tables.length > 1 ? this._navGroup('駅') : null;
+    row?.classList.add('timetable-directions');
+    const tabs = row
+      ? tables.map((table) => {
+          const button = el('button', 'timetable-day', row);
           button.type = 'button';
-          button.textContent = directionLabel(direction);
-          button.addEventListener('click', () =>
-            this._show(() => this._renderDepartures(table.station.code, gid, table.station.name, null)),
-          );
-        }
+          button.textContent = table.station.name;
+          button.addEventListener('click', () => {
+            picked = table;
+            this._jpPick = { name: request.name, code: table.station.code };
+            show();
+          });
+          return { table, button };
+        })
+      : [];
+    const show = () => {
+      for (const { table, button } of tabs) button.setAttribute('aria-pressed', String(table === picked));
+      this._renderStationLines(request.name, picked);
+    };
+    show();
+  }
+
+  private _renderStationLines(name: string, table: StationLines) {
+    this._body.replaceChildren();
+    this._setHeader(name, '路線', yahooSource(table.source_url), {
+      title: `Timetable error at ${table.station.name}`,
+      details: [`Station: ${table.station.name} (Yahoo code ${table.station.code})`],
+    });
+    const section = el('section', 'timetable-station', this._body);
+    if (table.lines.length === 0) el('div', 'timetable-status', section).textContent = '路線がありません。';
+    for (const line of table.lines) {
+      const group = el('div', 'timetable-line', section);
+      const lineName = el('div', 'timetable-line-name', group);
+      lineName.textContent = line.name;
+      if (isHighSpeedLine(line.name)) lineName.classList.add('timetable-highspeed');
+      for (const { direction, gid } of line.directions) {
+        const button = el('button', 'timetable-direction', group);
+        button.type = 'button';
+        button.textContent = directionLabel(direction);
+        button.addEventListener('click', () =>
+          this._show(() => this._renderDepartures(table.station.code, gid, table.station.name, null)),
+        );
       }
     }
   }

@@ -192,6 +192,17 @@ const API: Record<string, unknown> = {
       },
     ],
   },
+  // One station Yahoo lists as two
+  '/api/v1/norikae/stations/22741/timetables': {
+    source_url: 'https://transit.yahoo.co.jp/timetable/22741',
+    station: { code: '22741', name: '新宿' },
+    lines: [{ name: 'ＪＲ山手線外回り', directions: [{ direction: '渋谷・品川', gid: '1' }] }],
+  },
+  '/api/v1/norikae/stations/29342/timetables': {
+    source_url: 'https://transit.yahoo.co.jp/timetable/29342',
+    station: { code: '29342', name: '新宿(東京メトロ)' },
+    lines: [{ name: '東京メトロ丸ノ内線', directions: [{ direction: '池袋', gid: '2' }] }],
+  },
   '/api/v1/norikae/stations/22715/timetables/1051': {
     source_url: 'https://transit.yahoo.co.jp/timetable/22715/1051?kind=1',
     station: { code: '22715', name: '渋谷' },
@@ -470,6 +481,34 @@ describe('timetable panel', () => {
     expect(body).toContain('- Opened at: 渋谷 (Yahoo code 22715, train 33471)');
     expect(body).toContain('- Data: Yahoo!乗換案内 (https://transit.yahoo.co.jp/timetable/22715/1051/33471)');
     expect(body).toContain(`- Map: ${window.location.href}`);
+  });
+
+  it('shows one of the stations Yahoo lists for a station at a time, picked by tabs', async () => {
+    const { container, panel } = setup();
+    const root = panel.panel;
+    container.dispatchEvent(
+      new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '新宿', codes: ['22741', '29342'] } }),
+    );
+    await vi.waitFor(() => expect(text(root, '.timetable-line-name')).toEqual(['ＪＲ山手線外回り']));
+    const tabs = () => Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-nav .timetable-day'));
+    expect(tabs().map((tab) => [tab.textContent, tab.getAttribute('aria-pressed')])).toEqual([
+      ['新宿', 'true'],
+      ['新宿(東京メトロ)', 'false'],
+    ]);
+    expect(root.querySelector<HTMLAnchorElement>('.timetable-source').href).toBe(
+      'https://transit.yahoo.co.jp/timetable/22741',
+    );
+    tabs()[1].click();
+    expect(text(root, '.timetable-line-name')).toEqual(['東京メトロ丸ノ内線']);
+    expect(root.querySelector<HTMLAnchorElement>('.timetable-source').href).toBe(
+      'https://transit.yahoo.co.jp/timetable/29342',
+    );
+    // The pick holds after going to a direction and back.
+    root.querySelector<HTMLButtonElement>('.timetable-direction').click();
+    await vi.waitFor(() => expect(root.querySelector('.timetable-back')).not.toBeNull());
+    root.querySelector<HTMLButtonElement>('.timetable-back').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-line-name')).toEqual(['東京メトロ丸ノ内線']));
+    expect(tabs().map((tab) => tab.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
   });
 
   it('shows no report link for a view that failed to load', async () => {

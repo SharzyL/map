@@ -2519,12 +2519,6 @@ button.timetable-stop-locate:focus-visible {
   font-weight: 650;
 }
 
-.timetable-station-name {
-  margin: 4px 0 2px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
 /* A station's lines sit closer to the panel's head and foot than other
    views do: their names' and directions' line boxes already add room. */
 .timetable-body:has(> .timetable-station) {
@@ -2538,9 +2532,9 @@ button.timetable-stop-locate:focus-visible {
   border-top: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-/* Lines are ruled off from each other and from a station's name above them,
-   but the first of a lone station's would only double the header's rule, and
-   the body's padding already holds the first and last apart from its edges. */
+/* Lines are ruled off from each other, but the first's rule would only double
+   the header's, and the body's padding already holds the first and last apart
+   from its edges. */
 .timetable-line:first-child {
   padding-top: 0;
   border-top: 0;
