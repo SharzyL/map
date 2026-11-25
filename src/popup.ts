@@ -10,7 +10,8 @@
  */
 
 import { installSheetCollapse, isSheetLayout, sheetClosed, sheetOpened } from './bottom-sheet.js';
-import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter, type HoveredLine } from './line-hover.js';
+import { HOVER_LINE_SOURCE_LAYERS, hoveredLineOf, lineFilter } from './line-hover.js';
+import { setRailwayHover, type HoverFeature } from './railway-hover.js';
 import { renderMarkdown } from './markdown.js';
 import {
   ROUTE_SELECT_EVENT,
@@ -157,11 +158,6 @@ type RenderedFeatureLike = {
     coordinates?: unknown;
   };
 };
-type FeatureStateTarget = {
-  source: string;
-  sourceLayer?: string;
-  id: string | number;
-};
 type PopupMapEvent = {
   point: unknown;
   lngLat: unknown;
@@ -176,8 +172,9 @@ type MapLike = {
   getCanvas(): HTMLCanvasElement;
   getZoom(): number;
   queryRenderedFeatures(point: unknown): RenderedFeatureLike[];
-  setFeatureState(feature: FeatureStateTarget, state: JsonRecord): void;
-  // Finds the hovered line's features (line-hover.ts); optional for tests.
+  // The hover overlay's source (railway-hover.ts); optional for tests.
+  getSource?(id: string): unknown;
+  // Finds the hovered line's or feature's pieces in the loaded tiles; optional for tests.
   querySourceFeatures?(
     source: string,
     options: { sourceLayer: string; filter?: never },
@@ -1755,7 +1752,6 @@ export function installOrmPopups(
   options: OrmPopupOptions = {},
 ) {
   let popup: PopupBuilderLike | null = null;
-  let hoveredFeature: FeatureStateTarget | null = null;
   map.getContainer().addEventListener('annotation:editopen', () => {
     popup?.remove();
     popup = null;
@@ -1802,39 +1798,36 @@ export function installOrmPopups(
     }
   };
 
-  // The rest of the hovered segment's line (line-hover.ts), lit as well.
-  let hoveredLine: HoveredLine = { id: '', name: '' };
-  let litLine: FeatureStateTarget[] = [];
-  let litKeys = new Set<string>();
-  function setHoveredLine(line: HoveredLine, source = '') {
-    if (line.id === hoveredLine.id && line.name === hoveredLine.name) return;
-    hoveredLine = line;
-    const next = new Map<string, FeatureStateTarget>();
-    const filter = lineFilter(line);
-    for (const sourceLayer of filter && source && map.querySourceFeatures ? HOVER_LINE_SOURCE_LAYERS : []) {
-      for (const feature of map.querySourceFeatures(source, { sourceLayer, filter: filter as never })) {
-        if (feature.id !== undefined && feature.id !== null) {
-          next.set(`${sourceLayer}/${feature.id}`, { source, sourceLayer, id: feature.id });
-        }
-      }
-    }
-    for (const target of litLine) {
-      if (!next.has(`${target.sourceLayer}/${target.id}`)) map.setFeatureState(target, { hover: false });
-    }
-    for (const target of next.values()) map.setFeatureState(target, { hover: true });
-    litLine = [...next.values()];
-    litKeys = new Set(next.keys());
+  // What the pointer lights (railway-hover.ts): a railway line's segments
+  // (line-hover.ts) when it is over one, found in the loaded tiles, else the
+  // feature under it. Drawn again only when it changes.
+  let hoverKey = '';
+  function setHover(key: string, features: () => HoverFeature[]) {
+    if (key === hoverKey) return;
+    hoverKey = key;
+    setRailwayHover(map, key ? features() : []);
   }
-
-  function clearHover() {
-    setHoveredLine({ id: '', name: '' });
-    if (!hoveredFeature) return;
-    map.setFeatureState(hoveredFeature, { hover: false });
-    hoveredFeature = null;
+  const clearHover = () => setHover('', () => []);
+  function hover(feature: RenderedFeatureLike) {
+    const line = LINE_SOURCE_LAYERS.has(feature.sourceLayer || '') ? hoveredLineOf(feature.properties || {}) : null;
+    const filter = line && lineFilter(line);
+    if (filter && map.querySourceFeatures) {
+      setHover(`line\u001f${feature.source}\u001f${line.id}\u001f${line.name}`, () =>
+        HOVER_LINE_SOURCE_LAYERS.flatMap((sourceLayer) =>
+          map.querySourceFeatures(feature.source, { sourceLayer, filter: filter as never }),
+        ),
+      );
+    } else if (feature.id !== undefined && feature.id !== null) {
+      setHover(`feature\u001f${feature.source}\u001f${feature.sourceLayer}\u001f${feature.id}`, () => [feature]);
+    } else clearHover();
   }
 
   // Hover cursor
   map.on('mousemove', (event: PopupMapEvent) => {
+    // Nothing to point at while the map moves under the pointer (dragged,
+    // zoomed, flying): the lit features stay until it stops, and the queries
+    // would only take frames from the move.
+    if (map.isMoving?.()) return;
     if (isWeatherPickerActive() || isRoutingPickerActive() || isAnnotationPickerActive()) {
       map.getCanvas().style.cursor = 'crosshair';
       clearHover();
@@ -1848,35 +1841,8 @@ export function installOrmPopups(
     const hasOtherFeature = renderedFeatures.some((f) => isOtherFeature(f) || isStopLabel(f));
     if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || hasOtherFeature || ormFeatures.length > 0) {
       map.getCanvas().style.cursor = 'pointer';
-
-      if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || hasOtherFeature) {
-        clearHover();
-        return;
-      }
-
-      const feature = ormFeatures[0];
-      // A line segment lights up its whole line; anything else only itself.
-      setHoveredLine(
-        LINE_SOURCE_LAYERS.has(feature.sourceLayer || '')
-          ? hoveredLineOf(feature.properties || {})
-          : { id: '', name: '' },
-        feature.source,
-      );
-      if (hoveredFeature && hoveredFeature.id !== feature.id) {
-        // A segment of the lit line stays lit.
-        if (!litKeys.has(`${hoveredFeature.sourceLayer}/${hoveredFeature.id}`)) {
-          map.setFeatureState(hoveredFeature, { hover: false });
-        }
-        hoveredFeature = null;
-      }
-      if (feature.id && !(hoveredFeature && hoveredFeature.id === feature.id)) {
-        hoveredFeature = {
-          source: feature.source,
-          sourceLayer: feature.sourceLayer,
-          id: feature.id,
-        };
-        map.setFeatureState(hoveredFeature, { hover: true });
-      }
+      if (osrmFeatures.length > 0 || annotationFeatures.length > 0 || hasOtherFeature) clearHover();
+      else hover(ormFeatures[0]);
     } else {
       map.getCanvas().style.cursor = '';
       clearHover();

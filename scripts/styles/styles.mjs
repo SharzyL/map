@@ -42,6 +42,33 @@ const capLayersForDataMaxZoom = (originalLayers) =>
     return next
   })
 
+// Upstream's fragments light a hovered feature through its `hover` feature
+// state: `['case', ['boolean', ['feature-state', 'hover'], false], hover, ...]`.
+// The map draws hovered features from a small overlay source instead
+// (src/railway-hover.ts), so those branches go: MapLibre keeps the state of
+// every feature it ever held state for and replays all of it into every tile
+// it loads, for each of the ~200 layers reading it, which froze the map for
+// hundreds of milliseconds at a time while zooming and panning.
+const isHoverTest = (expression) =>
+  JSON.stringify(expression) === JSON.stringify(['boolean', ['feature-state', 'hover'], false])
+
+export const withoutHoverState = (value) => {
+  if (Array.isArray(value)) {
+    const items = value.map(withoutHoverState)
+    if (items[0] !== 'case') return items
+    const branches = []
+    for (let i = 1; i + 1 < items.length; i += 2) {
+      if (!isHoverTest(items[i])) branches.push(items[i], items[i + 1])
+    }
+    const fallback = items[items.length - 1]
+    return branches.length === 0 ? fallback : ['case', ...branches, fallback]
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withoutHoverState(item)]))
+  }
+  return value
+}
+
 const makeStyle = (selectedStyle) => ({
   center: [12.55, 51.14], // default
   zoom: 3.75, // default
@@ -63,7 +90,7 @@ const makeStyle = (selectedStyle) => ({
     },
   ],
   version: 8,
-  layers: capLayersForDataMaxZoom(layers[selectedStyle]),
+  layers: capLayersForDataMaxZoom(layers[selectedStyle]).map(withoutHoverState),
   state: {
     date: {
       default: defaultDate,
@@ -98,6 +125,7 @@ const makeStyle = (selectedStyle) => ({
   },
 })
 
-knownStyles.forEach((style) => {
-  fs.writeFileSync(`${style}.json`, JSON.stringify(makeStyle(style)))
-})
+if (import.meta.url === `file://${process.argv[1]}`)
+  knownStyles.forEach((style) => {
+    fs.writeFileSync(`${style}.json`, JSON.stringify(makeStyle(style)))
+  })

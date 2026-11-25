@@ -223,29 +223,27 @@ export const RAILWAY_COLOR_CLASS_EXPRESSIONS: Record<RailwayLegendMode, unknown[
 
 const MODE = ['to-string', ['global-state', RAILWAY_COLOR_STATE]];
 
-const IS_HOVERED = ['boolean', ['feature-state', 'hover'], false];
-
-// A legend mode's color: its legend class's color, with a hover color that
-// stands out from it.
+// A legend mode's color: its legend class's color.
 function legendModeColor(mode: RailwayLegendMode) {
   const classes = RAILWAY_COLOR_LEGENDS[mode];
-  const alternatives = classes.filter(({ hover }) => hover);
-  const color = [
+  return [
     'match',
     RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
     ...classes.flatMap(({ key, color }) => [key, color]),
     NO_DATA,
   ];
-  const hover =
-    alternatives.length === 0
-      ? HOVER
-      : [
-          'match',
-          RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
-          ...alternatives.flatMap(({ key, hover }) => [key, hover]),
-          HOVER,
-        ];
-  return ['case', IS_HOVERED, hover, color];
+}
+
+// A legend mode's hover color, which stands out from its class's color.
+function legendModeHover(mode: RailwayLegendMode) {
+  const alternatives = RAILWAY_COLOR_LEGENDS[mode].filter(({ hover }) => hover);
+  if (alternatives.length === 0) return HOVER;
+  return [
+    'match',
+    RAILWAY_COLOR_CLASS_EXPRESSIONS[mode],
+    ...alternatives.flatMap(({ key, hover }) => [key, hover]),
+    HOVER,
+  ];
 }
 
 // A line's route color (OSM `colour`) is its `line_color`: the export gives
@@ -258,7 +256,7 @@ const ROUTE_COLOR = ['to-string', ['coalesce', ['get', 'line_color'], '']];
 const ROUTE_RGBA = ['var', 'routeRgba'];
 
 // Red routes hover in amber, like the red legend classes.
-const ROUTE_HOVER_COLOR = [
+const ROUTE_HOVER_COLOR: unknown[] = [
   'let',
   'routeRgba',
   ['to-rgba', ['to-color', ['var', 'routeColor'], NO_DATA]],
@@ -283,9 +281,7 @@ function withRouteColor(original: unknown) {
     [
       'case',
       ['==', ['var', 'routeColor'], ''],
-      ['case', ['!', ['has', 'service']], original, IS_HOVERED, HOVER, SERVICE_TRACK_COLOR],
-      IS_HOVERED,
-      ROUTE_HOVER_COLOR,
+      ['case', ['!', ['has', 'service']], original, SERVICE_TRACK_COLOR],
       ['to-color', ['var', 'routeColor'], original],
     ],
   ];
@@ -298,14 +294,29 @@ const OPERATOR_COLOR = [
   'let',
   'routeColor',
   ['to-string', ['coalesce', ['get', 'operator_color'], '']],
+  ['case', ['==', ['var', 'routeColor'], ''], NO_DATA, ['to-color', ['var', 'routeColor'], NO_DATA]],
+];
+
+// The usage colors' hover: high-speed lines, drawn in purple, hover in amber.
+const USAGE_HOVER = ['case', ['==', ['get', 'highspeed'], true], ALTERNATIVE_HOVER, HOVER];
+
+// A hovered line's color, in every mode: the hover overlay (railway-hover.ts)
+// draws the few features under the pointer, so one expression switching on
+// the mode's global state costs nothing there.
+export const RAILWAY_HOVER_COLOR = [
+  'match',
+  MODE,
+  'default',
+  ['let', 'routeColor', ROUTE_COLOR, ['case', ['==', ['var', 'routeColor'], ''], USAGE_HOVER, ROUTE_HOVER_COLOR]],
+  'operator',
   [
-    'case',
-    ['==', ['var', 'routeColor'], ''],
-    ['case', IS_HOVERED, HOVER, NO_DATA],
-    IS_HOVERED,
-    ROUTE_HOVER_COLOR,
-    ['to-color', ['var', 'routeColor'], NO_DATA],
+    'let',
+    'routeColor',
+    ['to-string', ['coalesce', ['get', 'operator_color'], '']],
+    ['case', ['==', ['var', 'routeColor'], ''], HOVER, ROUTE_HOVER_COLOR],
   ],
+  ...(['speed', 'electrification', 'gauge', 'tracks'] as const).flatMap((mode) => [mode, legendModeHover(mode)]),
+  USAGE_HOVER,
 ];
 
 // Layers built by the style's railwayLine(): fills of lines in use (abandoned,
@@ -397,7 +408,7 @@ export function withRailwayStationColors<T extends StyleLayerLike>(layer: T): T 
   if (paint['icon-halo-color'] !== undefined) {
     paint['icon-halo-color'] = mapZoomOutputs(paint['icon-halo-color'], (original) => [
       'case',
-      ['all', ['==', STATION_KIND, 'interchange'], ['!', IS_HOVERED]],
+      ['==', STATION_KIND, 'interchange'],
       INTERCHANGE_RING,
       original,
     ]);

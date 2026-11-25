@@ -9,11 +9,11 @@
 //   layer carries no lists, so there the line is the segments of that name
 //   (in Japan the official line's name, which that layer takes).
 //
-// The pointer handler (popup.ts) sets the line layers' `hover` feature state
-// on the line's features in the loaded tiles. Feature state only updates the
-// features it changes; a global state read by the line layers' colors made
-// every line layer of every tile re-evaluate on each hover, several times
-// slower.
+// The pointer handler (popup.ts) finds the line's features in the loaded
+// tiles and draws them over the map from a source of their own
+// (railway-hover.ts). A global state read by the line layers' colors made
+// every line layer of every tile re-evaluate on each hover, and feature state
+// piled up until every tile coming in took hundreds of milliseconds.
 export const HOVER_LINE_SOURCE_LAYERS = ['railway_line_high', 'standard_railway_line_low'];
 
 export type HoveredLine = { id: string; name: string };

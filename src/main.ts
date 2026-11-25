@@ -16,6 +16,7 @@ import { installRailwayFilter } from './railway-filter-panel.js';
 import { installLocate, type DemTileLike } from './cursor-position.js';
 import { installControlIcons } from './control-icons.js';
 import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
+import { addRailwayHoverToStyle } from './railway-hover.js';
 import { lineListsNear } from './route-trace.js';
 import { installTimetable, timetableButton } from './timetable.js';
 import { installTrainRoute } from './train-route.js';
@@ -534,8 +535,13 @@ async function loadStyle(
   ]);
   const ormStyle = rewriteOrmStyle(ormStyleRaw, tileUrl);
   const railwaySources = (ormStyle.metadata?.ormRewrittenSources as string[] | undefined) ?? [];
+  // The hover overlay right above the railway lines, the route highlight's
+  // lines below it, so a highlighted route still shows what is pointed at.
   const merged = addRouteHighlightToStyle(
-    applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter),
+    addRailwayHoverToStyle(
+      applyRailwayFilterToStyle(mergeBaseAndOrm(baseStyle, ormStyle), railwaySources, railwayFilter),
+      railwaySources,
+    ),
     railwaySources,
   );
   const withTerrain = addMapterhornTerrain(merged, demSource);

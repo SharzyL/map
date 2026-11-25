@@ -5,6 +5,7 @@ import {
   RAILWAY_COLOR_CLASS_EXPRESSIONS,
   RAILWAY_COLOR_LEGENDS,
   RAILWAY_COLOR_STATE,
+  RAILWAY_HOVER_COLOR,
   RECOLOR_METADATA,
   applyRailwayColorMode,
   withRailwayLineColors,
@@ -21,19 +22,12 @@ const CLASS_SPEC = {
   expression: { interpolated: false, parameters: ['zoom', 'feature'] },
 };
 
-function evaluate(
-  value: unknown,
-  spec: unknown,
-  properties: Properties,
-  state: Record<string, unknown> = {},
-  featureState: Record<string, unknown> = {},
-) {
+function evaluate(value: unknown, spec: unknown, properties: Properties, state: Record<string, unknown> = {}) {
   const parsed = createExpression(value, spec as never, state);
   expect(parsed.result).toBe('success');
-  return (parsed.value as { evaluate(globals: object, feature: object, featureState: object): unknown }).evaluate(
+  return (parsed.value as { evaluate(globals: object, feature: object): unknown }).evaluate(
     { zoom: 12 },
     { type: 2, properties },
-    featureState,
   );
 }
 
@@ -124,16 +118,16 @@ describe('withRailwayLineColors', () => {
   const layers = ormStyle.layers as Array<{ id: string; paint?: Record<string, unknown> }>;
   const layer = (id: string) => layers.find((candidate) => candidate.id === id);
   const lineColor = latest.paint_line['line-color'];
-  const colorOf = (id: string, mode: RailwayColorMode, properties: Properties, hover = false) =>
+  const colorOf = (id: string, mode: RailwayColorMode, properties: Properties) =>
     hex(
-      evaluate(
-        withRailwayLineColors(layer(id), mode).paint['line-color'],
-        lineColor,
-        properties,
-        { [RAILWAY_COLOR_STATE]: mode, theme: 'light' },
-        { hover },
-      ),
+      evaluate(withRailwayLineColors(layer(id), mode).paint['line-color'], lineColor, properties, {
+        [RAILWAY_COLOR_STATE]: mode,
+        theme: 'light',
+      }),
     );
+  // The hover overlay's color (railway-hover.ts)
+  const hoverOf = (mode: RailwayColorMode, properties: Properties) =>
+    hex(evaluate(RAILWAY_HOVER_COLOR, lineColor, properties, { [RAILWAY_COLOR_STATE]: mode, theme: 'light' }));
 
   it('recolors fills and direction arrows of lines in use only', () => {
     const recolored = layers
@@ -152,7 +146,7 @@ describe('withRailwayLineColors', () => {
   it('keeps the usage colors and colors by the chosen attribute otherwise', () => {
     const id = 'railway_line_main_high_fill_present';
     const line = { feature: 'rail', usage: 'main', state: 'present', maxspeed: 300, gaugeint0: 1520 };
-    const original = hex(evaluate(layer(id).paint['line-color'], lineColor, line, {}, { hover: false }));
+    const original = hex(evaluate(layer(id).paint['line-color'], lineColor, line, {}));
     expect(colorOf(id, 'usage', line)).toBe(original);
     expect(colorOf(id, 'speed', line)).toBe(legendColor('speed', '300'));
     expect(colorOf(id, 'gauge', line)).toBe(legendColor('gauge', 'russian'));
@@ -175,17 +169,24 @@ describe('withRailwayLineColors', () => {
     const id = 'railway_line_light_rail_fill_present';
     const depot = { feature: 'subway', state: 'present', service: 'yard' };
     expect(colorOf(id, 'default', depot)).toBe('#9a9a9a');
-    expect(colorOf(id, 'default', depot, true)).toBe('#ff0000');
+    expect(hoverOf('default', depot)).toBe('#ff0000');
     expect(colorOf(id, 'default', { ...depot, line_color: '#178ABB' })).toBe('#178abb');
     expect(colorOf(id, 'usage', depot)).toBe(colorOf(id, 'usage', { feature: 'subway', state: 'present' }));
   });
 
   it('hovers red routes in amber', () => {
-    const id = 'railway_line_light_rail_fill_present';
     const line = { feature: 'subway', usage: 'main', state: 'present' };
-    expect(colorOf(id, 'default', { ...line, line_color: '#c23a30' }, true)).toBe('#ffc107');
-    expect(colorOf(id, 'default', { ...line, line_color: '#178ABB' }, true)).toBe('#ff0000');
-    expect(colorOf(id, 'default', line, true)).toBe('#ff0000');
+    expect(hoverOf('default', { ...line, line_color: '#c23a30' })).toBe('#ffc107');
+    expect(hoverOf('default', { ...line, line_color: '#178ABB' })).toBe('#ff0000');
+    expect(hoverOf('default', line)).toBe('#ff0000');
+  });
+
+  it('hovers high-speed lines, drawn in purple, in amber where they keep their usage color', () => {
+    const line = { feature: 'rail', usage: 'main', state: 'present' };
+    expect(hoverOf('usage', { ...line, highspeed: true })).toBe('#ffc107');
+    expect(hoverOf('usage', line)).toBe('#ff0000');
+    expect(hoverOf('default', { ...line, highspeed: true })).toBe('#ffc107');
+    expect(hoverOf('default', { ...line, highspeed: true, line_color: '#178ABB' })).toBe('#ff0000');
   });
 
   it('builds one mode at a time and switches through the original color it keeps', () => {
@@ -218,9 +219,7 @@ describe('withRailwayLineColors', () => {
     const [layerId, name, value] = painted[0];
     expect([layerId, name]).toEqual([id, 'line-color']);
     const line = { feature: 'rail', usage: 'main', state: 'present', maxspeed: 300 };
-    expect(hex(evaluate(value, lineColor, line, { theme: 'light' }, { hover: false }))).toBe(
-      legendColor('speed', '300'),
-    );
+    expect(hex(evaluate(value, lineColor, line, { theme: 'light' }))).toBe(legendColor('speed', '300'));
   });
 
   it('draws lines in their operator color, gray without an operator', () => {
@@ -230,15 +229,15 @@ describe('withRailwayLineColors', () => {
     // Hashed hues come as hsl() from the database.
     expect(colorOf(id, 'operator', { ...line, operator_color: 'hsl(120, 100%, 30%)' })).toBe('#009900');
     expect(colorOf(id, 'operator', line)).toBe('#b8b8b8');
-    expect(colorOf(id, 'operator', { ...line, operator_color: '#e3001b' }, true)).toBe('#ffc107');
-    expect(colorOf(id, 'operator', { ...line, operator_color: '#0072b2' }, true)).toBe('#ff0000');
+    expect(hoverOf('operator', { ...line, operator_color: '#e3001b' })).toBe('#ffc107');
+    expect(hoverOf('operator', { ...line, operator_color: '#0072b2' })).toBe('#ff0000');
+    expect(hoverOf('operator', line)).toBe('#ff0000');
   });
 
   it('uses a hover color that stands out from the line color', () => {
-    const id = 'railway_line_main_high_fill_present';
     const line = { feature: 'rail', usage: 'main', state: 'present', gaugeint0: 1435 };
-    expect(colorOf(id, 'gauge', line, true)).toBe('#ff0000');
-    expect(colorOf(id, 'gauge', { ...line, gaugeint0: 1520 }, true)).toBe('#ffc107');
+    expect(hoverOf('gauge', line)).toBe('#ff0000');
+    expect(hoverOf('gauge', { ...line, gaugeint0: 1520 })).toBe('#ffc107');
   });
 });
 
@@ -253,12 +252,10 @@ describe('withRailwayStationColors', () => {
   );
   const state = (mode: RailwayColorMode) => ({ [RAILWAY_COLOR_STATE]: mode, theme: 'light' });
   const iconColor = (mode: RailwayColorMode, properties: Properties) =>
-    hex(evaluate(station.paint['icon-color'], latest.paint_symbol['icon-color'], properties, state(mode), {}));
-  const haloColor = (properties: Properties, hover = false) =>
+    hex(evaluate(station.paint['icon-color'], latest.paint_symbol['icon-color'], properties, state(mode)));
+  const haloColor = (properties: Properties) =>
     hex(
-      evaluate(station.paint['icon-halo-color'], latest.paint_symbol['icon-halo-color'], properties, state('default'), {
-        hover,
-      }),
+      evaluate(station.paint['icon-halo-color'], latest.paint_symbol['icon-halo-color'], properties, state('default')),
     );
   const iconImage = (mode: RailwayColorMode, properties: Properties) =>
     (
@@ -280,7 +277,6 @@ describe('withRailwayStationColors', () => {
     expect(iconImage('default', interchange)).toBe('sdf:general/station-normal');
     expect(iconColor('default', interchange)).toBe('#ffffff');
     expect(haloColor(interchange)).toBe('#334155');
-    expect(haloColor(interchange, true)).toBe('#ffff00');
   });
 
   it('draws other stations as gray dots', () => {
