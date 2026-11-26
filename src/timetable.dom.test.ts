@@ -755,8 +755,6 @@ describe('China Railway’s printed timetable', () => {
     ]);
     // Numbers without a letter: 普快, then 普客
     expect([mark('4019'), mark('6025'), mark('8161')]).toEqual(['普 普快', '慢 普客', '慢 普客']);
-    // The legend lists the fastest first.
-    expect(crTrainClass('G1').order).toBeLessThan(crTrainClass('V1').order);
   });
 
   it('names a destination’s city without its last direction', () => {
@@ -936,12 +934,11 @@ describe('China Railway timetable', () => {
         minute.classList.contains('timetable-highspeed'),
       ),
     ).toEqual([false, true]);
-    expect(text(printed, '.timetable-legend li')).toEqual([
-      '[高] 高速动车组（G）',
-      '广 开往广州南',
-      '● 本站始发',
-      '无标记 Z 快速（160 km/h） · 开往哈尔滨西',
-    ]);
+    // What the unmarked trains are first; the classes' marks need no legend.
+    expect(text(printed, '.timetable-legend li')).toEqual(['无印 [Z] 开往哈尔滨西', '广 开往广州南', '● 本站始发']);
+    expect(printed.querySelectorAll<HTMLElement>('.timetable-grid-minute')[1].title).toBe(
+      '08:00 G301 北京西 → 广州南\n高速动车组（G）\n本站始发\n站台/检票口 7',
+    );
     expect(localStorage.getItem('atlas-realm:timetable-cr-printed')).toBe('true');
     // A minute opens its train.
     printed.querySelectorAll<HTMLButtonElement>('.timetable-grid-minute')[1].click();

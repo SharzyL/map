@@ -3006,10 +3006,6 @@ button.timetable-stop-name:focus-visible {
   font-weight: 700;
 }
 
-.timetable-legend b.timetable-highspeed {
-  color: #9b19d4;
-}
-
 .timetable-grid-time {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
