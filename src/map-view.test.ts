@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { hashHasView, loadMapView, MAP_VIEW_STORAGE_KEY, normalizeMapView, rememberMapView } from './map-view.js';
+import { loadMapView, MAP_VIEW_STORAGE_KEY, normalizeMapView, rememberMapView } from './map-view.js';
 
 function memoryStorage() {
   const items = new Map<string, string>();
@@ -55,15 +55,5 @@ describe('the remembered map view', () => {
       bearing: 0,
       pitch: 0,
     });
-  });
-});
-
-describe('hashHasView', () => {
-  it('tells a hash with a view, which MapLibre opens at, from any other', () => {
-    expect(hashHasView('#12/35.685/139.737')).toBe(true);
-    expect(hashHasView('#4.5/-33.9/-70.1/30/45')).toBe(true);
-    expect(hashHasView('')).toBe(false);
-    expect(hashHasView('#')).toBe(false);
-    expect(hashHasView('#layers')).toBe(false);
   });
 });

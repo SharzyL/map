@@ -17,6 +17,8 @@ import {
   stopKeys,
   TRAIN_ROUTE_STATE,
   TRAIN_STOPS_STATE,
+  decodeRouteSelection,
+  encodeRouteSelection,
 } from './route-highlight.js';
 
 // Two Shanghai Metro line 11 routes on one segment (OpenRailwayMap tiles).
@@ -282,5 +284,29 @@ describe('addRouteHighlightToStyle', () => {
       }
     }
     for (const layer of highlight) expect(JSON.stringify(layer.paint)).not.toContain('0.25');
+  });
+});
+
+describe('a highlighted route in a link', () => {
+  it('says its id and color, and reads them back', () => {
+    expect(encodeRouteSelection({ id: 'jp-11002', color: '#937cb9', label: '東京メトロ半蔵門線' })).toBe(
+      'jp-11002:937cb9',
+    );
+    expect(decodeRouteSelection('jp-11002:937cb9')).toEqual({
+      id: 'jp-11002',
+      color: '#937cb9',
+      label: null,
+      kind: 'line',
+    });
+    expect(encodeRouteSelection({ id: '1234567', color: null, label: null })).toBe('1234567');
+    expect(decodeRouteSelection('1234567')).toMatchObject({ id: '1234567', color: null });
+    // A named color goes as it is.
+    expect(decodeRouteSelection('1234567:red')?.color).toBe('red');
+  });
+
+  it('reads nothing from a value it does not know', () => {
+    expect(decodeRouteSelection(null)).toBeNull();
+    expect(decodeRouteSelection('')).toBeNull();
+    expect(decodeRouteSelection('a b')).toBeNull();
   });
 });

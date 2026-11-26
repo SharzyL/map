@@ -33,12 +33,6 @@ export function normalizeMapView(value: unknown): MapView | null {
   };
 }
 
-// Whether the URL's hash holds a view MapLibre will open at: #zoom/lat/lng,
-// optionally with bearing and pitch.
-export function hashHasView(hash: string) {
-  return /^#-?\d+(\.\d+)?\/-?\d+(\.\d+)?\/-?\d+(\.\d+)?(\/|$)/.test(hash);
-}
-
 export function loadMapView(storage?: Pick<Storage, 'getItem'> | null) {
   return readStoredSettings(MAP_VIEW_STORAGE_KEY, normalizeMapView, storage);
 }

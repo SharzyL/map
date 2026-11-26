@@ -16,18 +16,30 @@ import { applyRailwayFilterToStyle, loadRailwayFilterSettings, type RailwayFilte
 import { installRailwayFilter } from './railway-filter-panel.js';
 import { installLocate, type DemTileLike } from './cursor-position.js';
 import { installControlIcons } from './control-icons.js';
-import { addRouteHighlightToStyle, installRouteHighlight } from './route-highlight.js';
+import {
+  addRouteHighlightToStyle,
+  decodeRouteSelection,
+  encodeRouteSelection,
+  installRouteHighlight,
+} from './route-highlight.js';
 import { addRailwayHoverToStyle } from './railway-hover.js';
 import { isGpuInitializationError, showMapUnavailable } from './map-unavailable.js';
 import { installSteadyTileZoom } from './tile-zoom.js';
 import { lineListsNear } from './route-trace.js';
-import { installTimetable, timetableButton } from './timetable.js';
+import {
+  decodeTimetableView,
+  encodeTimetableView,
+  installTimetable,
+  timetableButton,
+  timetableViewParents,
+} from './timetable.js';
 import { installTrainRoute } from './train-route.js';
 import { CREDITS_ATTRIBUTION, installCredits, OSM_ATTRIBUTION } from './credits.js';
 import { installLoadStatus } from './load-status.js';
 import { installBrowserInset } from './browser-inset.js';
 import { installStarfield } from './starfield.js';
-import { hashHasView, loadMapView, rememberMapView } from './map-view.js';
+import { loadMapView, rememberMapView } from './map-view.js';
+import { hashHasMapView, MAP_HASH_KEY, readHashParam, upgradeHash, writeHashParam } from './url-state.js';
 import {
   applyMapLayerState,
   loadMapLayerSettings,
@@ -711,7 +723,9 @@ async function init() {
     const style = await loadStyle(demSource, railwayFilter, mapLayers);
 
     window._mlmap = null;
-    const lastView = screenshotFixtureView || hashHasView(window.location.hash) ? null : loadMapView();
+    // Links from before the map's view had its key in the hash
+    upgradeHash();
+    const lastView = screenshotFixtureView || hashHasMapView(window.location.hash) ? null : loadMapView();
     const startView = screenshotFixtureView
       ? { center: screenshotFixtureView.center, zoom: screenshotFixtureView.zoom }
       : lastView
@@ -727,7 +741,8 @@ async function init() {
       container: 'map',
       style: style as maplibregl.StyleSpecification,
       ...startView,
-      hash: true,
+      // Under its key, beside the side panels' (url-state.ts)
+      hash: MAP_HASH_KEY,
       attributionControl: {
         customAttribution: [GITHUB_ATTRIBUTION, CREDITS_ATTRIBUTION],
       } as maplibregl.AttributionControlOptions,
@@ -763,8 +778,17 @@ async function init() {
     }
     installRailwayFilter(map, railwayFilter);
     const anitabiList = installAnitabiList(map, anitabi);
-    installRouteHighlight(map);
-    installTimetable(map, installTrainRoute(map));
+    // The side panels' state in the URL, so a link opens what it showed
+    const routeHighlight = installRouteHighlight(map, (route) =>
+      writeHashParam('route', route && encodeRouteSelection(route)),
+    );
+    const timetable = installTimetable(map, installTrainRoute(map), (view) =>
+      writeHashParam('tt', view && encodeTimetableView(view)),
+    );
+    const linkedView = decodeTimetableView(readHashParam('tt'));
+    const linkedRoute = decodeRouteSelection(readHashParam('route'));
+    if (linkedView) timetable.openView(linkedView, timetableViewParents(linkedView));
+    else if (linkedRoute) routeHighlight.select(linkedRoute);
     installCredits(map);
     installLoadStatus(map, style.sources || {}, [ORM_SOURCE], ['contourSource']);
     // The screenshots' sky stays put: as at the 2026 March equinox.

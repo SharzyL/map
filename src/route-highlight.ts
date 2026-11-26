@@ -850,7 +850,32 @@ class RoutePanel {
   }
 }
 
-export function installRouteHighlight(map: RouteHighlightMap) {
+// A highlighted route as the URL's `route` key holds it: its id and, where
+// it has one, its color without the '#' (jp-11002:937cb9, 1234567). The rest
+// comes from the relations API, as when it is picked.
+export function encodeRouteSelection(route: RouteSelection): string | null {
+  if (/[:&=#%]/.test(route.id)) return null;
+  const color = route.color?.replace(/^#/, '');
+  return color && /^[0-9a-z]+$/i.test(color) ? `${route.id}:${color}` : route.id;
+}
+
+export function decodeRouteSelection(text: string | null): RouteSelection | null {
+  const [id, color] = (text ?? '').split(':');
+  if (!id || !/^(jp-)?[\w-]+$/.test(id)) return null;
+  return {
+    id,
+    color: color ? (/^[0-9a-f]{3,8}$/i.test(color) ? `#${color}` : color) : null,
+    label: null,
+    kind: id.startsWith('jp-') ? 'line' : undefined,
+  };
+}
+
+// `onSelect` is told the route highlighted, null once none is: the URL keeps
+// it (main.ts).
+export function installRouteHighlight(
+  map: RouteHighlightMap,
+  onSelect: (route: RouteSelection | null) => void = () => {},
+) {
   const container = map.getContainer();
   let selected: RouteSelection | null = null;
   const panel = new RoutePanel(container, {
@@ -945,6 +970,7 @@ export function installRouteHighlight(map: RouteHighlightMap) {
 
   function select(route: RouteSelection | null) {
     selected = route;
+    onSelect(route);
     trace?.abort();
     trace = null;
     overview()?.setData(EMPTY_GEOMETRY);

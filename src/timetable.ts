@@ -202,7 +202,89 @@ type TimetableMap = {
   flyTo?(options: { center: [number, number]; zoom: number }): unknown;
   getZoom?(): number;
 };
-type View = () => Promise<void>;
+// What the panel shows, as a link can say it (encodeTimetableView): a Yahoo
+// station's lines, a direction's departures (`day` null for today's) and a
+// train opened from them (with the departure's row when opened from it), a
+// China Railway station on a day (`candidates` tried in turn) and a train
+// by the day it leaves its origin, from the station it was opened at.
+export type TimetableView =
+  | { kind: 'jp-lines'; name: string; codes: string[] }
+  | { kind: 'jp-departures'; code: string; gid: string; station: string; day: TimetableDay | null }
+  | { kind: 'jp-train'; code: string; gid: string; train: string; station: string; departure?: Departure | null }
+  | { kind: 'cr-station'; candidates: string[]; name: string; date: string | null }
+  | { kind: 'cr-train'; train: string; date: string; station: string | null };
+
+const langOf = (view: TimetableView): Lang => (view.kind.startsWith('jp') ? 'ja' : 'zh');
+
+// A view as the URL's `tt` key holds it: its kind and parts, joined by ':'
+// (jpl:22741,29342:新宿, jpd:22715:1051:渋谷, jpt:22715:1051:33471:渋谷,
+// crs:北京西:2026-11-26, crt:G301:2026-11-26:北京西). Names with a ':' or a
+// character the hash cannot hold have no link.
+export function encodeTimetableView(view: TimetableView): string | null {
+  const parts = (() => {
+    switch (view.kind) {
+      case 'jp-lines':
+        return ['jpl', view.codes.join(','), view.name];
+      case 'jp-departures':
+        return ['jpd', view.code, view.gid, view.station, view.day ?? ''];
+      case 'jp-train':
+        return ['jpt', view.code, view.gid, view.train, view.station];
+      case 'cr-station':
+        return ['crs', view.name, view.date ?? ''];
+      case 'cr-train':
+        return ['crt', view.train, view.date, view.station ?? ''];
+    }
+  })();
+  if (parts.some((part) => /[:&=#%]/.test(part))) return null;
+  return parts.join(':').replace(/:+$/, '');
+}
+
+const DAYS = new Set<string>(['weekday', 'saturday', 'holiday']);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const DIGITS = /^\d+$/;
+
+export function decodeTimetableView(text: string | null): TimetableView | null {
+  const [kind, ...parts] = (text ?? '').split(':');
+  const [a = '', b = '', c = '', d = ''] = parts;
+  switch (kind) {
+    case 'jpl': {
+      const codes = a ? a.split(',') : [];
+      if (!codes.every((code) => DIGITS.test(code)) || (!codes.length && !b)) return null;
+      return { kind: 'jp-lines', codes, name: b };
+    }
+    case 'jpd':
+      if (!DIGITS.test(a) || !DIGITS.test(b)) return null;
+      return { kind: 'jp-departures', code: a, gid: b, station: c, day: DAYS.has(d) ? (d as TimetableDay) : null };
+    case 'jpt':
+      if (!DIGITS.test(a) || !DIGITS.test(b) || !DIGITS.test(c)) return null;
+      return { kind: 'jp-train', code: a, gid: b, train: c, station: d };
+    case 'crs':
+      if (!a || (b && !DATE.test(b))) return null;
+      return { kind: 'cr-station', candidates: [a], name: a, date: b || null };
+    case 'crt':
+      if (!a || !DATE.test(b)) return null;
+      return { kind: 'cr-train', train: a, date: b, station: c || null };
+    default:
+      return null;
+  }
+}
+
+// The views a view is reached through, for the back button of one opened
+// from a link: a train's departures and its station's lines.
+export function timetableViewParents(view: TimetableView): TimetableView[] {
+  if (view.kind === 'jp-departures') return [{ kind: 'jp-lines', name: view.station, codes: [view.code] }];
+  if (view.kind === 'jp-train') {
+    const departures: TimetableView = {
+      kind: 'jp-departures',
+      code: view.code,
+      gid: view.gid,
+      station: view.station,
+      day: null,
+    };
+    return [...timetableViewParents(departures), departures];
+  }
+  return [];
+}
 
 function serviceMinutes(time: string) {
   const minutes = minutesOf(time);
@@ -487,7 +569,9 @@ class TimetablePanel {
   private readonly _map: TimetableMap;
   private readonly _route: TrainRouteDrawer | null;
   private _abort: AbortController | null = null;
-  private _history: Array<{ render: View; lang: Lang }> = [];
+  private _history: TimetableView[] = [];
+  // Told the view shown, null once closed: the URL keeps it (main.ts).
+  private readonly _onView: (view: TimetableView | null) => void;
   private _lang: Lang = 'ja';
   // The line and direction tabs picked at a China Railway station, kept across its days.
   private _crFilter: { station: string; line: string | null; bound: string | null } | null = null;
@@ -496,8 +580,13 @@ class TimetablePanel {
   private _jpPick: { name: string; code: string } | null = null;
   private _open = false;
 
-  constructor(map: TimetableMap, route: TrainRouteDrawer | null) {
+  constructor(
+    map: TimetableMap,
+    route: TrainRouteDrawer | null,
+    onView: (view: TimetableView | null) => void = () => {},
+  ) {
     const container = map.getContainer();
+    this._onView = onView;
     this._container = container;
     this._map = map;
     this._route = route;
@@ -536,24 +625,29 @@ class TimetablePanel {
   }
 
   open(request: TimetableRequest) {
+    this.openView(
+      'crTrain' in request
+        ? { kind: 'cr-train', train: request.crTrain, date: request.date, station: null }
+        : 'cr' in request
+          ? { kind: 'cr-station', candidates: request.cr, name: request.name, date: null }
+          : { kind: 'jp-lines', name: request.name, codes: request.codes },
+    );
+  }
+
+  // Opens a view, as a link names it, with the views it is reached through
+  // behind the back button.
+  openView(view: TimetableView, parents: TimetableView[] = []) {
     this._open = true;
     emitUiPanelOpen(this._container, 'timetable');
     this.panel.classList.add('timetable-panel-visible');
     this.panel.setAttribute('aria-hidden', 'false');
     this.panel.inert = false;
-    this._history = [];
-    this._show(
-      () =>
-        'crTrain' in request
-          ? this._renderCrTrain(request.crTrain, request.date, null)
-          : 'cr' in request
-            ? this._renderCrStation(request.cr, request.name, null)
-            : this._renderLines(request),
-      'crTrain' in request || 'cr' in request ? 'zh' : 'ja',
-    );
+    this._history = [...parents];
+    this._show(view);
   }
 
   close() {
+    if (this._open) this._onView(null);
     this._open = false;
     this._abort?.abort();
     this._route?.clear();
@@ -562,12 +656,33 @@ class TimetablePanel {
     this.panel.inert = true;
   }
 
-  // Shows a view and remembers it for the back button; a view goes on in the
-  // language of the one it was opened from.
-  private _show(render: View, lang: Lang = this._lang) {
-    const view = { render, lang };
+  // Shows a view and remembers it for the back button.
+  private _show(view: TimetableView) {
     this._history.push(view);
     this._run(view);
+  }
+
+  // The view shown, said more exactly once loaded (the station found, the
+  // day shown), for the link; shown as it is.
+  private _settle(view: TimetableView) {
+    if (!this._open) return;
+    this._history[this._history.length - 1] = view;
+    this._onView(view);
+  }
+
+  private _render(view: TimetableView) {
+    switch (view.kind) {
+      case 'jp-lines':
+        return this._renderLines({ name: view.name, codes: view.codes });
+      case 'jp-departures':
+        return this._renderDepartures(view.code, view.gid, view.station, view.day);
+      case 'jp-train':
+        return this._renderTrain(view.code, view.gid, view.train, view.station, view.departure ?? null);
+      case 'cr-station':
+        return this._renderCrStation(view.candidates, view.name, view.date);
+      case 'cr-train':
+        return this._renderCrTrain(view.train, view.date, view.station);
+    }
   }
 
   private _back() {
@@ -580,8 +695,9 @@ class TimetablePanel {
     return UI[this._lang];
   }
 
-  private _run({ render: view, lang }: { render: View; lang: Lang }) {
-    this._lang = lang;
+  private _run(view: TimetableView) {
+    this._lang = langOf(view);
+    this._onView(view);
     // A view sets its own source and report link; none while it loads.
     this._footer.hidden = true;
     this._reported = null;
@@ -593,7 +709,7 @@ class TimetablePanel {
     this._setBack();
     this._body.replaceChildren(el('div', 'timetable-status'));
     this._body.firstElementChild.textContent = this._ui.loading;
-    view().catch((error: unknown) => {
+    this._render(view).catch((error: unknown) => {
       if (signal.aborted) return;
       this._setBack();
       this._body.replaceChildren();
@@ -601,7 +717,7 @@ class TimetablePanel {
       const message = el('span', 'timetable-error-message', status);
       message.textContent = this._ui.loadFailed;
       setTooltip(message, errorDetail(error));
-      if (isRetryable(error)) retryButton(status, () => this._run({ render: view, lang }), this._ui.retry);
+      if (isRetryable(error)) retryButton(status, () => this._run(view), this._ui.retry);
     });
   }
 
@@ -809,10 +925,13 @@ class TimetablePanel {
     }
     const tables = await Promise.all(stations.map(({ code }) => stationLines(code, signal)));
     if (signal.aborted) return;
+    // Found by name: the link names its stations' codes.
+    const name = request.name || tables[0].station.name;
+    this._settle({ kind: 'jp-lines', name, codes: tables.map((table) => table.station.code) });
     this._setBack();
     // A station Yahoo lists as several (新宿 and 新宿(東京メトロ)) shows one at
     // a time, picked in a row of tabs in the back row, as China Railway's lines.
-    const kept = this._jpPick?.name === request.name ? this._jpPick.code : null;
+    const kept = this._jpPick?.name === name ? this._jpPick.code : null;
     let picked = tables.find((table) => table.station.code === kept) ?? tables[0];
     const row = tables.length > 1 ? this._navGroup('駅') : null;
     row?.classList.add('timetable-directions');
@@ -825,7 +944,7 @@ class TimetablePanel {
           button.textContent = table.station.name;
           button.addEventListener('click', () => {
             picked = table;
-            this._jpPick = { name: request.name, code: table.station.code };
+            this._jpPick = { name, code: table.station.code };
             show();
           });
           return { table, button };
@@ -833,7 +952,7 @@ class TimetablePanel {
       : [];
     const show = () => {
       for (const { table, button } of tabs) button.setAttribute('aria-pressed', String(table === picked));
-      this._renderStationLines(request.name, picked);
+      this._renderStationLines(name, picked);
     };
     show();
   }
@@ -860,7 +979,13 @@ class TimetablePanel {
         if (isHighSpeedLine(line.name)) button.classList.add('timetable-highspeed');
         button.textContent = directionLabel(direction);
         button.addEventListener('click', () =>
-          this._show(() => this._renderDepartures(table.station.code, gid, table.station.name, null)),
+          this._show({
+            kind: 'jp-departures',
+            code: table.station.code,
+            gid,
+            station: table.station.name,
+            day: null,
+          }),
         );
       }
     }
@@ -909,10 +1034,12 @@ class TimetablePanel {
     );
   }
 
-  private async _renderDepartures(code: string, gid: string, stationName: string, day: TimetableDay | null) {
+  private async _renderDepartures(code: string, gid: string, named: string, day: TimetableDay | null) {
     const signal = this._signal;
     const table = await departures(code, gid, day, signal);
     if (signal.aborted) return;
+    const stationName = named || table.station.name;
+    if (!named) this._settle({ kind: 'jp-departures', code, gid, station: stationName, day });
     this._setHeader(stationName, `${table.line} ${directionLabel(table.direction)}`, yahooSource(table.source_url), {
       title: `Timetable error at ${stationName} (${table.line} ${directionLabel(table.direction)})`,
       details: [
@@ -935,7 +1062,7 @@ class TimetablePanel {
         if (value === table.day) return;
         // Replace this view rather than stacking day switches on the back button.
         this._history.pop();
-        this._show(() => this._renderDepartures(code, gid, stationName, value));
+        this._show({ kind: 'jp-departures', code, gid, station: stationName, day: value });
       });
     }
 
@@ -945,7 +1072,7 @@ class TimetablePanel {
     }
     const next = nextDepartureIndex(table);
     const open = (departure: Departure) =>
-      this._show(() => this._renderTrain(code, gid, departure.train_id, stationName, departure));
+      this._show({ kind: 'jp-train', code, gid, train: departure.train_id, station: stationName, departure });
 
     // A list, or the printed timetable's layout.
     const input = this._navToggle('ヨコ表示', TIMETABLE_PRINTED_STORAGE_KEY, '駅の時刻表のように時ごとに横へ並べる');
@@ -1032,16 +1159,21 @@ class TimetablePanel {
 
   // `departure` is the timetable's row the train was opened from, which knows
   // its number, cars and track here; a train opened otherwise goes without.
-  private async _renderTrain(
-    code: string,
-    gid: string,
-    trainId: string,
-    stationName: string,
-    departure: Departure | null = null,
-  ) {
+  private async _renderTrain(code: string, gid: string, trainId: string, named: string, row: Departure | null = null) {
     const signal = this._signal;
-    const train = await trainStops(code, gid, trainId, signal);
+    // Opened from a link, without its departure's row: today's timetable
+    // has it (its number, cars and track), if the train runs today.
+    const [train, departure] = await Promise.all([
+      trainStops(code, gid, trainId, signal),
+      row
+        ? row
+        : departures(code, gid, null, signal).then(
+            (table) => table.departures.find((candidate) => candidate.train_id === trainId) ?? null,
+            (): Departure | null => null,
+          ),
+    ]);
     if (signal.aborted) return;
+    const stationName = named || train.station?.name || '';
     const name = departure?.name ?? train.name;
     const number = departure?.train_number;
     this._setHeader(stationName, [name, train.line].filter(Boolean).join(' · '), yahooSource(train.source_url), {
@@ -1076,9 +1208,7 @@ class TimetablePanel {
         name.type = 'button';
         setTooltip(name, this._ui.timetableAt(stop.name));
         const stopCode = stop.code;
-        name.addEventListener('click', () =>
-          this._show(() => this._renderLines({ name: stop.name, codes: [stopCode] })),
-        );
+        name.addEventListener('click', () => this._show({ kind: 'jp-lines', name: stop.name, codes: [stopCode] }));
       }
       const arrival = trainStopClock(stop.arrival, start);
       const departure = trainStopClock(stop.departure, start);
@@ -1130,6 +1260,8 @@ class TimetablePanel {
       return;
     }
     const station = table.station.name;
+    // The link names the station found and the day shown.
+    this._settle({ kind: 'cr-station', candidates: [station], name: station, date: table.date });
     const trainCount = `${table.trains.length}趟`;
     this._setHeader(station, `${crDateLabel(table.date)} · ${trainCount}`, crSource(table.data_version), {
       title: `Timetable error at ${station}`,
@@ -1152,7 +1284,7 @@ class TimetablePanel {
       button.addEventListener('click', () => {
         // Replace this view rather than stacking date switches on the back button.
         this._history.pop();
-        this._show(() => this._renderCrStation([station], station, target));
+        this._show({ kind: 'cr-station', candidates: [station], name: station, date: target });
       });
     };
     dayButton('‹', '前一天', addDays(table.date, -1), CHEVRON_LEFT);
@@ -1284,7 +1416,7 @@ class TimetablePanel {
       el('span', 'timetable-grid-time', button).textContent = time.slice(3);
       setTooltip(button, crTrainTooltip(train));
       button.addEventListener('click', () =>
-        this._show(() => this._renderCrTrain(train.train, addDays(table.date, 1 - train.day), station)),
+        this._show({ kind: 'cr-train', train: train.train, date: addDays(table.date, 1 - train.day), station }),
       );
     });
 
@@ -1339,7 +1471,7 @@ class TimetablePanel {
       setTooltip(button, crTrainTooltip(train));
       // The train's own date is the day it left its origin.
       button.addEventListener('click', () =>
-        this._show(() => this._renderCrTrain(train.train, addDays(table.date, 1 - train.day), station)),
+        this._show({ kind: 'cr-train', train: train.train, date: addDays(table.date, 1 - train.day), station }),
       );
     });
     if (next >= 0) list.querySelector('.timetable-next')?.scrollIntoView?.({ block: 'center' });
@@ -1424,7 +1556,12 @@ class TimetablePanel {
         setTooltip(change, `到达车次 ${stop.arrival_number}，开出车次 ${stop.departure_number}`);
       }
       name.addEventListener('click', () =>
-        this._show(() => this._renderCrStation([stop.name], stop.name, addDays(date, stop.day - 1))),
+        this._show({
+          kind: 'cr-station',
+          candidates: [stop.name],
+          name: stop.name,
+          date: addDays(date, stop.day - 1),
+        }),
       );
       const times = el('span', 'timetable-stop-time', item);
       times.textContent = [stop.arrival, stop.departure]
@@ -1535,9 +1672,14 @@ export function timetableButton(feature: StationFeatureLike, content: HTMLElemen
   );
 }
 
-export function installTimetable(map: TimetableMap, route: TrainRouteDrawer | null = null) {
+// `onView` is told the view shown, null once closed: the URL keeps it (main.ts).
+export function installTimetable(
+  map: TimetableMap,
+  route: TrainRouteDrawer | null = null,
+  onView: (view: TimetableView | null) => void = () => {},
+) {
   const container = map.getContainer();
-  const panel = new TimetablePanel(map, route);
+  const panel = new TimetablePanel(map, route, onView);
   container.addEventListener(TIMETABLE_OPEN_EVENT, (event) => {
     const request = (event as CustomEvent<TimetableRequest>).detail;
     if (request?.name || ('codes' in request && request.codes.length)) panel.open(request);

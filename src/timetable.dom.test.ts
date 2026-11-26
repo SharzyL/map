@@ -15,6 +15,10 @@ import {
   crDestinationMarks,
   crTrainClass,
   crTrainClassName,
+  decodeTimetableView,
+  encodeTimetableView,
+  timetableViewParents,
+  type TimetableView,
   crLineTabs,
   crLinesBetweenStops,
   installTimetable,
@@ -278,7 +282,7 @@ const API: Record<string, unknown> = {
   },
 };
 
-function setup() {
+function setup(onView: (view: TimetableView | null) => void = () => {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const requests: string[] = [];
@@ -299,7 +303,7 @@ function setup() {
   );
   const map = { getContainer: () => container, flyTo: vi.fn(), getZoom: () => 10 };
   const route = { sketch: vi.fn(), show: vi.fn(), unrouted: vi.fn(), hover: vi.fn(), clear: vi.fn() };
-  const panel = installTimetable(map, route);
+  const panel = installTimetable(map, route, onView);
   return { container, panel, requests, map, route };
 }
 
@@ -527,6 +531,34 @@ describe('timetable panel', () => {
     expect(tabs().map((tab) => tab.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
   });
 
+  it('tells the link each view it shows, and opens one from a link with the way back', async () => {
+    const shown: Array<string | null> = [];
+    const { container, panel } = setup((view) => shown.push(view && encodeTimetableView(view)));
+    const root = panel.panel;
+    container.dispatchEvent(
+      new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['N1,W2', '北京西'] } }),
+    );
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    // Opened by the station's OSM elements, the link names the station found and its day.
+    expect(shown.at(-1)).toBe('crs:北京西:2026-11-16');
+    root.querySelector<HTMLButtonElement>('.timetable-departure-button').click();
+    await vi.waitFor(() => expect(shown.at(-1)).toBe('crt:Z156/Z157:2026-11-15:北京西'));
+    panel.close();
+    expect(shown.at(-1)).toBeNull();
+
+    // From a link: a train, its departures and its station's lines behind it
+    const view = decodeTimetableView('jpt:22715:1051:33471:渋谷');
+    panel.openView(view, timetableViewParents(view));
+    await vi.waitFor(() => expect(text(root, '.timetable-stop-name')).toHaveLength(3));
+    // Its departure's row looked up: its number and track
+    expect(text(root, '.timetable-meta dd')).toContain('2824Y');
+    root.querySelector<HTMLButtonElement>('.timetable-back').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
+    root.querySelector<HTMLButtonElement>('.timetable-back').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
+    expect(shown.at(-1)).toBe('jpl:22715:渋谷');
+  });
+
   it('marks lines with service notices, and says what at the top of a direction and its trains', async () => {
     const delay = {
       status: '列車遅延',
@@ -733,6 +765,51 @@ describe('service notices', () => {
     expect(noticeUpdated('2026-11-25 11:00', now)).toBe('11:00更新');
     expect(noticeUpdated('2026-11-24 23:40', now)).toBe('11/24 23:40更新');
     expect(noticeUpdated(null, now)).toBeNull();
+  });
+});
+
+describe('a timetable view in a link', () => {
+  const views: Array<[TimetableView, string]> = [
+    [{ kind: 'jp-lines', name: '新宿', codes: ['22741', '29342'] }, 'jpl:22741,29342:新宿'],
+    [{ kind: 'jp-departures', code: '22715', gid: '1051', station: '渋谷', day: null }, 'jpd:22715:1051:渋谷'],
+    [
+      { kind: 'jp-departures', code: '22715', gid: '1051', station: '渋谷', day: 'saturday' },
+      'jpd:22715:1051:渋谷:saturday',
+    ],
+    [{ kind: 'jp-train', code: '22715', gid: '1051', train: '33471', station: '渋谷' }, 'jpt:22715:1051:33471:渋谷'],
+    [{ kind: 'cr-station', candidates: ['北京西'], name: '北京西', date: '2026-11-26' }, 'crs:北京西:2026-11-26'],
+    [
+      { kind: 'cr-train', train: 'Z156/Z157', date: '2026-11-15', station: '北京西' },
+      'crt:Z156/Z157:2026-11-15:北京西',
+    ],
+    [{ kind: 'cr-train', train: 'G301', date: '2026-11-16', station: null }, 'crt:G301:2026-11-16'],
+  ];
+
+  it('says each kind of view, and reads it back', () => {
+    for (const [view, text] of views) {
+      expect(encodeTimetableView(view)).toBe(text);
+      expect(decodeTimetableView(text)).toEqual(view);
+    }
+  });
+
+  it('names a station looked up by name, and has no link for a name it cannot hold', () => {
+    expect(encodeTimetableView({ kind: 'jp-lines', name: '渋谷', codes: [] })).toBe('jpl::渋谷');
+    expect(decodeTimetableView('jpl::渋谷')).toEqual({ kind: 'jp-lines', name: '渋谷', codes: [] });
+    expect(encodeTimetableView({ kind: 'cr-station', candidates: ['a'], name: 'a&b', date: null })).toBeNull();
+  });
+
+  it('reads nothing from a value it does not know', () => {
+    for (const text of [null, '', 'xyz:1', 'jpd:abc:1', 'jpt:1:2', 'crs:北京西:tomorrow', 'crt:G1']) {
+      expect(decodeTimetableView(text)).toBeNull();
+    }
+  });
+
+  it('opens a train with its station’s lines and departures behind the back button', () => {
+    expect(timetableViewParents(decodeTimetableView('jpt:22715:1051:33471:渋谷')).map(encodeTimetableView)).toEqual([
+      'jpl:22715:渋谷',
+      'jpd:22715:1051:渋谷',
+    ]);
+    expect(timetableViewParents(decodeTimetableView('crs:北京西'))).toEqual([]);
   });
 });
 
