@@ -215,34 +215,41 @@ export function nextCrTrainIndex(table: Pick<CrStationTimetable, 'date' | 'train
 }
 
 // A China Railway train's class by its number, as the printed timetable
-// marks it: the number's letter, by the 2026 numbering rules (《列车车次编排
-// 规定》, from 2026-11-25), whose N and V are read as English letters rather
-// than as the pinyin initials the others were; the letters of the rules
-// before them (T, K) while trains still run under them; and for a number
-// without a letter, 普 (普通旅客快车, 1001–5998) or 慢 (普通旅客慢车, 6001
-// on). `order` sorts the legend, the fastest first.
-export type CrTrainClass = { mark: string; name: string; order: number };
-const CR_TRAIN_CLASSES: Record<string, Omit<CrTrainClass, 'mark'>> = {
-  G: { name: '高速动车组', order: 0 },
-  D: { name: '动车组', order: 1 },
-  C: { name: '城际动车组', order: 2 },
-  Z: { name: '快速（160 km/h）', order: 3 },
-  T: { name: '特快', order: 4 },
-  N: { name: '快速（140 km/h）', order: 5 },
-  K: { name: '快速', order: 6 },
-  V: { name: '普速（120 km/h）', order: 7 },
-  S: { name: '市域（市郊）', order: 9 },
-  Y: { name: '旅游列车', order: 10 },
-  L: { name: '临客', order: 11 },
+// marks it: a character of the class's name for the letters standing for one
+// (高 for G, 特 for T, 快 for K), the letter itself for the 2026 numbering
+// rules' Z, N and V (《列车车次编排规定》, from 2026-11-25), which are read as
+// English letters and stand for top speeds, not names; for a number without
+// a letter, 普 (普通旅客快车, 1001–5998) or 慢 (普通旅客慢车, 6001 on).
+// `letter` is the number's, null without one; `order` sorts the legend, the
+// fastest first.
+export type CrTrainClass = { mark: string; letter: string | null; name: string; order: number };
+const CR_TRAIN_CLASSES: Record<string, Omit<CrTrainClass, 'letter'>> = {
+  G: { mark: '高', name: '高速动车组', order: 0 },
+  D: { mark: '动', name: '动车组', order: 1 },
+  C: { mark: '城', name: '城际动车组', order: 2 },
+  Z: { mark: 'Z', name: '快速（160 km/h）', order: 3 },
+  T: { mark: '特', name: '特快', order: 4 },
+  N: { mark: 'N', name: '快速（140 km/h）', order: 5 },
+  K: { mark: '快', name: '快速', order: 6 },
+  V: { mark: 'V', name: '普速（120 km/h）', order: 7 },
+  S: { mark: '市', name: '市域（市郊）', order: 9 },
+  Y: { mark: '游', name: '旅游列车', order: 10 },
+  L: { mark: '临', name: '临客', order: 11 },
 };
 export function crTrainClass(number: string): CrTrainClass {
   const letter = number.charAt(0).toUpperCase();
   if (/[0-9]/.test(letter)) {
     const value = Number.parseInt(number, 10);
-    return value < 6000 ? { mark: '普', name: '普快', order: 8 } : { mark: '慢', name: '普客', order: 8.5 };
+    return value < 6000
+      ? { mark: '普', letter: null, name: '普快', order: 8 }
+      : { mark: '慢', letter: null, name: '普客', order: 8.5 };
   }
-  return { mark: letter, ...(CR_TRAIN_CLASSES[letter] ?? { name: `${letter}字头`, order: 12 }) };
+  return { letter, ...(CR_TRAIN_CLASSES[letter] ?? { mark: letter, name: `${letter}字头`, order: 12 }) };
 }
+
+// A class as the legend names it: with its letter where its mark is not it.
+export const crTrainClassName = ({ mark, letter, name }: CrTrainClass) =>
+  letter && letter !== mark ? `${name}（${letter}）` : name;
 
 // The city a destination is in, as a printed timetable names it: the name
 // without 站 and without a last 东/西/南/北 (郑州东, 兰州西), kept whole
@@ -1244,14 +1251,14 @@ class TimetablePanel {
       const button = el('button', 'timetable-grid-minute', row);
       button.type = 'button';
       if (train === next) button.classList.add('timetable-next');
+      // High-speed trains in the high-speed purple, as in the list
+      if (isHighSpeedTrain(numberOf(train))) button.classList.add('timetable-highspeed');
       const marks = el('span', 'timetable-grid-marks', button);
       const trainClass = classes[index];
       if (!train.arrival) marks.append('●');
       if (train.destination !== usualDestination) marks.append(destinations.marks.get(train.destination) ?? '');
       if (trainClass.mark !== usualClass) {
-        const mark = el('span', 'timetable-grid-class', marks);
-        mark.textContent = trainClass.mark;
-        if (isHighSpeedTrain(trainClass.mark)) mark.classList.add('timetable-highspeed');
+        el('span', 'timetable-grid-class', marks).textContent = trainClass.mark;
       }
       if (!marks.textContent) marks.textContent = '\u00A0';
       el('span', 'timetable-grid-time', button).textContent = time.slice(3);
@@ -1280,14 +1287,22 @@ class TimetablePanel {
     const marked = new Map<string, CrTrainClass>();
     for (const trainClass of classes) if (trainClass.mark !== usualClass) marked.set(trainClass.mark, trainClass);
     for (const trainClass of [...marked.values()].sort((a, b) => a.order - b.order)) {
-      entry(trainClass.mark, trainClass.name, isHighSpeedTrain(trainClass.mark) ? 'timetable-highspeed' : undefined);
+      entry(
+        trainClass.mark,
+        crTrainClassName(trainClass),
+        trainClass.letter === 'G' ? 'timetable-highspeed' : undefined,
+      );
     }
     for (const { mark, stations } of destinations.legend) entry(mark, `开往${stations.join('、')}`);
     if (trains.some((train) => !train.arrival)) entry('●', '本站始发');
     const usual = classes.find(({ mark }) => mark === usualClass);
     entry(
       '无标记',
-      [usual && `${usual.mark} ${usual.name}`, usualDestination && `开往${usualDestination}`]
+      [
+        // Named with its letter: Z 快速（160 km/h）, 高速动车组（G）
+        usual && (usual.letter === usual.mark ? `${usual.mark} ${usual.name}` : crTrainClassName(usual)),
+        usualDestination && `开往${usualDestination}`,
+      ]
         .filter(Boolean)
         .join(' · '),
     );

@@ -14,6 +14,7 @@ import {
   crDestinationCity,
   crDestinationMarks,
   crTrainClass,
+  crTrainClassName,
   crLineTabs,
   crLinesBetweenStops,
   installTimetable,
@@ -736,20 +737,21 @@ describe('reportUrl', () => {
 describe('China Railway’s printed timetable', () => {
   it('marks a train’s class by its number’s letter, by the 2026 rules', () => {
     const mark = (number: string) => {
-      const { mark, name } = crTrainClass(number);
-      return `${mark} ${name}`;
+      const trainClass = crTrainClass(number);
+      return `${trainClass.mark} ${crTrainClassName(trainClass)}`;
     };
+    // A character of the class's name, but the letter for Z, N and V, read as English letters
     expect(['G301', 'D1', 'C2001', 'Z1001', 'N121', 'V1009', 'T10', 'K2550', 'S1001', 'Y104'].map(mark)).toEqual([
-      'G 高速动车组',
-      'D 动车组',
-      'C 城际动车组',
+      '高 高速动车组（G）',
+      '动 动车组（D）',
+      '城 城际动车组（C）',
       'Z 快速（160 km/h）',
       'N 快速（140 km/h）',
       'V 普速（120 km/h）',
-      'T 特快',
-      'K 快速',
-      'S 市域（市郊）',
-      'Y 旅游列车',
+      '特 特快（T）',
+      '快 快速（K）',
+      '市 市域（市郊）（S）',
+      '游 旅游列车（Y）',
     ]);
     // Numbers without a letter: 普快, then 普客
     expect([mark('4019'), mark('6025'), mark('8161')]).toEqual(['普 普快', '慢 普客', '慢 普客']);
@@ -927,9 +929,15 @@ describe('China Railway timetable', () => {
     expect(text(printed, '.timetable-grid-hour')).toEqual(['6', '8']);
     expect(text(printed, '.timetable-grid-time')).toEqual(['02', '00']);
     // Z157 is of the commonest class and destination; G301 starts here, for 广州南.
-    expect(text(printed, '.timetable-grid-marks')).toEqual(['\u00A0', '●广G']);
+    expect(text(printed, '.timetable-grid-marks')).toEqual(['\u00A0', '●广高']);
+    // The high-speed train in the high-speed purple
+    expect(
+      Array.from(printed.querySelectorAll('.timetable-grid-minute')).map((minute) =>
+        minute.classList.contains('timetable-highspeed'),
+      ),
+    ).toEqual([false, true]);
     expect(text(printed, '.timetable-legend li')).toEqual([
-      'G 高速动车组',
+      '高 高速动车组（G）',
       '广 开往广州南',
       '● 本站始发',
       '无标记 Z 快速（160 km/h） · 开往哈尔滨西',

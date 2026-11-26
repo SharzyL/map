@@ -2986,6 +2986,11 @@ button.timetable-stop-name:focus-visible {
   color: #b91c1c;
 }
 
+/* China Railway's high-speed trains, as their numbers in the list */
+.timetable-grid-minute.timetable-highspeed {
+  color: #9b19d4;
+}
+
 .timetable-grid-minute.timetable-next {
   background: #fef3c7;
 }
