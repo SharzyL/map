@@ -1258,7 +1258,8 @@ class TimetablePanel {
       if (!train.arrival) marks.append('●');
       if (train.destination !== usualDestination) marks.append(destinations.marks.get(train.destination) ?? '');
       if (trainClass.mark !== usualClass) {
-        el('span', 'timetable-grid-class', marks).textContent = trainClass.mark;
+        // In brackets, as Yahoo writes a type's mark (上[特])
+        el('span', 'timetable-grid-class', marks).textContent = `[${trainClass.mark}]`;
       }
       if (!marks.textContent) marks.textContent = '\u00A0';
       el('span', 'timetable-grid-time', button).textContent = time.slice(3);
@@ -1288,7 +1289,7 @@ class TimetablePanel {
     for (const trainClass of classes) if (trainClass.mark !== usualClass) marked.set(trainClass.mark, trainClass);
     for (const trainClass of [...marked.values()].sort((a, b) => a.order - b.order)) {
       entry(
-        trainClass.mark,
+        `[${trainClass.mark}]`,
         crTrainClassName(trainClass),
         trainClass.letter === 'G' ? 'timetable-highspeed' : undefined,
       );

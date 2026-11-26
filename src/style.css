@@ -3001,10 +3001,8 @@ button.timetable-stop-name:focus-visible {
   white-space: nowrap;
 }
 
-/* China Railway's class letter beside the destination's character (G in the
-   high-speed purple) */
+/* China Railway's class mark, in brackets after the destination's character */
 .timetable-grid-class {
-  margin-left: 1px;
   font-weight: 700;
 }
 

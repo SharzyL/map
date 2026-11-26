@@ -929,7 +929,7 @@ describe('China Railway timetable', () => {
     expect(text(printed, '.timetable-grid-hour')).toEqual(['6', '8']);
     expect(text(printed, '.timetable-grid-time')).toEqual(['02', '00']);
     // Z157 is of the commonest class and destination; G301 starts here, for 广州南.
-    expect(text(printed, '.timetable-grid-marks')).toEqual(['\u00A0', '●广高']);
+    expect(text(printed, '.timetable-grid-marks')).toEqual(['\u00A0', '●广[高]']);
     // The high-speed train in the high-speed purple
     expect(
       Array.from(printed.querySelectorAll('.timetable-grid-minute')).map((minute) =>
@@ -937,7 +937,7 @@ describe('China Railway timetable', () => {
       ),
     ).toEqual([false, true]);
     expect(text(printed, '.timetable-legend li')).toEqual([
-      '高 高速动车组（G）',
+      '[高] 高速动车组（G）',
       '广 开往广州南',
       '● 本站始发',
       '无标记 Z 快速（160 km/h） · 开往哈尔滨西',
