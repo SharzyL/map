@@ -11,6 +11,9 @@ import {
 } from './norikae.js';
 import {
   crBoundTabs,
+  crDestinationCity,
+  crDestinationMarks,
+  crTrainClass,
   crLineTabs,
   crLinesBetweenStops,
   installTimetable,
@@ -730,6 +733,70 @@ describe('reportUrl', () => {
   });
 });
 
+describe('China Railway’s printed timetable', () => {
+  it('marks a train’s class by its number’s letter, by the 2026 rules', () => {
+    const mark = (number: string) => {
+      const { mark, name } = crTrainClass(number);
+      return `${mark} ${name}`;
+    };
+    expect(['G301', 'D1', 'C2001', 'Z1001', 'N121', 'V1009', 'T10', 'K2550', 'S1001', 'Y104'].map(mark)).toEqual([
+      'G 高速动车组',
+      'D 动车组',
+      'C 城际动车组',
+      'Z 快速（160 km/h）',
+      'N 快速（140 km/h）',
+      'V 普速（120 km/h）',
+      'T 特快',
+      'K 快速',
+      'S 市域（市郊）',
+      'Y 旅游列车',
+    ]);
+    // Numbers without a letter: 普快, then 普客
+    expect([mark('4019'), mark('6025'), mark('8161')]).toEqual(['普 普快', '慢 普客', '慢 普客']);
+    // The legend lists the fastest first.
+    expect(crTrainClass('G1').order).toBeLessThan(crTrainClass('V1').order);
+  });
+
+  it('names a destination’s city without its last direction', () => {
+    expect(['郑州东', '兰州西', '石家庄北', '西安', '北京站', '上海虹桥'].map(crDestinationCity)).toEqual([
+      '郑州',
+      '兰州',
+      '石家庄',
+      '西安',
+      '北京',
+      '上海虹桥',
+    ]);
+  });
+
+  it('gives each destination city one character, the busiest choosing first', () => {
+    const { marks, legend } = crDestinationMarks([
+      '长沙南',
+      '长沙南',
+      '长沙',
+      '长春',
+      '郑州东',
+      '郑州航空港',
+      '西安北',
+      '西宁',
+      '宁波',
+    ]);
+    // Stations of one city share its mark; a name going on from a city is in it.
+    expect(marks.get('长沙南')).toBe('长');
+    expect(marks.get('长沙')).toBe('长');
+    expect(marks.get('郑州航空港')).toBe(marks.get('郑州东'));
+    // A taken first character gives way to one the other cities lack.
+    expect(marks.get('长春')).toBe('春');
+    // Each mark once
+    expect(new Set(legend.map(({ mark }) => mark)).size).toBe(legend.length);
+    expect(legend.find(({ mark }) => mark === '长').stations).toEqual(['长沙南', '长沙']);
+  });
+
+  it('falls back to a circled number when a city’s characters are all taken', () => {
+    const { marks } = crDestinationMarks(['西安', '西安', '宁波', '宁波', '西宁']);
+    expect(marks.get('西宁')).toBe('①');
+  });
+});
+
 describe('crLinesBetweenStops', () => {
   // Z157 from 北京丰台 (km 1298) to 山海关 (km 1629): on 京沪线 to 北京 (km 1314), then on 京哈线.
   const lines = [
@@ -840,6 +907,38 @@ describe('China Railway timetable', () => {
       root.querySelectorAll<HTMLElement>('.timetable-nav .timetable-directions'),
     );
     expect([pressed(nextLineRow), pressed(nextBoundRow)]).toEqual(['京广高速', '下行']);
+  });
+
+  it('lays a station’s departures out by hour with their marks, 横列表示', async () => {
+    const { container, panel } = setup();
+    const root = panel.panel;
+    container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '北京西', cr: ['北京西'] } }));
+    await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));
+    const toggle = Array.from(root.querySelectorAll<HTMLElement>('.timetable-toggle')).find(
+      (label) => label.textContent === '横列表示',
+    );
+    const input = toggle.querySelector('input');
+    expect(input.checked).toBe(false);
+    input.click();
+    const printed = root.querySelector<HTMLElement>('.timetable-cr-trains + .timetable-printed');
+    expect(printed.hidden).toBe(false);
+    expect(root.querySelector<HTMLElement>('.timetable-cr-trains').hidden).toBe(true);
+    // Departures only (K2550 ends here), an hour a row
+    expect(text(printed, '.timetable-grid-hour')).toEqual(['6', '8']);
+    expect(text(printed, '.timetable-grid-time')).toEqual(['02', '00']);
+    // Z157 is of the commonest class and destination; G301 starts here, for 广州南.
+    expect(text(printed, '.timetable-grid-marks')).toEqual(['\u00A0', '●广G']);
+    expect(text(printed, '.timetable-legend li')).toEqual([
+      'G 高速动车组',
+      '广 开往广州南',
+      '● 本站始发',
+      '无标记 Z 快速（160 km/h） · 开往哈尔滨西',
+    ]);
+    expect(localStorage.getItem('atlas-realm:timetable-cr-printed')).toBe('true');
+    // A minute opens its train.
+    printed.querySelectorAll<HTMLButtonElement>('.timetable-grid-minute')[1].click();
+    await vi.waitFor(() => expect(root.querySelector('.timetable-title').textContent).toBe('北京西'));
+    await vi.waitFor(() => expect(text(root, '.timetable-cr-stops .timetable-stop-name')).not.toHaveLength(0));
   });
 
   it('lists a station’s trains by date and opens a train’s stops', async () => {

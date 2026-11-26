@@ -2996,6 +2996,17 @@ button.timetable-stop-name:focus-visible {
   white-space: nowrap;
 }
 
+/* China Railway's class letter beside the destination's character (G in the
+   high-speed purple) */
+.timetable-grid-class {
+  margin-left: 1px;
+  font-weight: 700;
+}
+
+.timetable-legend b.timetable-highspeed {
+  color: #9b19d4;
+}
+
 .timetable-grid-time {
   font-size: 14px;
   font-variant-numeric: tabular-nums;

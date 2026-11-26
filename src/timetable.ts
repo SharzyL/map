@@ -56,6 +56,8 @@ import { emitUiPanelOpen, isOtherUiPanelOpen, UI_PANEL_OPEN_EVENT } from './ui-p
 export const TIMETABLE_OPEN_EVENT = 'orm:timetable';
 export const TIMETABLE_LINES_STORAGE_KEY = 'atlas-realm:timetable-lines';
 export const TIMETABLE_PRINTED_STORAGE_KEY = 'atlas-realm:timetable-printed';
+// China Railway's 横列表示, remembered apart from Yahoo's ヨコ表示
+export const TIMETABLE_CR_PRINTED_STORAGE_KEY = 'atlas-realm:timetable-cr-printed';
 // Yahoo station codes, or China Railway stations to try in turn (OSM elements
 // "N1,W2", then the name).
 type YahooRequest = { name: string; codes: string[] };
@@ -210,6 +212,89 @@ function serviceMinutes(time: string) {
 export function nextCrTrainIndex(table: Pick<CrStationTimetable, 'date' | 'trains'>, now = chinaNow()) {
   if (table.date !== now.date) return -1;
   return table.trains.findIndex(({ arrival, departure }) => minutesOf(departure ?? arrival ?? '00:00') >= now.minutes);
+}
+
+// A China Railway train's class by its number, as the printed timetable
+// marks it: the number's letter, by the 2026 numbering rules (《列车车次编排
+// 规定》, from 2026-11-25), whose N and V are read as English letters rather
+// than as the pinyin initials the others were; the letters of the rules
+// before them (T, K) while trains still run under them; and for a number
+// without a letter, 普 (普通旅客快车, 1001–5998) or 慢 (普通旅客慢车, 6001
+// on). `order` sorts the legend, the fastest first.
+export type CrTrainClass = { mark: string; name: string; order: number };
+const CR_TRAIN_CLASSES: Record<string, Omit<CrTrainClass, 'mark'>> = {
+  G: { name: '高速动车组', order: 0 },
+  D: { name: '动车组', order: 1 },
+  C: { name: '城际动车组', order: 2 },
+  Z: { name: '快速（160 km/h）', order: 3 },
+  T: { name: '特快', order: 4 },
+  N: { name: '快速（140 km/h）', order: 5 },
+  K: { name: '快速', order: 6 },
+  V: { name: '普速（120 km/h）', order: 7 },
+  S: { name: '市域（市郊）', order: 9 },
+  Y: { name: '旅游列车', order: 10 },
+  L: { name: '临客', order: 11 },
+};
+export function crTrainClass(number: string): CrTrainClass {
+  const letter = number.charAt(0).toUpperCase();
+  if (/[0-9]/.test(letter)) {
+    const value = Number.parseInt(number, 10);
+    return value < 6000 ? { mark: '普', name: '普快', order: 8 } : { mark: '慢', name: '普客', order: 8.5 };
+  }
+  return { mark: letter, ...(CR_TRAIN_CLASSES[letter] ?? { name: `${letter}字头`, order: 12 }) };
+}
+
+// The city a destination is in, as a printed timetable names it: the name
+// without 站 and without a last 东/西/南/北 (郑州东, 兰州西), kept whole
+// where that would leave one character (西安).
+export function crDestinationCity(name: string) {
+  const bare = name.replace(/站$/, '');
+  return bare.length > 2 ? bare.replace(/[东西南北]$/, '') : bare;
+}
+
+// One character for each destination city of a printed timetable (its
+// stations share it: 郑州东 and 郑州, and a name going on from another's city,
+// 郑州航空港), the busiest city choosing first: its first character if still
+// free, else one the other cities' names lack (长春 beside 长沙 takes 春),
+// else any other of its own; a circled number when none is left. By
+// destination, with the cities' marks and stations for the legend.
+export function crDestinationMarks(destinations: string[]) {
+  const counts = new Map<string, number>();
+  for (const destination of destinations) counts.set(destination, (counts.get(destination) ?? 0) + 1);
+  // Each destination's city: its own, or a shorter city its name starts with.
+  const ownCities = [...new Set([...counts.keys()].map(crDestinationCity))].sort((a, b) => a.length - b.length);
+  const cityOf = (destination: string) => {
+    const own = crDestinationCity(destination);
+    return ownCities.find((city) => city.length >= 2 && destination.startsWith(city)) ?? own;
+  };
+  const cities = new Map<string, { count: number; stations: string[] }>();
+  for (const [destination, count] of counts) {
+    const city = cities.get(cityOf(destination)) ?? { count: 0, stations: [] };
+    city.count += count;
+    city.stations.push(destination);
+    cities.set(cityOf(destination), city);
+  }
+  const names = [...cities.keys()].sort((a, b) => cities.get(b).count - cities.get(a).count || a.localeCompare(b));
+  const characters = (name: string) => [...new Set(Array.from(name))];
+  const used = new Set<string>();
+  const legend: Array<{ mark: string; stations: string[] }> = [];
+  const marks = new Map<string, string>();
+  let spare = 0;
+  for (const name of names) {
+    const own = characters(name);
+    const others = new Set(names.filter((other) => other !== name).flatMap(characters));
+    const candidates = [own[0], ...own.filter((character) => !others.has(character)), ...own];
+    let mark = candidates.find((character) => character && !used.has(character));
+    while (!mark) {
+      const circled = String.fromCharCode(0x2460 + spare++);
+      if (!used.has(circled)) mark = circled;
+    }
+    used.add(mark);
+    const stations = cities.get(name).stations.sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
+    legend.push({ mark, stations });
+    for (const station of stations) marks.set(station, mark);
+  }
+  return { marks, legend };
 }
 
 // A China Railway station's tabs, in two rows: the lines its trains take
@@ -1041,6 +1126,12 @@ class TimetablePanel {
       el('div', 'timetable-status', this._body).textContent = '没有列车。';
       return;
     }
+    // A list, or a printed station timetable's layout.
+    const printedInput = this._navToggle(
+      '横列表示',
+      TIMETABLE_CR_PRINTED_STORAGE_KEY,
+      '如车站时刻表，按小时横向排列发车时刻',
+    );
 
     // Line and direction tabs under the date, a row each, the ones picked
     // kept while stepping through this station's days.
@@ -1080,6 +1171,13 @@ class TimetablePanel {
     const counted = (count: number) => `${count}趟`;
 
     const list = el('ol', 'timetable-departures timetable-cr-trains', this._body);
+    const printed = el('div', 'timetable-printed', this._body);
+    const layout = () => {
+      list.hidden = printedInput.checked;
+      printed.hidden = !printedInput.checked;
+      (printedInput.checked ? printed : list).querySelector('.timetable-next')?.scrollIntoView?.({ block: 'center' });
+    };
+    printedInput.addEventListener('change', layout);
     const show = () => {
       const onLine = table.trains.filter((train) => line === null || crLineOf(train) === line);
       const trains = onLine.filter((train) => bound === null || train.bound === bound);
@@ -1101,8 +1199,98 @@ class TimetablePanel {
         trains.length === table.trains.length ? trainCount : `${trains.length}/${trainCount}`
       }`;
       this._renderCrTrains(list, { ...table, trains }, station);
+      this._renderCrPrinted(printed, { ...table, trains }, station);
+      layout();
     };
     show();
+  }
+
+  // A station's departures as a printed timetable lays them out: an hour a
+  // row, each minute under its marks, the destination's character and the
+  // class's letter (crDestinationMarks, crTrainClass), with ● for a train
+  // starting here; the commonest destination and class go unmarked, as on
+  // Yahoo's ヨコ表示. Trains ending here, which leave nothing, are in the list.
+  private _renderCrPrinted(printed: HTMLElement, table: CrStationTimetable, station: string) {
+    printed.replaceChildren();
+    const trains = table.trains.filter((train) => train.departure);
+    const next = trains[nextCrTrainIndex({ date: table.date, trains })];
+    if (trains.length === 0) {
+      el('div', 'timetable-status', printed).textContent = '没有发车的列车。';
+      return;
+    }
+    const numberOf = (train: CrStationTrain) => train.departure_number ?? train.train;
+    const commonest = <T>(values: T[]) => {
+      const counts = new Map<T, number>();
+      for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+      return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+    };
+    const classes = trains.map((train) => crTrainClass(numberOf(train)));
+    const usualClass = commonest(classes.map(({ mark }) => mark));
+    const usualDestination = commonest(trains.map((train) => train.destination));
+    const destinations = crDestinationMarks(
+      trains.map((train) => train.destination).filter((destination) => destination !== usualDestination),
+    );
+
+    const grid = el('div', 'timetable-grid', printed);
+    let row: HTMLElement | null = null;
+    let hour = '';
+    trains.forEach((train, index) => {
+      const time = train.departure;
+      if (time.slice(0, 2) !== hour) {
+        hour = time.slice(0, 2);
+        el('div', 'timetable-grid-hour', grid).textContent = String(Number(hour));
+        row = el('div', 'timetable-grid-minutes', grid);
+      }
+      const button = el('button', 'timetable-grid-minute', row);
+      button.type = 'button';
+      if (train === next) button.classList.add('timetable-next');
+      const marks = el('span', 'timetable-grid-marks', button);
+      const trainClass = classes[index];
+      if (!train.arrival) marks.append('●');
+      if (train.destination !== usualDestination) marks.append(destinations.marks.get(train.destination) ?? '');
+      if (trainClass.mark !== usualClass) {
+        const mark = el('span', 'timetable-grid-class', marks);
+        mark.textContent = trainClass.mark;
+        if (isHighSpeedTrain(trainClass.mark)) mark.classList.add('timetable-highspeed');
+      }
+      if (!marks.textContent) marks.textContent = '\u00A0';
+      el('span', 'timetable-grid-time', button).textContent = time.slice(3);
+      button.title = [
+        `${time} ${numberOf(train)} ${train.origin} → ${train.destination}`,
+        !train.arrival && '本站始发',
+        train.platform && `站台/检票口 ${train.platform}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      button.addEventListener('click', () =>
+        this._show(() => this._renderCrTrain(train.train, addDays(table.date, 1 - train.day), station)),
+      );
+    });
+
+    // Each mark kept on one line with what it stands for: the classes, the
+    // fastest first, then the destinations by their characters' order on the
+    // table, the dot, and what the unmarked trains are.
+    const key = el('ul', 'timetable-legend', printed);
+    const entry = (mark: string, meaning: string, className?: string) => {
+      const item = el('li', undefined, key);
+      const term = el('b', className, item);
+      term.textContent = mark;
+      item.append(` ${meaning}`);
+    };
+    const marked = new Map<string, CrTrainClass>();
+    for (const trainClass of classes) if (trainClass.mark !== usualClass) marked.set(trainClass.mark, trainClass);
+    for (const trainClass of [...marked.values()].sort((a, b) => a.order - b.order)) {
+      entry(trainClass.mark, trainClass.name, isHighSpeedTrain(trainClass.mark) ? 'timetable-highspeed' : undefined);
+    }
+    for (const { mark, stations } of destinations.legend) entry(mark, `开往${stations.join('、')}`);
+    if (trains.some((train) => !train.arrival)) entry('●', '本站始发');
+    const usual = classes.find(({ mark }) => mark === usualClass);
+    entry(
+      '无标记',
+      [usual && `${usual.mark} ${usual.name}`, usualDestination && `开往${usualDestination}`]
+        .filter(Boolean)
+        .join(' · '),
+    );
   }
 
   // The trains of a station's day, by hour, the next one highlighted.
