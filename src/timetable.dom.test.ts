@@ -531,6 +531,28 @@ describe('timetable panel', () => {
     expect(tabs().map((tab) => tab.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
   });
 
+  it('leaves out a station Yahoo has no timetable for, but not one that failed for now', async () => {
+    const { container, panel, requests } = setup();
+    const root = panel.panel;
+    // 99999 stands for an airport sharing the station's name: the API has no lines for it
+    const open = () =>
+      container.dispatchEvent(
+        new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '新宿', codes: ['99999', '22741', '29342'] } }),
+      );
+    open();
+    await vi.waitFor(() => expect(text(root, '.timetable-line-name')).toEqual(['ＪＲ山手線外回り']));
+    expect(requests).toContain('/api/v1/norikae/stations/99999/timetables');
+    expect(text(root, '.timetable-nav .timetable-day')).toEqual(['新宿', '新宿(東京メトロ)']);
+    expect(root.querySelector('.timetable-error')).toBeNull();
+
+    forgetResponses();
+    failOnce.set('/api/v1/norikae/stations/29342/timetables', 502);
+    open();
+    await vi.waitFor(() => expect(root.querySelector('.timetable-error .panel-retry')).not.toBeNull());
+    root.querySelector<HTMLButtonElement>('.timetable-error .panel-retry').click();
+    await vi.waitFor(() => expect(text(root, '.timetable-nav .timetable-day')).toEqual(['新宿', '新宿(東京メトロ)']));
+  });
+
   it('tells the link each view it shows, and opens one from a link with the way back', async () => {
     const shown: Array<string | null> = [];
     const { container, panel } = setup((view) => shown.push(view && encodeTimetableView(view)));

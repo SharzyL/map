@@ -923,8 +923,13 @@ class TimetablePanel {
       el('div', 'timetable-status', this._body).textContent = `${request.name}の時刻表は見つかりませんでした。`;
       return;
     }
-    const tables = await Promise.all(stations.map(({ code }) => stationLines(code, signal)));
+    // A code Yahoo has no timetable for (an airport or a pier named as the
+    // station, 豊洲(水上バス)) answers 404 for good; the others still show.
+    const settled = await Promise.allSettled(stations.map(({ code }) => stationLines(code, signal)));
     if (signal.aborted) return;
+    const tables = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+    const failed = settled.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []));
+    if (!tables.length || failed.some(isRetryable)) throw failed.find(isRetryable) ?? failed[0];
     // Found by name: the link names its stations' codes.
     const name = request.name || tables[0].station.name;
     this._settle({ kind: 'jp-lines', name, codes: tables.map((table) => table.station.code) });
