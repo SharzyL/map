@@ -29,13 +29,26 @@ station (name:ja, else name):
    exception.
 4. One left: that code ("unique" if the name had one candidate, "position"
    if the distance picked it).
-5. Several left: a candidate whose suffix names the OSM operator decides
+5. Several left: those that are not railway stations are dropped. Yahoo's
+   search lists airports, ports and water-bus piers as stations too, beside
+   the railway station they share a name with, and has no timetable for them
+   (the API answers 404, which the map would show as an error). The name
+   settles most (rail_by_name): 成田空港(空路), 門司港(港), 豊洲(水上バス) are
+   not railway stations, 那覇空港(鉄道), 花巻空港(東北本線), 関西空港駅(鉄道)
+   are, and beside one of those, the airport of the same name is not,
+   whether bare (宮崎空港) or after its region (那覇空港(沖縄)). The API is
+   asked about the others' timetables only while they leave several: a bare
+   name is the railway station at 豊洲 but the airport at 宮崎空港, and a
+   region tells two railway stations apart at 平井(東京都). If one is left,
+   that code ("name" if the names settled it, else "timetable").
+6. Still several: a candidate whose suffix names the OSM operator decides
    ("operator"), e.g. 京阪電気鉄道 for 宇治(京阪線).
-6. Still several: all of them are kept ("several"); a station's timetable
+7. Still several: all of them are kept ("several"); a station's timetable
    view can offer each candidate's lines.
 
 Search responses are cached (--cache), so a rerun only queries new names and
-names cached without Yahoo's positions. Writes one row per OSM feature:
+names cached without Yahoo's positions; so is whether a code has a timetable,
+under the key TIMETABLES_KEY. Writes one row per OSM feature:
 osm_type (N/W/R), osm_id, name, codes (';'-separated), status.
 """
 
@@ -49,6 +62,7 @@ import re
 import sys
 import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -59,6 +73,9 @@ SEARCH_LIMIT = 10
 # Yahoo's point for a station vs. one operator's OSM node of it
 NEAR_KM = 3
 PARALLEL = 3
+# The cache's entry for which codes have a timetable; searched names hold no
+# spaces (norm), so it cannot be mistaken for one.
+TIMETABLES_KEY = ' timetables'
 
 # Yahoo's short names for operators whose OSM operator tag is the legal name.
 OPERATOR_ALIASES = {
@@ -110,6 +127,71 @@ def http_json(url):
     raise last
 
 
+def has_timetable(url):
+    # The API answers 404 for a code Yahoo has no timetable for (an airport,
+    # a port); anything else that fails is retried, then raised.
+    request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
+    for attempt in range(4):
+        try:
+            urllib.request.urlopen(request, timeout=120).read()
+            return True
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                return False
+            last = error
+        except Exception as error:
+            last = error
+        time.sleep(2 ** attempt)
+    raise last
+
+
+# Suffix words of Yahoo's names for what is not a railway station: an airport
+# (成田空港(空路)), a ferry (中部国際空港(船)), a port (門司港(港)), a water bus
+# (浅草(二天門・水上バス))
+NOT_RAIL = {'空路', '船', '港', '水上バス'}
+
+
+def rail_by_name(found):
+    # Whether each candidate (by code) is a railway station by its name: True,
+    # False, or None when its name does not say
+    def says(r):
+        base, suffix = split_suffix(r['name'])
+        words = re.split(r'[・/]', suffix) if suffix else []
+        if any(w in NOT_RAIL for w in words):
+            return False
+        if unicodedata.normalize('NFKC', base).endswith('駅') or any(w.endswith(('線', '鉄道')) for w in words):
+            return True
+        return None
+
+    rail = {r['code']: says(r) for r in found}
+    if any(rail.values()):
+        # 宮崎空港 beside 宮崎空港(鉄道), 那覇空港(沖縄) beside 那覇空港(鉄道)
+        for r in found:
+            if rail[r['code']] is None and norm(split_suffix(r['name'])[0]).endswith('空港'):
+                rail[r['code']] = False
+    return rail
+
+
+def left_open(found):
+    # The codes whose timetable decides: those the names leave open, while
+    # they leave several candidates
+    rail = rail_by_name(found)
+    left = [r for r in found if rail[r['code']] is not False]
+    return {r['code'] for r in left if rail[r['code']] is None} if len(left) > 1 else set()
+
+
+def railway(found, with_timetable):
+    # The candidates that are railway stations, by name, then by timetable for
+    # those the names leave open; and what decided ('name', 'timetable', or
+    # None while several are left)
+    rail = rail_by_name(found)
+    left = [r for r in found if rail[r['code']] is not False]
+    if len(left) < 2:
+        return left, 'name'
+    left = [r for r in left if rail[r['code']] or r['code'] in with_timetable]
+    return left, ('timetable' if len(left) < 2 else None)
+
+
 def osm_stations(path):
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
@@ -149,6 +231,23 @@ class Search:
                     print(f'  {done} of {len(missing)}', file=sys.stderr)
                     self.save()
         self.save()
+
+    def timetables(self, codes):
+        # Which of the codes have a timetable, asking the API about the ones
+        # not cached yet
+        known = self.cache.setdefault(TIMETABLES_KEY, {})
+        missing = sorted(set(codes) - known.keys())
+        if missing:
+            print(f'checking {len(missing)} codes for a timetable ({len(known)} cached)', file=sys.stderr)
+
+        def one(code):
+            return code, has_timetable(f'{self.api}/{urllib.parse.quote(code)}/timetables')
+
+        with concurrent.futures.ThreadPoolExecutor(PARALLEL) as pool:
+            known.update(pool.map(one, missing))
+        if missing:
+            self.save()
+        return {code for code in codes if known[code]}
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,6 +317,16 @@ def main():
     search.fetch(norm(b) + '駅' for b in bases
                  if b and not search.candidates(b) and len(search.cache.get(norm(b), [])) >= SEARCH_LIMIT)
 
+    def near(s):
+        # A result Yahoo gives no position for cannot be ruled out
+        return [r for r in search.candidates(s['name']) if (yahoo_km(s, r) or 0) <= NEAR_KM]
+
+    # Whether the codes the names leave open have a timetable
+    with_timetable = search.timetables({
+        code for s in stations if (s['type'], s['id']) not in exceptions and len(near(s)) > 1
+        for code in left_open(near(s))
+    })
+
     rows, status, far = [], collections.Counter(), []
     for s in stations:
         if (s['type'], s['id']) in exceptions:
@@ -229,13 +338,18 @@ def main():
         if not candidates:
             status['no match'] += 1
             continue
-        # A result Yahoo gives no position for cannot be ruled out
-        found = [r for r in candidates if (yahoo_km(s, r) or 0) <= NEAR_KM]
+        found = near(s)
         if not found:
             status['far'] += 1
             far.append((s, min(candidates, key=lambda r: yahoo_km(s, r))))
             continue
         kind = 'unique' if len(candidates) == 1 else 'position'
+        if len(found) > 1:
+            found, decided = railway(found, with_timetable)
+            kind = decided or kind
+            if not found:
+                status['not a railway station'] += 1
+                continue
         if len(found) > 1:
             kind = 'operator'
             by_operator = [r for r in found if names_operator(split_suffix(r['name'])[1], s['operator'])]
