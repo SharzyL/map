@@ -17,6 +17,7 @@
 // stop marks it on the map.
 import { beginLoading } from './load-status.js';
 import { createPanelShell, el, retryButton } from './map-panel.js';
+import { setTooltip } from './tooltip.js';
 import {
   addDays,
   chinaNow,
@@ -384,18 +385,54 @@ export function trainsetLabel(trainset: NonNullable<CrTrainset['trainset']>) {
   return [trainset.id, trainset.cars && `${trainset.cars}辆编组`].filter(Boolean).join(' · ');
 }
 
-// What a departure's row says on hover: the railway's train number and what
-// its badges and marks stand for.
-function departureTitle(departure: Departure) {
+// Everything a Yahoo departure is known by, for its row's and its minute's
+// tooltip: when, what and where to; then its number, its type where the name
+// is a service's (特急わかしお1号), cars and Green Car, starting here, the
+// track, and whether it runs on certain days only.
+export function departureTooltip(departure: Departure) {
+  const name = departure.name ?? departure.kind ?? '';
   return [
+    `${departure.time} ${name} ${departure.destination ?? '?'}行`,
     departure.train_number && `列車番号 ${departure.train_number}`,
+    departure.kind && departure.kind !== name && `種別 ${departure.kind}`,
+    [departure.cars && `${departure.cars}両`, departure.green_car && 'グリーン車'].filter(Boolean).join(' · '),
     departure.starts_here && '当駅始発',
-    departure.green_car && 'グリーン車',
     departure.track && `${departure.track}番線`,
     departure.extra && '運転日注意',
   ]
     .filter(Boolean)
-    .join(' · ');
+    .join('\n');
+}
+
+// Everything a China Railway train at a station is known by, for its row's
+// and its minute's tooltip: when, its number here and its route; its class,
+// its whole number where it changes, when it arrives and leaves (and how
+// long it stands), or that it starts or ends here; the lines it comes and
+// goes on with its direction, the platform or gate, and the day of its run.
+export function crTrainTooltip(train: CrStationTrain) {
+  const number = train.departure_number ?? train.arrival_number ?? train.train;
+  const time = train.departure ?? train.arrival ?? '';
+  const stands =
+    train.arrival && train.departure ? (minutesOf(train.departure) - minutesOf(train.arrival) + 1440) % 1440 : null;
+  const lines =
+    train.line_in && train.line_out && train.line_in !== train.line_out
+      ? `${train.line_in}→${train.line_out}`
+      : (train.line ?? train.line_out ?? train.line_in);
+  return [
+    `${time} ${number} ${train.origin} → ${train.destination}`,
+    crTrainClassName(crTrainClass(number)),
+    number !== train.train && `全程车次 ${train.train}`,
+    !train.arrival
+      ? '本站始发'
+      : !train.departure
+        ? `${train.arrival} 终到`
+        : `${train.arrival} 到 · ${train.departure} 开（停 ${stands} 分）`,
+    [lines, train.bound].filter(Boolean).join(' '),
+    train.platform && `站台/检票口 ${train.platform}`,
+    train.day > 1 && UI.zh.daysAfter(train.day - 1),
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 // What a printed timetable's marks stand for on this table: each kind and
@@ -563,7 +600,7 @@ class TimetablePanel {
       const status = el('div', 'timetable-status timetable-error', this._body);
       const message = el('span', 'timetable-error-message', status);
       message.textContent = this._ui.loadFailed;
-      message.title = errorDetail(error);
+      setTooltip(message, errorDetail(error));
       if (isRetryable(error)) retryButton(status, () => this._run({ render: view, lang }), this._ui.retry);
     });
   }
@@ -601,7 +638,7 @@ class TimetablePanel {
     input.type = 'checkbox';
     input.checked = readStoredSettings(storageKey, (value) => value === true);
     el('span', undefined, toggle).textContent = label;
-    if (title) toggle.title = title;
+    if (title) setTooltip(toggle, title);
     input.addEventListener('change', () => writeStoredSettings(storageKey, input.checked));
     this._nav.hidden = false;
     return input;
@@ -633,7 +670,7 @@ class TimetablePanel {
         const note = el('p', 'timetable-comment timetable-route-missing');
         const message = el('span', undefined, note);
         message.textContent = routeMissingText(error, this._lang);
-        message.title = errorDetail(error);
+        setTooltip(message, errorDetail(error));
         if (isRetryable(error))
           retryButton(
             note,
@@ -679,7 +716,7 @@ class TimetablePanel {
           value.classList.add('timetable-unavailable');
           const message = el('span', undefined, value);
           message.textContent = '无法加载车底信息';
-          message.title = errorDetail(error);
+          setTooltip(message, errorDetail(error));
           if (isRetryable(error)) retryButton(value, ask, UI.zh.retry);
         });
     };
@@ -692,7 +729,7 @@ class TimetablePanel {
       }
       for (const element of planned) element.remove();
       value.textContent = trainsetLabel(trainset);
-      value.title = '12306 当日所配车底';
+      setTooltip(value, '12306 当日所配车底');
       if (!trainset.details.length && !trainset.coaches.length) return;
       const more = el('details', 'timetable-coaches', value);
       el('summary', undefined, more).textContent = '车厢';
@@ -717,7 +754,7 @@ class TimetablePanel {
     }
     const button = el('button', 'timetable-stop-locate', item);
     button.type = 'button';
-    button.title = this._ui.showOnMap(name);
+    setTooltip(button, this._ui.showOnMap(name));
     button.setAttribute('aria-label', button.title);
     button.innerHTML = LOCATE_ICON;
     button.addEventListener('click', () =>
@@ -751,7 +788,7 @@ class TimetablePanel {
     this._report.hidden = !report;
     if (this._reported) {
       this._report.textContent = 'Report error';
-      this._report.title = 'Report an error in this timetable or route on GitHub';
+      setTooltip(this._report, 'Report an error in this timetable or route on GitHub');
       this._report.href = reportUrl(this._reported, window.location.href);
     }
     this._footer.hidden = !source && !report;
@@ -834,7 +871,7 @@ class TimetablePanel {
       const severity = worstSeverity(notices);
       badge.dataset.severity = severity;
       badge.textContent = SEVERITY_LABELS[severity];
-      badge.title = notices.map(({ message }) => message).join('\n') || '運行情報があります';
+      setTooltip(badge, notices.map(({ message }) => message).join('\n') || '運行情報があります');
     };
     stationStatus(table.station.code, signal).then(
       ({ lines }) => {
@@ -935,7 +972,7 @@ class TimetablePanel {
       if (departure.green_car) el('span', 'timetable-badge timetable-badge-green', info).textContent = 'G';
       if (departure.cars) el('span', 'timetable-cars', info).textContent = `${departure.cars}両`;
       el('span', 'timetable-platform', button).textContent = departure.track ?? '';
-      button.title = departureTitle(departure);
+      setTooltip(button, departureTooltip(departure));
       button.addEventListener('click', () => open(departure));
     });
 
@@ -963,12 +1000,7 @@ class TimetablePanel {
       ].join('');
       el('span', 'timetable-grid-marks', button).textContent = marks || '\u00A0';
       el('span', 'timetable-grid-time', button).textContent = departure.time.slice(3);
-      button.title = [
-        `${departure.time} ${departure.name ?? departure.kind ?? ''} ${departure.destination ?? '?'}行`,
-        departureTitle(departure),
-      ]
-        .filter(Boolean)
-        .join('\n');
+      setTooltip(button, departureTooltip(departure));
       button.addEventListener('click', () => open(departure));
     });
     const legend = departureLegend(table.departures);
@@ -1040,7 +1072,7 @@ class TimetablePanel {
       name.textContent = stop.name;
       if (stop.code && name instanceof HTMLButtonElement) {
         name.type = 'button';
-        name.title = this._ui.timetableAt(stop.name);
+        setTooltip(name, this._ui.timetableAt(stop.name));
         const stopCode = stop.code;
         name.addEventListener('click', () =>
           this._show(() => this._renderLines({ name: stop.name, codes: [stopCode] })),
@@ -1057,7 +1089,7 @@ class TimetablePanel {
       if (days > 0) {
         const day = el('span', 'timetable-stop-day', times);
         day.textContent = `+${days}`;
-        day.title = this._ui.daysAfter(days);
+        setTooltip(day, this._ui.daysAfter(days));
       }
       const position = stop.lon !== null && stop.lon !== undefined ? ([stop.lon, stop.lat] as [number, number]) : null;
       this._locate(item, stop.name, position);
@@ -1108,7 +1140,7 @@ class TimetablePanel {
     const dayButton = (label: string, title: string, target: string, icon?: string) => {
       const button = el('button', icon ? 'timetable-day timetable-day-step' : 'timetable-day', days);
       button.type = 'button';
-      button.title = title;
+      setTooltip(button, title);
       if (icon) {
         button.innerHTML = icon;
         button.setAttribute('aria-label', title);
@@ -1192,12 +1224,12 @@ class TimetablePanel {
         const count = table.trains.filter(
           (train) => (value === null || crLineOf(train) === value) && (bound === null || train.bound === bound),
         ).length;
-        button.title = counted(count);
+        setTooltip(button, counted(count));
       }
       for (const button of boundRow?.querySelectorAll<HTMLElement>('.timetable-day') ?? []) {
         const value = button.dataset.value || null;
         button.setAttribute('aria-pressed', String(value === bound));
-        button.title = counted(onLine.filter((train) => value === null || train.bound === value).length);
+        setTooltip(button, counted(onLine.filter((train) => value === null || train.bound === value).length));
       }
       this._summary.textContent = `${crDateLabel(table.date)} · ${
         trains.length === table.trains.length ? trainCount : `${trains.length}/${trainCount}`
@@ -1260,14 +1292,7 @@ class TimetablePanel {
       }
       if (!marks.textContent) marks.textContent = '\u00A0';
       el('span', 'timetable-grid-time', button).textContent = time.slice(3);
-      button.title = [
-        `${time} ${numberOf(train)} ${train.origin} → ${train.destination}`,
-        crTrainClassName(trainClass),
-        !train.arrival && '本站始发',
-        train.platform && `站台/检票口 ${train.platform}`,
-      ]
-        .filter(Boolean)
-        .join('\n');
+      setTooltip(button, crTrainTooltip(train));
       button.addEventListener('click', () =>
         this._show(() => this._renderCrTrain(train.train, addDays(table.date, 1 - train.day), station)),
       );
@@ -1307,7 +1332,7 @@ class TimetablePanel {
       timeCell.textContent = time;
       if (!train.departure) {
         timeCell.classList.add('timetable-time-arrival');
-        timeCell.title = '终到';
+        setTooltip(timeCell, '终到');
       }
       // The number it runs under here (Z156 of Z156/Z157), as the station shows it.
       const number = train.departure_number ?? train.arrival_number ?? train.train;
@@ -1323,13 +1348,7 @@ class TimetablePanel {
           : (train.line ?? train.line_out ?? train.line_in);
       if (lines) el('span', 'timetable-train-line', destination).textContent = lines;
       el('span', 'timetable-platform', button).textContent = train.platform ?? '';
-      button.title = [
-        number !== train.train && `全程车次 ${train.train}`,
-        [train.line, train.bound].filter(Boolean).join(' '),
-        train.platform && `站台/检票口 ${train.platform}`,
-      ]
-        .filter(Boolean)
-        .join(' · ');
+      setTooltip(button, crTrainTooltip(train));
       // The train's own date is the day it left its origin.
       button.addEventListener('click', () =>
         this._show(() => this._renderCrTrain(train.train, addDays(table.date, 1 - train.day), station)),
@@ -1409,12 +1428,12 @@ class TimetablePanel {
       const name = el('button', 'timetable-stop-name', item);
       name.type = 'button';
       name.textContent = stop.name;
-      name.title = this._ui.timetableAt(stop.name);
+      setTooltip(name, this._ui.timetableAt(stop.name));
       // Where the number changes (Z156/Z157 at 山海关), the numbers in and out.
       if (stop.arrival_number && stop.departure_number && stop.arrival_number !== stop.departure_number) {
         const change = el('span', 'timetable-number-change', name);
         change.textContent = `${stop.arrival_number}→${stop.departure_number}`;
-        change.title = `到达车次 ${stop.arrival_number}，开出车次 ${stop.departure_number}`;
+        setTooltip(change, `到达车次 ${stop.arrival_number}，开出车次 ${stop.departure_number}`);
       }
       name.addEventListener('click', () =>
         this._show(() => this._renderCrStation([stop.name], stop.name, addDays(date, stop.day - 1))),
@@ -1427,12 +1446,12 @@ class TimetablePanel {
       if (stop.day > 1) {
         const day = el('span', 'timetable-stop-day', times);
         day.textContent = `+${stop.day - 1}`;
-        day.title = this._ui.daysAfter(stop.day - 1);
+        setTooltip(day, this._ui.daysAfter(stop.day - 1));
       }
       el('span', 'timetable-stop-km', item).textContent = `${stop.km} km`;
       const platform = el('span', 'timetable-platform', item);
       platform.textContent = stop.platform ?? '';
-      if (stop.platform) platform.title = `站台/检票口 ${stop.platform}`;
+      if (stop.platform) setTooltip(platform, `站台/检票口 ${stop.platform}`);
       this._locate(item, stop.name, stop.position);
     });
     list.querySelector('.timetable-stop-here')?.scrollIntoView?.({ block: 'center' });
@@ -1520,7 +1539,7 @@ export function timetableButton(feature: StationFeatureLike, content: HTMLElemen
   }
   const button = el('button', 'orm-popup-action', actions);
   button.type = 'button';
-  button.title = 'cr' in request ? 'Trains from the China Railway timetable' : 'Departures from Yahoo!乗換案内';
+  setTooltip(button, 'cr' in request ? 'Trains from the China Railway timetable' : 'Departures from Yahoo!乗換案内');
   button.innerHTML = CLOCK_ICON;
   el('span', undefined, button).textContent = 'Timetable';
   button.addEventListener('click', () =>

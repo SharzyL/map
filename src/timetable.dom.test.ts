@@ -27,6 +27,7 @@ import {
   TIMETABLE_OPEN_EVENT,
   timetableRequestFor,
 } from './timetable.js';
+import { tooltipText } from './tooltip.js';
 
 const crPath = (path: string) => '/api/v1/cr/' + path.split('/').map(encodeURIComponent).join('/');
 const CR_STATION = {
@@ -392,7 +393,10 @@ describe('timetable panel', () => {
     expect(rows[0].querySelector('.timetable-kind').classList).not.toContain('timetable-kind-special');
     expect(text(root, '.timetable-train-info')).toEqual(['始G15両', 'G15両']);
     expect(text(root, '.timetable-jp-departures .timetable-platform')).toEqual(['3', '3']);
-    expect((rows[0] as HTMLElement).title).toBe('列車番号 2520Y · 当駅始発 · グリーン車 · 3番線');
+    // Everything known of it, on hover
+    expect(tooltipText(rows[0] as HTMLElement)).toBe(
+      ['07:16 普通 小金井行', '列車番号 2520Y', '15両 · グリーン車', '当駅始発', '3番線'].join('\n'),
+    );
 
     // The printed layout, by a switch the browser remembers.
     const printed = root.querySelector<HTMLElement>('.timetable-printed');
@@ -463,7 +467,7 @@ describe('timetable panel', () => {
         '09:47 – 09:48+1',
         '10:00+1',
       ]);
-      expect(panel.panel.querySelector<HTMLElement>('.timetable-stop-day').title).toBe('始発駅を出て翌日');
+      expect(tooltipText(panel.panel.querySelector<HTMLElement>('.timetable-stop-day'))).toBe('始発駅を出て翌日');
     } finally {
       train.stops = stops;
     }
@@ -550,7 +554,7 @@ describe('timetable panel', () => {
       await vi.waitFor(() => expect(text(root, '.timetable-notice-badge')).toEqual(['遅延']));
       const badge = root.querySelector<HTMLElement>('.timetable-line-name .timetable-notice-badge');
       expect(badge.dataset.severity).toBe('delay');
-      expect(badge.title).toBe('大雨の影響で、列車に遅れが出ています。');
+      expect(tooltipText(badge)).toBe('大雨の影響で、列車に遅れが出ています。');
 
       root.querySelector<HTMLButtonElement>('.timetable-direction').click();
       await vi.waitFor(() => expect(root.querySelector('.timetable-notice')).not.toBeNull());
@@ -616,7 +620,7 @@ describe('timetable panel', () => {
       expect(panel.panel.querySelector('.timetable-error').textContent).toBe('時刻表を読み込めませんでした。'),
     );
     // The message names no data source; what went wrong is in its tooltip.
-    expect(panel.panel.querySelector<HTMLElement>('.timetable-error-message').title).toBe('not found');
+    expect(tooltipText(panel.panel.querySelector<HTMLElement>('.timetable-error-message'))).toBe('not found');
     // An unknown station stays unknown: nothing to retry.
     expect(panel.panel.querySelector('.panel-retry')).toBeNull();
   });
@@ -891,15 +895,15 @@ describe('China Railway timetable', () => {
     expect(text(root, '.timetable-train-number')).toEqual(['Z157', 'G301']);
     expect(root.querySelector('.timetable-summary').textContent).toBe('2026-11-16 周一 · 2/3趟');
     // Each tab counts what it would show with the other row's pick.
-    expect(tabs(lineRow).find((tab) => tab.textContent === '其他').title).toBe('0趟');
+    expect(tooltipText(tabs(lineRow).find((tab) => tab.textContent === '其他'))).toBe('0趟');
     pick(lineRow, '京广高速');
     expect(text(root, '.timetable-train-number')).toEqual(['G301']);
     expect(text(root, '.timetable-hour')).toEqual(['8时']);
-    expect(tabs(boundRow).find((tab) => tab.textContent === '上行').title).toBe('0趟');
+    expect(tooltipText(tabs(boundRow).find((tab) => tab.textContent === '上行'))).toBe('0趟');
 
     // The next day keeps both.
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
-      .find((button) => button.title === '后一天')
+      .find((button) => tooltipText(button) === '后一天')
       .click();
     await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toEqual(['G301']));
@@ -936,8 +940,8 @@ describe('China Railway timetable', () => {
     ).toEqual([false, true]);
     // What the unmarked trains are first; the classes' marks need no legend.
     expect(text(printed, '.timetable-legend li')).toEqual(['无印 [Z] 开往哈尔滨西', '广 开往广州南', '● 本站始发']);
-    expect(printed.querySelectorAll<HTMLElement>('.timetable-grid-minute')[1].title).toBe(
-      '08:00 G301 北京西 → 广州南\n高速动车组（G）\n本站始发\n站台/检票口 7',
+    expect(tooltipText(printed.querySelectorAll<HTMLElement>('.timetable-grid-minute')[1])).toBe(
+      ['08:00 G301 北京西 → 广州南', '高速动车组（G）', '本站始发', '京广高速 下行', '站台/检票口 7'].join('\n'),
     );
     expect(localStorage.getItem('atlas-realm:timetable-cr-printed')).toBe('true');
     // A minute opens its train.
@@ -968,8 +972,16 @@ describe('China Railway timetable', () => {
     // The line each train runs on here, or the lines it changes between; the
     // full number and its direction are on hover.
     expect(text(root, '.timetable-train-line')).toEqual(['京沪→京哈', '京广高速']);
-    expect(root.querySelector<HTMLElement>('.timetable-departure-button').title).toBe(
-      '全程车次 Z156/Z157 · 京哈 下行 · 站台/检票口 10',
+    expect(tooltipText(root.querySelector<HTMLElement>('.timetable-departure-button'))).toBe(
+      [
+        '06:02 Z157 泰州 → 哈尔滨西',
+        '快速（160 km/h）',
+        '全程车次 Z156/Z157',
+        '05:36 到 · 06:02 开（停 26 分）',
+        '京沪→京哈 下行',
+        '站台/检票口 10',
+        '始发后次日',
+      ].join('\n'),
     );
     const source = root.querySelector<HTMLAnchorElement>('.timetable-source');
     expect(source.textContent).toBe('lltskb 20261114');
@@ -980,7 +992,7 @@ describe('China Railway timetable', () => {
     expect(root.querySelector('.timetable-nav .timetable-date').textContent).toBe('2026-11-16 周一');
     // Date steps replace the view instead of stacking on the back button.
     Array.from(root.querySelectorAll<HTMLButtonElement>('.timetable-day'))
-      .find((button) => button.title === '后一天')
+      .find((button) => tooltipText(button) === '后一天')
       .click();
     await vi.waitFor(() => expect(requests.at(-1)).toBe(`${crPath('stations/北京西/timetable')}?date=2026-11-17`));
     await vi.waitFor(() => expect(text(root, '.timetable-train-number')).toHaveLength(3));

@@ -4988,3 +4988,30 @@ a.credits-name:hover {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Tooltips (tooltip.ts): shown at once, over everything */
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #0f172a;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
+  color: #f8fafc;
+  font:
+    12px/1.45 system-ui,
+    -apple-system,
+    sans-serif;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+.tooltip-head {
+  font-weight: 650;
+}
