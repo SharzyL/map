@@ -671,6 +671,27 @@ describe('timetable panel', () => {
   });
 });
 
+describe('a 新幹線 in a station’s lines', () => {
+  it('takes the high-speed purple, its name and its directions', async () => {
+    API['/api/v1/norikae/stations/22828/timetables'] = {
+      source_url: 'https://transit.yahoo.co.jp/timetable/22828',
+      station: { code: '22828', name: '東京' },
+      lines: [
+        { name: 'ＪＲ東海道新幹線', directions: [{ direction: '名古屋・新大阪', gid: '1' }] },
+        { name: 'ＪＲ山手線外回り', directions: [{ direction: '品川・渋谷', gid: '2' }] },
+      ],
+    };
+    try {
+      const { container, panel } = setup();
+      container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '東京', codes: ['22828'] } }));
+      await vi.waitFor(() => expect(text(panel.panel, '.timetable-direction')).toHaveLength(2));
+      expect(text(panel.panel, '.timetable-highspeed')).toEqual(['ＪＲ東海道新幹線', '名古屋・新大阪方面']);
+    } finally {
+      delete API['/api/v1/norikae/stations/22828/timetables'];
+    }
+  });
+});
+
 describe('high-speed rail', () => {
   it('is a 新幹線 line in Japan and a G train in China', () => {
     expect(['東海道新幹線', '北陸新幹線', 'ＪＲ山手線外回り', '成田エクスプレス'].map(isHighSpeedLine)).toEqual([
@@ -930,16 +951,16 @@ describe('China Railway timetable', () => {
     // Departures only (K2550 ends here), an hour a row
     expect(text(printed, '.timetable-grid-hour')).toEqual(['6', '8']);
     expect(text(printed, '.timetable-grid-time')).toEqual(['02', '00']);
-    // Z157 is of the commonest class and destination; G301 starts here, for 广州南.
-    expect(text(printed, '.timetable-grid-marks')).toEqual(['\u00A0', '●广[高]']);
+    // Every train marked: its destination city and its class; G301 starts here.
+    expect(text(printed, '.timetable-grid-marks')).toEqual(['哈[Z]', '●广[高]']);
     // The high-speed train in the high-speed purple
     expect(
       Array.from(printed.querySelectorAll('.timetable-grid-minute')).map((minute) =>
         minute.classList.contains('timetable-highspeed'),
       ),
     ).toEqual([false, true]);
-    // What the unmarked trains are first; the classes' marks need no legend.
-    expect(text(printed, '.timetable-legend li')).toEqual(['无印 [Z] 开往哈尔滨西', '广 开往广州南', '● 本站始发']);
+    // The destinations and the dot; the classes' marks need no legend.
+    expect(text(printed, '.timetable-legend li')).toEqual(['哈 开往哈尔滨西', '广 开往广州南', '● 本站始发']);
     expect(tooltipText(printed.querySelectorAll<HTMLElement>('.timetable-grid-minute')[1])).toBe(
       ['08:00 G301 北京西 → 广州南', '高速动车组（G）', '本站始发', '京广高速 下行', '站台/检票口 7'].join('\n'),
     );

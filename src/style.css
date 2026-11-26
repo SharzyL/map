@@ -2683,6 +2683,7 @@ button.timetable-stop-name:focus-visible {
 
 /* High-speed rail, in the map's high-speed purple (scripts/styles/shared.mjs) */
 .timetable-highspeed,
+.timetable-direction.timetable-highspeed,
 .timetable-train-number.timetable-highspeed {
   color: #9b19d4;
 }
@@ -2947,10 +2948,13 @@ button.timetable-stop-name:focus-visible {
 }
 
 .timetable-grid-hour {
-  padding: 4px 0;
+  /* On the first line of minutes: below the space of their marks (the
+     minutes' and a minute's 1px padding, then the 11px marks line), in the
+     minutes' size and line, so the hour and the minutes share a baseline. */
+  padding: 13px 0 4px;
   color: #0f172a;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 14px;
+  line-height: 17px;
   font-variant-numeric: tabular-nums;
   text-align: center;
   background: #f8fafc;
@@ -2959,6 +2963,10 @@ button.timetable-stop-name:focus-visible {
 .timetable-grid-minutes {
   display: flex;
   flex-wrap: wrap;
+  /* Each minute its own height: stretched to the hour's beside a single line
+     of them, its number would sink below the hour's baseline. */
+  align-content: flex-start;
+  align-items: flex-start;
   gap: 0 2px;
   padding: 1px 4px;
 }
@@ -2996,20 +3004,18 @@ button.timetable-stop-name:focus-visible {
 }
 
 .timetable-grid-marks {
+  /* A line of its own height, whatever its characters (a circled number's
+     fallback font is taller): the hour beside the minutes counts on it. */
+  height: 11px;
   font-size: 9.5px;
-  line-height: 1.1;
+  line-height: 11px;
   white-space: nowrap;
-}
-
-/* China Railway's class mark, in brackets after the destination's character */
-.timetable-grid-class {
-  font-weight: 700;
 }
 
 .timetable-grid-time {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 17px;
 }
 
 .timetable-legend {
@@ -4996,10 +5002,11 @@ a.credits-name:hover {
   box-sizing: border-box;
   max-width: min(300px, calc(100vw - 16px));
   padding: 5px 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 6px;
-  background: #0f172a;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
-  color: #f8fafc;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+  color: #0f172a;
   font:
     12px/1.45 system-ui,
     -apple-system,

@@ -856,6 +856,8 @@ class TimetablePanel {
       for (const { direction, gid } of line.directions) {
         const button = el('button', 'timetable-direction', group);
         button.type = 'button';
+        // A 新幹線's directions in its name's purple
+        if (isHighSpeedLine(line.name)) button.classList.add('timetable-highspeed');
         button.textContent = directionLabel(direction);
         button.addEventListener('click', () =>
           this._show(() => this._renderDepartures(table.station.code, gid, table.station.name, null)),
@@ -1244,8 +1246,10 @@ class TimetablePanel {
   // A station's departures as a printed timetable lays them out: an hour a
   // row, each minute under its marks, the destination's character and the
   // class's in brackets (crDestinationMarks, crTrainClass), with ● for a train
-  // starting here; the commonest destination and class go unmarked (无印), as
-  // on Yahoo's ヨコ表示. Trains ending here, which leave nothing, are in the list.
+  // starting here. Unlike Yahoo's ヨコ表示 every train is marked: a station
+  // has too many classes and destinations for the unmarked ones (無印) to be
+  // known without the legend. Trains ending here, which leave nothing, are in
+  // the list.
   private _renderCrPrinted(printed: HTMLElement, table: CrStationTimetable, station: string) {
     printed.replaceChildren();
     const trains = table.trains.filter((train) => train.departure);
@@ -1255,22 +1259,12 @@ class TimetablePanel {
       return;
     }
     const numberOf = (train: CrStationTrain) => train.departure_number ?? train.train;
-    const commonest = <T>(values: T[]) => {
-      const counts = new Map<T, number>();
-      for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-      return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
-    };
-    const classes = trains.map((train) => crTrainClass(numberOf(train)));
-    const usualClass = commonest(classes.map(({ mark }) => mark));
-    const usualDestination = commonest(trains.map((train) => train.destination));
-    const destinations = crDestinationMarks(
-      trains.map((train) => train.destination).filter((destination) => destination !== usualDestination),
-    );
+    const destinations = crDestinationMarks(trains.map((train) => train.destination));
 
     const grid = el('div', 'timetable-grid', printed);
     let row: HTMLElement | null = null;
     let hour = '';
-    trains.forEach((train, index) => {
+    trains.forEach((train) => {
       const time = train.departure;
       if (time.slice(0, 2) !== hour) {
         hour = time.slice(0, 2);
@@ -1283,14 +1277,10 @@ class TimetablePanel {
       // High-speed trains in the high-speed purple, as in the list
       if (isHighSpeedTrain(numberOf(train))) button.classList.add('timetable-highspeed');
       const marks = el('span', 'timetable-grid-marks', button);
-      const trainClass = classes[index];
       if (!train.arrival) marks.append('●');
-      if (train.destination !== usualDestination) marks.append(destinations.marks.get(train.destination) ?? '');
-      if (trainClass.mark !== usualClass) {
-        // In brackets, as Yahoo writes a type's mark (上[特])
-        el('span', 'timetable-grid-class', marks).textContent = `[${trainClass.mark}]`;
-      }
-      if (!marks.textContent) marks.textContent = '\u00A0';
+      marks.append(destinations.marks.get(train.destination) ?? '');
+      // In brackets, as Yahoo writes a type's mark (上[特])
+      el('span', 'timetable-grid-class', marks).textContent = `[${crTrainClass(numberOf(train)).mark}]`;
       el('span', 'timetable-grid-time', button).textContent = time.slice(3);
       setTooltip(button, crTrainTooltip(train));
       button.addEventListener('click', () =>
@@ -1298,16 +1288,14 @@ class TimetablePanel {
       );
     });
 
-    // What the unmarked trains are first, then each destination's character
-    // and the dot, each kept on one line with what it stands for. The classes'
-    // marks need none.
+    // Each destination's character and the dot, each kept on one line with
+    // what it stands for. The classes' marks need none.
     const key = el('ul', 'timetable-legend', printed);
     const entry = (mark: string, meaning: string) => {
       const item = el('li', undefined, key);
       el('b', undefined, item).textContent = mark;
       item.append(` ${meaning}`);
     };
-    entry('无印', [`[${usualClass}]`, usualDestination && `开往${usualDestination}`].filter(Boolean).join(' '));
     for (const { mark, stations } of destinations.legend) entry(mark, `开往${stations.join('、')}`);
     if (trains.some((train) => !train.arrival)) entry('●', '本站始发');
   }
