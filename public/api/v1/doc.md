@@ -1,72 +1,92 @@
 # API v1
 
-JSON API for Japan train routes and station timetables, backed by
-[Yahoo! 乗換案内](https://transit.yahoo.co.jp/), for China Railway
-timetables from the 路路通 (lulutong) timetable data under `/api/v1/cr/*`
-(see [China Railway](#china-railway); the conventions there differ), and
-for railway routes and lines from OpenStreetMap under `/api/v1/relations/*`
-(see [Railway relations](#railway-relations)).
+The JSON API behind the map at [map.shz.al](https://map.shz.al): railway
+data for China and Japan, naming stations, ways and routes by the same
+OpenStreetMap ids as the map's tiles, so a client can find what it gets on a
+map built from OSM.
 
-Base URL: `https://map.shz.al`, the map's own Worker. The API is under `/api/v1`:
-Japanese routes and timetables under `/api/v1/norikae`, China Railway under
-`/api/v1/cr`, and what serves both (relations, search) at its root.
+Base URL: `https://map.shz.al`, the map's own Worker; everything is under
+`/api/v1` (`GET /api/v1` lists the endpoints). Each section below lists its
+own.
+
+| Section                                 | Under               | What, and from where                                                                              |
+| --------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
+| [Japan](#japan)                         | `/api/v1/norikae`   | Routes, stations, timetables, trains and service notices, live from Yahoo! 乗換案内               |
+| [China Railway](#china-railway)         | `/api/v1/cr`        | Stations, their timetables, trains and their track, from 路路通's data; trainsets live from 12306 |
+| [Railway relations](#railway-relations) | `/api/v1/relations` | Routes, lines and route masters from OpenStreetMap, and Japan's official lines (MLIT's N02)       |
+| [Search](#search)                       | `/api/v1/search`    | China Railway trains by number, and stations in China and Japan by name or reading                |
+| [anitabi](#anitabi)                     | `/api/v1/anitabi`   | Anime pilgrimage spots, passed on from anitabi (experimental)                                     |
 
 ## Conventions
 
-- `GET` only. No authentication.
+What holds everywhere; each section adds its own (its station names, time
+zone, units).
+
+- `GET` only (`HEAD` and `OPTIONS` too). No authentication.
 - Responses are `application/json; charset=utf-8`; keys are `snake_case`.
-- Station names must be **Japanese** (e.g. `渋谷`, not `Shibuya`).
-- All dates/times are **Japan time** (JST, UTC+9). Times are `"HH:MM"`;
-  `date` is `YYYY-MM-DD`. Times after midnight wrap (`"00:59"`), so compare
-  against the route's `departure` to detect overnight trips; except a train's
-  stop times (`…/trains/{train_id}`), which count the hours of its later days
-  on from 24 as Yahoo does (`"33:47"` is 09:47 the next morning).
+- Unknown query parameters are rejected with `400`, to catch typos.
+- Errors are `{ "error": { "code", "message" } }` with an HTTP status (see
+  [Errors](#errors)).
+- Where an answer comes from: one read live from another site carries
+  `source_url`, the page or request it came from; one built from data the
+  map imports carries `data_version`, the version of that data.
+- Fields the source does not give for an item are `null`, not left out.
+- OSM elements are a type letter and an id: `N123`, `W123`, `R123` (node,
+  way, relation). Positions are WGS 84 degrees: `lat` / `lon` fields, and
+  `[lon, lat]` pairs in geometry.
+- Dates are `YYYY-MM-DD` and times `"HH:MM"`, in the local time of the
+  country the data is about: Japan (UTC+9) or China (UTC+8).
+- `Cache-Control: public, max-age=N` is set on success (see
+  [Caching](#caching)); errors are `no-store`.
+- CORS is open (`Access-Control-Allow-Origin: *`).
+
+---
+
+## Japan
+
+Routes, stations, timetables and trains in Japan, read live from
+[Yahoo! 乗換案内](https://transit.yahoo.co.jp/) (by the API's instance in
+Japan, since Yahoo refuses requests from some regions), under
+`/api/v1/norikae`.
+
+- Station names are **Japanese** (`渋谷`, not `Shibuya`);
+  [search](#search) also finds them by reading, in kana or romaji.
+- Dates and times are **Japan time** (JST, UTC+9). Times after midnight
+  wrap (`"00:59"`), so compare against the route's `departure` to detect
+  overnight trips; except a train's stop times (`…/trains/{train_id}`),
+  which count the hours of its later days on from 24 as Yahoo does
+  (`"33:47"` is 09:47 the next morning).
 - Money is integer yen. Durations are integer minutes (`*_min`).
 - Every successful response includes `source_url`: the Yahoo page it was
   parsed from.
-- Fields that Yahoo does not provide for a given item are `null`.
 - Every object with a Yahoo station code (`code` or `id`) also has `osm`:
-  the OpenStreetMap features matched to that code, as `N123` / `W123` /
-  `R123` (node / way / relation). A code often has several, e.g. one station
-  node per operator. Bus stops, places without a code and unmatched stations
-  get `[]`. Matching is by name, so a few stations may be missing or wrong.
-- The same objects have `lat` / `lon` (WGS 84 degrees): the centre of the
-  `osm` features, so they line up with the map. They are `null` when `osm`
-  is empty. Station search results also give Yahoo's own position,
-  `yahoo_lat` / `yahoo_lon`, for bus stops too.
-- Unknown query parameters are rejected with `400`, to catch typos.
-- `Cache-Control: public, max-age=N` is set on success; errors are `no-store`.
-- CORS is open (`Access-Control-Allow-Origin: *`).
+  the OpenStreetMap features matched to that code. A code often has several,
+  e.g. one station node per operator. Bus stops, places without a code and
+  unmatched stations get `[]`. Matching is by name, so a few stations may be
+  missing or wrong.
+- The same objects have `lat` / `lon`: the centre of the `osm` features, so
+  they line up with the map. They are `null` when `osm` is empty. Station
+  search results also give Yahoo's own position, `yahoo_lat` / `yahoo_lon`,
+  for bus stops too.
+- Times are scheduled; delays are not applied. Service notices
+  (運行情報, from レスキューナウ as Yahoo shows them) come from the `status`
+  endpoints.
 
-## Endpoints
-
-| Endpoint                                                                       | Purpose                                  |
-| ------------------------------------------------------------------------------ | ---------------------------------------- |
-| `GET /api/v1/norikae/routes`                                                   | Route search between stations            |
-| `GET /api/v1/norikae/stations?q=`                                              | Find station codes by name               |
-| `GET /api/v1/norikae/stations/{code}/timetables`                               | Lines and directions at a station        |
-| `GET /api/v1/norikae/stations/{code}/status`                                   | Service notices of a station's lines     |
-| `GET /api/v1/norikae/stations/{code}/timetables/{gid}`                         | Departure timetable for one direction    |
-| `GET /api/v1/norikae/stations/{code}/timetables/{gid}/status`                  | Service notices of one direction's line  |
-| `GET /api/v1/norikae/stations/{code}/timetables/{gid}/trains/{train_id}`       | Stop-by-stop schedule of one train       |
-| `GET /api/v1/norikae/stations/{code}/timetables/{gid}/trains/{train_id}/route` | The track one train runs on, as OSM ways |
-
-China Railway: `GET /api/v1/cr/stations?q=`, `GET /api/v1/cr/stations/{station}/timetable`,
-`GET /api/v1/cr/trains/{train}`, `GET /api/v1/cr/trains/{train}/route`,
-`GET /api/v1/cr/trainsets/{train}`.
-
-Railway relations: `GET /api/v1/relations/{id}`.
-
-Search: `GET /api/v1/search?q=` (China Railway train numbers for now).
-
-anitabi (experimental): `GET /api/v1/anitabi/{file}`.
+| Endpoint                                                         | Purpose                                  |
+| ---------------------------------------------------------------- | ---------------------------------------- |
+| `GET /api/v1/norikae/routes`                                     | Route search between stations            |
+| `GET /api/v1/norikae/stations?q=`                                | Find station codes by name               |
+| `GET /api/v1/norikae/stations/{code}/timetables`                 | Lines and directions at a station        |
+| `GET /api/v1/norikae/stations/{code}/status`                     | Service notices of a station's lines     |
+| `GET …/stations/{code}/timetables/{gid}`                         | Departure timetable for one direction    |
+| `GET …/stations/{code}/timetables/{gid}/status`                  | Service notices of one direction's line  |
+| `GET …/stations/{code}/timetables/{gid}/trains/{train_id}`       | Stop-by-stop schedule of one train       |
+| `GET …/stations/{code}/timetables/{gid}/trains/{train_id}/route` | The track one train runs on, as OSM ways |
 
 Typical timetable flow: `stations` → `timetables` (pick a `gid`) →
 `timetables/{gid}` (pick a `train_id`) → `trains/{train_id}`.
 Station `id`s in route results are the same codes, so you can jump straight
 from a route to a station's timetables.
-
----
 
 ### `GET /api/v1/norikae/routes`
 
@@ -505,16 +525,16 @@ and `503 data_unavailable` while the route data is not loaded.
 ## China Railway
 
 Timetables of China Railway passenger trains, from the 路路通 (lulutong)
-timetable data. These endpoints never call Yahoo; they read data imported
-when a new timetable version is published. The exception is
-`/api/v1/cr/trainsets`, which asks 12306 live.
+timetable data, under `/api/v1/cr`. They read data the map imports when a
+new timetable version is published, except `/api/v1/cr/trainsets`, which
+asks 12306 live.
 
 - Dates and times are **China time** (UTC+8). Times are `"HH:MM"` and wrap
   after midnight; `day` says which day of the train's run a time is on
   (`1` = the day it left its origin).
 - Every successful response includes `data_version`, the timetable's
-  version date (e.g. `"20261114"`), instead of `source_url`
-  (`/api/v1/cr/trainsets` has `source_url`, the 12306 request).
+  version date (e.g. `"20261114"`); `/api/v1/cr/trainsets`, read live, has
+  `source_url` instead, the 12306 request.
 - Station names are **Chinese** (`北京南`). Search also matches pinyin and
   its initials (`beijingnan`, `bjn`) and telegraph codes (`VNP`).
 - Times are scheduled; cancellations and temporary changes are not applied.
@@ -797,18 +817,80 @@ data is not loaded.
 
 ---
 
+### `GET /api/v1/cr/trainsets/{train}`
+
+The trainset (动车组) 12306 assigns to an EMU train on a day, with its
+model, size and coaches. Asked live from 12306, the source lulutong's app
+uses; the timetable data only has the model (`rolling_stock` in
+`cr/trains`).
+
+`{train}` is a train number (`G2705`, `g2705`). A full number from a
+timetable works too: `Z156/Z157B` is asked as `Z156`.
+
+| Param  | Values                                            | Default       |
+| ------ | ------------------------------------------------- | ------------- |
+| `date` | `YYYY-MM-DD`, the day the train leaves its origin | today (China) |
+
+```
+GET /api/v1/cr/trainsets/G2705?date=2026-11-14
+```
+
+```json
+{
+  "source_url": "https://mobile.12306.cn/wxxcx/openplatform-inner/...getCarDetail?trainCode=G2705&runningDay=20261114&reqType=form&carCode=G2705",
+  "train": "G2705",
+  "date": "2026-11-14",
+  "trainset": {
+    "id": "CR400BF-S-3243",
+    "model": "CR400BF-S",
+    "brand": "复兴号",
+    "cars": 8,
+    "length_m": 208.95,
+    "capacity": 619,
+    "max_speed_kmh": 350,
+    "details": [
+      { "name": "列车编组", "value": "8辆" },
+      { "name": "列车长度", "value": "208.95m" },
+      { "name": "列车定员", "value": "619人" },
+      { "name": "最高时速", "value": "350km/h" },
+      { "name": "餐车", "value": "05车" },
+      { "name": "静音车厢", "value": null }
+    ],
+    "coaches": ["01车 一等/商务 32/5", "02车 二等 93", "...", "08车 二等/商务 43/6"]
+  }
+}
+```
+
+- `trainset` is `null` when 12306 has none: unknown numbers, and trains
+  that are not EMUs (`K551`). A `200` with `null` does not mean the train
+  does not exist.
+- `id` is the trainset's model and number. `brand` is 复兴号 or 和谐号.
+- `cars`, `length_m`, `capacity`, `max_speed_kmh` are read from `details`,
+  which keeps all of 12306's labels as given; a label with no value
+  (`静音车厢`, a quiet coach) is `null`.
+- `coaches` lists each coach with its seat classes and seat counts, as 12306
+  words them.
+- For a train of two coupled sets (`rolling_stock.coupled` in `cr/trains`),
+  12306 describes one set.
+- 12306 may answer the same set for every date; treat it as the planned
+  trainset, not a confirmation of what ran.
+
+Errors: `400 bad_request` for a `{train}` that is not a train number;
+`502`/`504` as for Yahoo when 12306 errs or is slow.
+
+---
+
 ## Railway relations
 
-Railway routes and lines from OpenStreetMap, for drawing them on a map built
-from the same data: OSM's railway extract, cut to China, Japan and what lies
-between. Responses name OSM elements, so a map can highlight its own features
-by id.
+Railway routes and lines from OpenStreetMap, under `/api/v1/relations`, for
+drawing them on a map built from the same data: OSM's railway extract, cut
+to China, Japan and what lies between. Responses name OSM elements, so a map
+can highlight its own features by id.
 
 - Every successful response includes `data_version`: the extract's
   replication timestamp (`"2026-11-12T18:00:00Z"`). Answers for one version
   never change.
-- Elements are a type letter and an OSM id: `N241896099`, `W137315646`.
-- Coordinates are `[lon, lat]`; bounding boxes `[west, south, east, north]`.
+- Bounding boxes are `[west, south, east, north]`.
 - Geometry is a [Google encoded polyline](https://developers.google.com/maps/documentation/utilities/polylinealgorithm)
   with **precision 6**; a line in several pieces is an array of them.
 
@@ -892,69 +974,6 @@ GET /api/v1/relations/1972920
 
 Errors: `400 bad_request` for a malformed id, `404 not_found` for a relation
 not in the data.
-
----
-
-### `GET /api/v1/cr/trainsets/{train}`
-
-The trainset (动车组) 12306 assigns to an EMU train on a day, with its
-model, size and coaches. Asked live from 12306, the source lulutong's app
-uses; the timetable data only has the model (`rolling_stock` in
-`cr/trains`).
-
-`{train}` is a train number (`G2705`, `g2705`). A full number from a
-timetable works too: `Z156/Z157B` is asked as `Z156`.
-
-| Param  | Values                                            | Default       |
-| ------ | ------------------------------------------------- | ------------- |
-| `date` | `YYYY-MM-DD`, the day the train leaves its origin | today (China) |
-
-```
-GET /api/v1/cr/trainsets/G2705?date=2026-11-14
-```
-
-```json
-{
-  "source_url": "https://mobile.12306.cn/wxxcx/openplatform-inner/...getCarDetail?trainCode=G2705&runningDay=20261114&reqType=form&carCode=G2705",
-  "train": "G2705",
-  "date": "2026-11-14",
-  "trainset": {
-    "id": "CR400BF-S-3243",
-    "model": "CR400BF-S",
-    "brand": "复兴号",
-    "cars": 8,
-    "length_m": 208.95,
-    "capacity": 619,
-    "max_speed_kmh": 350,
-    "details": [
-      { "name": "列车编组", "value": "8辆" },
-      { "name": "列车长度", "value": "208.95m" },
-      { "name": "列车定员", "value": "619人" },
-      { "name": "最高时速", "value": "350km/h" },
-      { "name": "餐车", "value": "05车" },
-      { "name": "静音车厢", "value": null }
-    ],
-    "coaches": ["01车 一等/商务 32/5", "02车 二等 93", "...", "08车 二等/商务 43/6"]
-  }
-}
-```
-
-- `trainset` is `null` when 12306 has none: unknown numbers, and trains
-  that are not EMUs (`K551`). A `200` with `null` does not mean the train
-  does not exist.
-- `id` is the trainset's model and number. `brand` is 复兴号 or 和谐号.
-- `cars`, `length_m`, `capacity`, `max_speed_kmh` are read from `details`,
-  which keeps all of 12306's labels as given; a label with no value
-  (`静音车厢`, a quiet coach) is `null`.
-- `coaches` lists each coach with its seat classes and seat counts, as 12306
-  words them.
-- For a train of two coupled sets (`rolling_stock.coupled` in `cr/trains`),
-  12306 describes one set.
-- 12306 may answer the same set for every date; treat it as the planned
-  trainset, not a confirmation of what ran.
-
-Errors: `400 bad_request` for a `{train}` that is not a train number;
-`502`/`504` as for Yahoo when 12306 errs or is slow.
 
 ---
 
@@ -1076,6 +1095,8 @@ stations of one name that share a Yahoo code or lie within 1 km of each other
 
 Errors: `400 bad_request` without `q` or with an unknown `type`.
 
+---
+
 ## anitabi
 
 ### `GET /api/v1/anitabi/{file}`
@@ -1118,8 +1139,7 @@ errs or is slow.
 
 ## Caching
 
-Upstream pages are cached at the edge and the same lifetime is sent to
-clients:
+Answers are cached at the edge, and clients are told the same lifetime:
 
 | Data                                                       | TTL    |
 | ---------------------------------------------------------- | ------ |
@@ -1134,6 +1154,3 @@ clients:
 | Search (`/api/v1/search`)                                  | 1 hour |
 | Railway relations (`/api/v1/relations/*`)                  | 1 day  |
 | anitabi (`/api/v1/anitabi/*`)                              | 1 hour |
-
-Results are scheduled times; real-time delays are not reflected, beyond the
-service notices of the `status` endpoints.
