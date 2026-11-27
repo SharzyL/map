@@ -1,24 +1,22 @@
-// Search API (/api/v1/search?q=): China Railway train numbers for now, each
-// with its origin and terminus.
+// Search API (/api/v1/search?q=): China Railway train numbers, each with its
+// origin and terminus, and stations in China and Japan (station-search.ts).
 //
-// Answered from memory: the cr_search table that lltskb/build_d1.py prefills
-// is loaded once per isolate and kept until the data version changes, so a
-// search reads one row (the version) and any prefix is a bisection.
-//
-// Runtime-agnostic: the Worker entrypoint injects the query function, so tests
-// run this module against SQLite.
+// Answered from memory, from indexes the build prepares and the Worker bundles
+// rather than reads from D1 (vite.config.js `build-data/`): the train numbers
+// `build_d1.py --search` writes (cr-search.json), with the numbers each train is
+// found by already sorted, so an isolate's first search only parses it and
+// any prefix is a bisection; the stations likewise (station-search.ts). The
+// tests get the fixtures' (fixtures/build-data/).
 
-import { ApiError, type ApiResponse, DataUnavailable, json, notFound, Params, type Query } from './core.js';
+import trainsJson from 'build-data/cr-search.json?raw';
+import { type ApiResponse, json, notFound, Params } from './core.js';
 import { iso, TTL } from './cr.js';
+import { stationHit, stationIndex } from './station-search.js';
 
 export const SEARCH_PATH = '/api/v1/search';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
-
-function unavailable(): ApiError {
-  return new ApiError(503, 'data_unavailable', 'search data is temporarily unavailable');
-}
 
 // [train, origin, terminus, first day, last day]
 type SearchTrain = [string, string, string, number, number];
@@ -46,23 +44,27 @@ function lowerBound(keys: string[], key: string): number {
   return lo;
 }
 
+// As build_d1.py writes it: the trains by number, and the numbers each is
+// found by (its own and each half without the period letter: Z156/Z157B is
+// found by Z156/Z157B, Z156 and Z157), sorted, each with its train's index
+interface TrainIndexFile {
+  version: string;
+  trains: SearchTrain[];
+  keys: string[];
+  owners: number[];
+}
+
 class SearchIndex {
+  readonly version: string;
+  readonly trains: SearchTrain[];
   readonly keys: string[];
   readonly owners: number[];
 
-  constructor(
-    readonly version: string,
-    readonly trains: SearchTrain[],
-  ) {
-    // Each train under its full number and each half without the period
-    // letter: Z156/Z157B is found by Z156/Z157B, Z156 and Z157
-    const entries: [string, number][] = [];
-    trains.forEach((t, i) => {
-      for (const k of new Set([t[0], ...t[0].replace(/(?<=\d)[A-Z]+$/, '').split('/')])) entries.push([k, i]);
-    });
-    entries.sort((a, b) => compare(a[0], b[0]) || a[1] - b[1]);
-    this.keys = entries.map(([k]) => k);
-    this.owners = entries.map(([, i]) => i);
+  constructor(data: TrainIndexFile) {
+    this.version = data.version;
+    this.trains = data.trains;
+    this.keys = data.keys;
+    this.owners = data.owners;
   }
 
   // Trains with a number starting with query: exact first, then the shortest
@@ -87,44 +89,44 @@ class SearchIndex {
 
 let index: SearchIndex | null = null;
 
-async function load(db: Query): Promise<SearchIndex> {
-  const rows = await db('SELECT version FROM cr_version', []);
-  const version = String(rows[0].version);
-  if (index === null || index.version !== version) {
-    const parts = await db('SELECT body FROM cr_search ORDER BY part', []);
-    if (!parts.length) throw new DataUnavailable('no search index');
-    index = new SearchIndex(
-      version,
-      parts.flatMap((p) => JSON.parse(String(p.body)) as SearchTrain[]),
-    );
+function trainIndex(): SearchIndex {
+  if (index === null) {
+    index = new SearchIndex(JSON.parse(trainsJson) as TrainIndexFile);
   }
   return index;
 }
 
-async function searchTrains(q: Params, db: Query): Promise<ApiResponse> {
+// What could start a train number: a digit early on (G1, 4651, DJ5), or a
+// lone letter
+const TRAIN_START = /^[A-Z]{0,2}\d|^[A-Z]$/;
+const TYPES = ['all', 'train', 'station'];
+
+function answer(q: Params): ApiResponse {
   const text = q.text('q', true);
   // Full-width and lower-case input, spaces anywhere: ｇ １ is G1
   const query = text.normalize('NFKC').replace(/\s+/g, '').toUpperCase();
   const limit = q.integer('limit', DEFAULT_LIMIT, 1, MAX_LIMIT);
-  const found = await load(db);
-  const results = found.find(query, limit).map(([code, origin, dest, start, end]) => ({
-    type: 'cr_train',
-    train: code,
-    origin,
-    destination: dest,
-    service: { from: iso(start), to: iso(end) },
-  }));
-  return json(200, { data_version: found.version, query, results }, TTL);
+  const type = q.choice('type', TYPES, 'all');
+  const trains = type === 'train' || (type === 'all' && TRAIN_START.test(query)) ? trainIndex() : null;
+  const stations = type === 'train' ? null : stationIndex();
+  const results = [
+    ...(trains?.find(query, limit) ?? []).map(([code, origin, dest, start, end]) => ({
+      type: 'cr_train',
+      train: code,
+      origin,
+      destination: dest,
+      service: { from: iso(start), to: iso(end) },
+    })),
+    ...(stations?.find(text, limit) ?? []).map(stationHit),
+  ];
+  return json(
+    200,
+    { data_version: trains?.version ?? null, stations_version: stations?.version ?? null, query, results },
+    TTL,
+  );
 }
 
-export async function dispatchSearch(path: string, search: URLSearchParams, db: Query | null): Promise<ApiResponse> {
+export function dispatchSearch(path: string, search: URLSearchParams): ApiResponse {
   if (path !== SEARCH_PATH) throw notFound(path);
-  const q = new Params(search, ['q', 'limit']);
-  if (db === null) throw unavailable();
-  try {
-    return await searchTrains(q, db);
-  } catch (e) {
-    if (e instanceof DataUnavailable) throw unavailable();
-    throw e;
-  }
+  return answer(new Params(search, ['q', 'limit', 'type']));
 }

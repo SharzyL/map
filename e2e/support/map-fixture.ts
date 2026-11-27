@@ -374,6 +374,17 @@ export async function routeExternalMapResources(page: Page, options: ExternalRou
     fulfillJson(route, openMeteoEnsembleFixtureResponse(new URL(route.request().url()))),
   );
   await page.route(/https:\/\/photon\.komoot\.io\/api\/.*/, (route) => fulfillJson(route, photonFixture));
+  // The API's search finds nothing unless a test says otherwise
+  await page.route(
+    (url) => url.pathname === '/api/v1/search',
+    (route) =>
+      fulfillJson(route, {
+        data_version: null,
+        stations_version: 'test',
+        query: new URL(route.request().url()).searchParams.get('q'),
+        results: [],
+      }),
+  );
   await page.route(/https:\/\/router\.project-osrm\.org\/route\/v1\/.*/, (route) =>
     fulfillJson(route, osrmFixtureResponse(new URL(route.request().url()))),
   );

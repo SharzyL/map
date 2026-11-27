@@ -10,8 +10,14 @@
 #   N02 ─────── n02 ────────────┴─ line-groups ──┐                            │
 #   (diffs, world) railway-extract ──────────────┤                            │
 #   Yahoo ───── jp-station-codes                 │                            │
+#   N03 ─────── n03 ─── station-index ────────────────────────────────────────┤
 #   image ────────────────────────────────── tiles ──────── deploy-tiles ─────┤
 #   this repository ───────────────────────────────────────── deploy-worker ──┘
+#
+# station-index reads the timetable, the station files, osm-stations' Japan
+# and the relations' station ranks besides N03. The Worker bundles the station
+# files and the search's indexes (cr-search's of trains, from lltskb, and
+# station-index's).
 #
 # One pass over the planet makes two extracts, both brought to the same
 # hourly diff: worldwide, the line relations and railway ways the tiles add to
@@ -77,6 +83,18 @@ files = ["data_builder/cr-timetable/build_d1.py", "data_builder/cr-timetable/lul
 needs = ["lltskb/an", "cr-station-trains/cr-station-trains.csv"]
 outs = ["cr.sql", "version"]
 keep = false
+
+# The trains' numbers, ends and service dates without their stops or times,
+# so unlike the timetable it is kept, and a deploy of the app does not have to
+# make the timetable again
+[steps.cr-search]
+about = "The search's index of train numbers, for the Worker to bundle"
+run = """
+python3 -I data_builder/cr-timetable/build_d1.py --search "$BUILD/lltskb/an" "$OUT/cr-search.json"
+"""
+files = ["data_builder/cr-timetable/build_d1.py", "data_builder/cr-timetable/lulutong_parse.py"]
+needs = ["lltskb/an"]
+outs = ["cr-search.json"]
 
 # ── OpenStreetMap's railways ────────────────────────────
 
@@ -159,7 +177,8 @@ about = "Routes, lines, route masters and Japan's official lines as prefilled an
 cpus = 1
 memory = 5
 run = """
-N02_DIR="$BUILD/n02/n02" data_builder/relations/relations.sh "$BUILD/box-extract/cnjp.osm.pbf" "$BUILD/line-groups" "$OUT/relations.sql"
+N02_DIR="$BUILD/n02/n02" STATION_RANKS="$OUT/station-ranks.csv" \
+  data_builder/relations/relations.sh "$BUILD/box-extract/cnjp.osm.pbf" "$BUILD/line-groups" "$OUT/relations.sql"
 cp "$BUILD/box-extract/timestamp" "$OUT/version"
 """
 files = [
@@ -174,7 +193,7 @@ needs = [
   "n02/n02",
   "box-extract/timestamp",
 ]
-outs = ["relations.sql", "version"]
+outs = ["relations.sql", "version", "station-ranks.csv"]
 
 # ── Stations matched to OpenStreetMap ───────────────────
 
@@ -205,13 +224,14 @@ run = """
 mkdir -p "$STORE/yahoo-stations"
 python3 -I data_builder/stations/jp-station-codes.py --osm "$BUILD/osm-stations/japan.json" \
   --cache "$STORE/yahoo-stations/$SRC_YAHOO_STATIONS.json" \
-  --exceptions data_builder/stations/jp-station-exceptions.csv --out "$OUT/jp-station-codes.csv"
+  --exceptions data_builder/stations/jp-station-exceptions.csv --out "$OUT/jp-station-codes.csv" \
+  --readings "$OUT/jp-station-readings.csv"
 """
 files = ["data_builder/stations/jp-station-codes.py", "data_builder/stations/jp-station-exceptions.csv"]
 sources = ["yahoo-stations"]
 needs = ["osm-stations/japan.json"]
 store = ["yahoo-stations/${SRC_YAHOO_STATIONS}.json"]
-outs = ["jp-station-codes.csv"]
+outs = ["jp-station-codes.csv", "jp-station-readings.csv"]
 
 [steps.station-coords]
 about = "The position of every matched station feature"
@@ -229,6 +249,48 @@ needs = [
   "osm-stations/japan.json",
 ]
 outs = ["station-coords.csv"]
+
+[steps.n03]
+about = "MLIT's administrative boundaries (国土数値情報 N03, 2026 edition): Japan's municipalities"
+run = """
+data_builder/stations/fetch-n03.sh https://nlftp.mlit.go.jp/ksj/gml/data/N03/N03-2026/N03-20260101_GML.zip "$OUT/n03"
+"""
+files = ["data_builder/stations/fetch-n03.sh"]
+outs = ["n03"]
+
+# Holds the timetable's stations (names, codes, regions) but none of its
+# trains, so it is kept, as cr-station-trains is
+[steps.station-index]
+about = "The stations the API's search finds, with their readings and regions, for the Worker to bundle"
+memory = 2
+run = """
+python3 data_builder/stations/station-index.py --cr-csv "$BUILD/lltskb/csv" \
+  --cr-stations "$BUILD/cr-station-trains/cr-station-trains.csv" --coords "$BUILD/station-coords/station-coords.csv" \
+  --jp-osm "$BUILD/osm-stations/japan.json" --jp-codes "$BUILD/jp-station-codes/jp-station-codes.csv" \
+  --jp-readings "$BUILD/jp-station-codes/jp-station-readings.csv" --ranks "$BUILD/relations/station-ranks.csv" \
+  --n03 "$BUILD/n03/n03" --out "$OUT/stations.json"
+node data_builder/stations/search-keys.mjs "$OUT/stations.json" "$OUT/search-stations.json"
+rm "$OUT/stations.json"
+"""
+# The keys are folded by the Worker's own code, so a change to how it folds
+# makes them again
+files = [
+  "data_builder/stations/station-index.py",
+  "data_builder/stations/search-keys.mjs",
+  "src/worker/api/search-keys.ts",
+  "src/worker/api/han-fold.json",
+]
+needs = [
+  "lltskb/csv",
+  "cr-station-trains/cr-station-trains.csv",
+  "station-coords/station-coords.csv",
+  "osm-stations/japan.json",
+  "jp-station-codes/jp-station-codes.csv",
+  "jp-station-codes/jp-station-readings.csv",
+  "relations/station-ranks.csv",
+  "n03/n03",
+]
+outs = ["search-stations.json"]
 
 # ── Trains' routes on OSM track ─────────────────────────
 
@@ -363,11 +425,21 @@ files = ["src", "tsconfig.json", "vite.config.js", "vitest.config.js", "package.
 check = true
 
 [steps.check-unit]
-about = "Unit tests of the app, the Worker's API and the style scripts (vitest)"
+about = "Unit tests of the app, the Worker's API, the style scripts and the search's keys (vitest)"
 run = "pnpm test"
 cpus = 2
 memory = 2
-files = ["src", "scripts/styles", "public/orm", "vitest.config.js", "tsconfig.json", "package.json", "pnpm-lock.yaml"]
+files = [
+  "src",
+  "scripts/styles",
+  "public/orm",
+  "data_builder/stations/search-keys.mjs",
+  "data_builder/stations/search-keys.test.mjs",
+  "vitest.config.js",
+  "tsconfig.json",
+  "package.json",
+  "pnpm-lock.yaml",
+]
 check = true
 
 [steps.check-e2e]
@@ -422,6 +494,12 @@ check = true
 about = "Tests of the tile export"
 run = "python3 -m unittest discover -s data_builder/tiles -p 'test_*.py'"
 files = ["data_builder/tiles/layers.py", "data_builder/tiles/tables.py", "data_builder/tiles/test_layers.py"]
+check = true
+
+[steps.check-stations]
+about = "Tests of the station scripts"
+run = "python3 -m unittest discover -s data_builder/stations -p 'test_*.py'"
+files = ["data_builder/stations/station-index.py", "data_builder/stations/test_station_index.py"]
 check = true
 
 [steps.check-routing]
@@ -491,10 +569,12 @@ deploy = true
 # Last: the Worker's code may read what the deploys before it publish, and
 # goes out only when every check of the app passed
 [steps.deploy-worker]
-about = "Build the app and deploy the Worker, with the station files it bundles"
+about = "Build the app and deploy the Worker, with the station files and search indexes it bundles"
 run = """
 JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
-STATION_COORDS="$BUILD/station-coords/station-coords.csv" pnpm build
+STATION_COORDS="$BUILD/station-coords/station-coords.csv" \
+CR_SEARCH="$BUILD/cr-search/cr-search.json" \
+SEARCH_STATIONS="$BUILD/station-index/search-stations.json" pnpm build
 pnpm exec wrangler deploy
 """
 files = [
@@ -510,12 +590,18 @@ files = [
   "!src/*.test.ts",
   "!src/worker/api/fixtures/*",
 ]
-needs = ["jp-station-codes/jp-station-codes.csv", "station-coords/station-coords.csv"]
+needs = [
+  "jp-station-codes/jp-station-codes.csv",
+  "station-coords/station-coords.csv",
+  "cr-search/cr-search.json",
+  "station-index/search-stations.json",
+]
 after = [
   "deploy-timetable",
   "deploy-relations",
   "deploy-routes",
   "deploy-tiles",
+  "check-stations",
   "check-format",
   "check-lint",
   "check-types",

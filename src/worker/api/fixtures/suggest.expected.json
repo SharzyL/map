@@ -5,7 +5,8 @@
     "type": "station",
     "address": "東京",
     "yahoo_lat": 35.658516,
-    "yahoo_lon": 139.701773
+    "yahoo_lon": 139.701773,
+    "yomi": "シブヤ"
   },
   {
     "code": "35654",
@@ -13,7 +14,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.65996,
-    "yahoo_lon": 139.700828
+    "yahoo_lon": 139.700828,
+    "yomi": "シブヤエキニシグチ"
   },
   {
     "code": "35655",
@@ -21,7 +23,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.660266,
-    "yahoo_lon": 139.702217
+    "yahoo_lon": 139.702217,
+    "yomi": "シブヤエキヒガシグチ"
   },
   {
     "code": "35656",
@@ -29,7 +32,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.65893,
-    "yahoo_lon": 139.702159
+    "yahoo_lon": 139.702159,
+    "yomi": "シブヤエキマエ"
   },
   {
     "code": "35657",
@@ -37,7 +41,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.664127,
-    "yahoo_lon": 139.699217
+    "yahoo_lon": 139.699217,
+    "yomi": "シブヤクヤクショマエ"
   },
   {
     "code": "35658",
@@ -45,7 +50,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.658294,
-    "yahoo_lon": 139.70755
+    "yahoo_lon": 139.70755,
+    "yomi": "シブヤサンチョウメ"
   },
   {
     "code": "35659",
@@ -53,7 +59,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.65402,
-    "yahoo_lon": 139.707831
+    "yahoo_lon": 139.707831,
+    "yomi": "シブヤシャコマエ"
   },
   {
     "code": "35660",
@@ -61,7 +68,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.660488,
-    "yahoo_lon": 139.7068
+    "yahoo_lon": 139.7068,
+    "yomi": "シブヤニチョウメ"
   },
   {
     "code": "35661",
@@ -69,7 +77,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.64899,
-    "yahoo_lon": 139.7113
+    "yahoo_lon": 139.7113,
+    "yomi": "シブヤバシ"
   },
   {
     "code": "36688",
@@ -77,7 +86,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.659202,
-    "yahoo_lon": 139.700323
+    "yahoo_lon": 139.700323,
+    "yomi": "シブヤエキマエ"
   },
   {
     "code": "59084",
@@ -85,7 +95,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.65896,
-    "yahoo_lon": 139.70029
+    "yahoo_lon": 139.70029,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "59085",
@@ -93,7 +104,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.664238,
-    "yahoo_lon": 139.698206
+    "yahoo_lon": 139.698206,
+    "yomi": "シブヤクヤクショ"
   },
   {
     "code": "52735",
@@ -101,7 +113,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.65838,
-    "yahoo_lon": 139.700576
+    "yahoo_lon": 139.700576,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "52736",
@@ -109,7 +122,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.658691,
-    "yahoo_lon": 139.702964
+    "yahoo_lon": 139.702964,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "53482",
@@ -117,7 +131,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.655153,
-    "yahoo_lon": 139.701209
+    "yahoo_lon": 139.701209,
+    "yomi": "シブヤインフォスタワー"
   },
   {
     "code": "54330",
@@ -125,7 +140,8 @@
     "type": "bus",
     "address": "大阪",
     "yahoo_lat": 34.829768,
-    "yahoo_lon": 135.439223
+    "yahoo_lon": 135.439223,
+    "yomi": "シブタニチュウガッコウマエ"
   },
   {
     "code": "101453",
@@ -133,7 +149,8 @@
     "type": "bus",
     "address": "神奈川",
     "yahoo_lat": 35.401547,
-    "yahoo_lon": 139.461629
+    "yahoo_lon": 139.461629,
+    "yomi": "シブヤガハラ"
   },
   {
     "code": "101455",
@@ -141,7 +158,8 @@
     "type": "bus",
     "address": "神奈川",
     "yahoo_lat": 35.406563,
-    "yahoo_lon": 139.46141
+    "yahoo_lon": 139.46141,
+    "yomi": "シブヤノサト"
   },
   {
     "code": "101565",
@@ -149,7 +167,8 @@
     "type": "bus",
     "address": "神奈川",
     "yahoo_lat": 35.429805,
-    "yahoo_lon": 139.471754
+    "yahoo_lon": 139.471754,
+    "yomi": "シブヤチュウガッコウ"
   },
   {
     "code": "56018",
@@ -157,7 +176,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.657961,
-    "yahoo_lon": 139.70077
+    "yahoo_lon": 139.70077,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "306070",
@@ -165,7 +185,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.657802,
-    "yahoo_lon": 139.700462
+    "yahoo_lon": 139.700462,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "306084",
@@ -173,7 +194,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.657891,
-    "yahoo_lon": 139.701037
+    "yahoo_lon": 139.701037,
+    "yomi": "シブヤエキニシグチ"
   },
   {
     "code": "304510",
@@ -181,7 +203,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.658302,
-    "yahoo_lon": 139.698698
+    "yahoo_lon": 139.698698,
+    "yomi": "シブヤマークシティ"
   },
   {
     "code": "150974",
@@ -189,7 +212,8 @@
     "type": "bus",
     "address": "奈良",
     "yahoo_lat": 34.553904,
-    "yahoo_lon": 135.846429
+    "yahoo_lon": 135.846429,
+    "yomi": "シブタニ"
   },
   {
     "code": "611565",
@@ -197,7 +221,8 @@
     "type": "bus",
     "address": "岩手",
     "yahoo_lat": 39.989895,
-    "yahoo_lon": 141.392968
+    "yahoo_lon": 141.392968,
+    "yomi": "シブヤチ"
   },
   {
     "code": "76845",
@@ -205,7 +230,8 @@
     "type": "bus",
     "address": "神奈川",
     "yahoo_lat": 35.434043,
-    "yahoo_lon": 139.466287
+    "yahoo_lon": 139.466287,
+    "yomi": "シブヤロクゴウコウエン"
   },
   {
     "code": "86013",
@@ -213,7 +239,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.655083,
-    "yahoo_lon": 139.701148
+    "yahoo_lon": 139.701148,
+    "yomi": "シブヤインフォスタワー"
   },
   {
     "code": "83393",
@@ -221,7 +248,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.659988,
-    "yahoo_lon": 139.700651
+    "yahoo_lon": 139.700651,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "83394",
@@ -229,7 +257,8 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.658588,
-    "yahoo_lon": 139.702284
+    "yahoo_lon": 139.702284,
+    "yomi": "シブヤエキ"
   },
   {
     "code": "83395",
@@ -237,6 +266,7 @@
     "type": "bus",
     "address": "東京",
     "yahoo_lat": 35.664668,
-    "yahoo_lon": 139.698887
+    "yahoo_lon": 139.698887,
+    "yomi": "シブヤクヤクショ"
   }
 ]

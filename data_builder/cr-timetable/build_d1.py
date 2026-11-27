@@ -4,6 +4,7 @@
 
 Usage:
     python3 build_d1.py <an dir> <cr-station-trains.csv> <out.sql>
+    python3 build_d1.py --search <an dir> <search.json>
     python3 build_d1.py --list-old      # SQL listing every version's tables
     python3 build_d1.py --drop-old <version> < wrangler-json-of-that-listing
 
@@ -18,6 +19,13 @@ Tables carry the data version (cr_trains_20261114 ...) and the file ends by
 pointing the cr_* views at them, so a failed import leaves the previous
 version serving. --drop-old turns wrangler's listing of tables into DROPs for
 every other version.
+
+--search writes the index of train numbers /api/v1/search finds them by
+(src/worker/api/search.ts), which the Worker bundles rather than reads from
+D1: {"version": ..., "trains": [[train, origin, terminus, first day, last
+day], ...] by number, "keys": [...], "owners": [...]}, the numbers a train is
+found by (search_keys) in order, each with its train's index, so a prefix is
+a bisection with nothing to compute first.
 """
 import csv
 import json
@@ -35,9 +43,10 @@ TABLES = {
     "osm": "ref TEXT PRIMARY KEY, station TEXT",
     "timetables": "station TEXT, part INTEGER, body TEXT, PRIMARY KEY (station, part)",
     "trains": "code TEXT PRIMARY KEY, body TEXT",
-    # The worker's in-memory index of train numbers for /api/v1/search, in parts
-    "search": "part INTEGER PRIMARY KEY, body TEXT",
 }
+# Tables and views of earlier builds dropped with the views (the train search
+# moved into the Worker's bundle)
+GONE = ["search"]
 OLD_TABLES_SQL = ("SELECT name FROM sqlite_master WHERE type = 'table' "
                   "AND name GLOB 'cr_*_[0-9]*'")
 MAX_STATEMENT = 90_000  # D1 rejects statements over 100 KB
@@ -540,7 +549,7 @@ def rows(stations, trains, osm, scopes=None):
         # 'C481/C484' is one train under two numbers; either one finds it. A
         # trailing letter marks another service period of the same train
         # ('Z156/Z157B' follows 'Z156/Z157'), so Z157 finds both
-        for c in {code, *re.sub(r"(?<=\d)[A-Z]+$", "", code).split("/")}:
+        for c in search_keys(code):
             train_rows.setdefault(c, []).append(b)
     lookup = set()
     for name, (tel, pinyin, abbr) in stations.items():
@@ -553,11 +562,25 @@ def rows(stations, trains, osm, scopes=None):
         "osm": sorted({(t + i, n) for t, i, n in osm if n in stations}),
         "timetables": [(n, i, b) for n, e in timetables.items() for i, b in enumerate(parts(e))],
         "trains": [(c, "[" + ",".join(b) + "]") for c, b in sorted(train_rows.items())],
-        # [train, origin, terminus, first day, last day] per train, by number
-        "search": list(enumerate(parts(sorted(
-            [code, stops[0][0], stops[-1][0], start, end]
-            for code, start, end, period, mask, stops, *_ in trains)))),
     }
+
+
+def search_keys(code):
+    """The numbers a train is found by: its own and each half without the
+    period letter (Z156/Z157B is found by Z156/Z157B, Z156 and Z157), as
+    rows() files cr_trains"""
+    return {code, *re.sub(r"(?<=\d)[A-Z]+$", "", code).split("/")}
+
+
+def search_json(version, trains):
+    """The train search's index: [train, origin, terminus, first day, last
+    day] per train, by number, and its keys sorted, with their trains"""
+    entries = sorted([code, stops[0][0], stops[-1][0], start, end]
+                     for code, start, end, period, mask, stops, *_ in trains)
+    # Numbers are ASCII, so Python's order is JavaScript's
+    keys = sorted((k, i) for i, e in enumerate(entries) for k in search_keys(e[0]))
+    return ('{"version":' + json.dumps(version) + ',"trains":[\n' + ",\n".join(compact(e) for e in entries)
+            + '\n],\n"keys":' + compact([k for k, _ in keys]) + ',\n"owners":' + compact([i for _, i in keys]) + "}\n")
 
 
 # ---------------- rows -> SQL ----------------
@@ -594,6 +617,7 @@ def build_sql(version, tables):
     for t in TABLES:
         out += [f"DROP VIEW IF EXISTS cr_{t};",
                 f"CREATE VIEW cr_{t} AS SELECT * FROM cr_{t}_{version};"]
+    out += [f"DROP VIEW IF EXISTS cr_{t};" for t in GONE]
     out += ["DROP VIEW IF EXISTS cr_version;",
             f"CREATE VIEW cr_version AS SELECT '{version}' AS version;"]
     return "\n".join(out) + "\n"
@@ -602,7 +626,8 @@ def build_sql(version, tables):
 def drop_old(version, listing):
     """wrangler `d1 execute --json` output of OLD_TABLES_SQL -> DROP statements"""
     names = [r["name"] for r in listing[0]["results"]]
-    return "".join(f"DROP TABLE {n};" for n in names if not n.endswith(f"_{version}"))
+    gone = tuple(f"cr_{t}_" for t in GONE)
+    return "".join(f"DROP TABLE {n};" for n in names if not n.endswith(f"_{version}") or n.startswith(gone))
 
 
 def main():
@@ -611,6 +636,12 @@ def main():
         return
     if len(sys.argv) == 3 and sys.argv[1] == "--drop-old":
         print(drop_old(sys.argv[2], json.load(sys.stdin)))
+        return
+    if len(sys.argv) == 4 and sys.argv[1] == "--search":
+        version, _, trains, _ = load(sys.argv[2])
+        with open(sys.argv[3], "w", encoding="utf-8") as f:
+            f.write(search_json(version, trains))
+        print(f"{sys.argv[3]}: data {version}, {len(trains)} trains")
         return
     if len(sys.argv) != 4:
         sys.exit(__doc__)

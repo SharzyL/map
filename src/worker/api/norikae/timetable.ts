@@ -23,6 +23,8 @@ export interface StationMatch extends StationRef {
   // Yahoo's own position
   yahoo_lat: number | null;
   yahoo_lon: number | null;
+  // The reading in katakana (シブヤ), null without one
+  yomi: string | null;
 }
 
 export interface Direction {
@@ -187,6 +189,7 @@ export function parseSearch(payload: unknown): StationMatch[] {
       address: need(r, 'Address'),
       yahoo_lat: coord(r.Lat ?? ''),
       yahoo_lon: coord(r.Lon ?? ''),
+      yomi: typeof r.Yomi === 'string' && r.Yomi ? katakana(r.Yomi) : null,
     };
   });
 }

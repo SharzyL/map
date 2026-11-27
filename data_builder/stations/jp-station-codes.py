@@ -3,7 +3,7 @@
 the map's API (https://map.shz.al/api/v1/doc.md) uses for timetables.
 
 Usage: jp-station-codes.py --osm japan.json --cache search-cache.json
-                           --out jp-station-codes.csv
+                           --out jp-station-codes.csv [--readings readings.csv]
                            [--exceptions jp-station-exceptions.csv] [--api URL]
 
 The OSM stations (railway=station/halt in Japan, in the shape of an Overpass
@@ -47,9 +47,13 @@ station (name:ja, else name):
    view can offer each candidate's lines.
 
 Search responses are cached (--cache), so a rerun only queries new names and
-names cached without Yahoo's positions; so is whether a code has a timetable,
-under the key TIMETABLES_KEY. Writes one row per OSM feature:
-osm_type (N/W/R), osm_id, name, codes (';'-separated), status.
+names cached without Yahoo's positions, or without its readings once the API
+gives them; so is whether a code has a timetable, under the key
+TIMETABLES_KEY. Writes one row per OSM feature:
+osm_type (N/W/R), osm_id, name, codes (';'-separated), status;
+and with --readings, one per code written: code, yomi (the station's reading
+in katakana, from the same search results), for the station search
+(station-index.py).
 """
 
 import argparse
@@ -214,10 +218,30 @@ class Search:
         self.path = Path(cache_path)
         self.api = api
         self.cache = json.load(open(self.path, encoding='utf-8')) if self.path.exists() else {}
+        self.readings = None
+
+    def lacks(self, query, key):
+        return any(key not in r for r in self.cache.get(query, [{}]))
+
+    def gives_readings(self, query):
+        # Whether the API answers with readings: searches one name cached
+        # without them, and keeps its answer
+        if self.readings is None:
+            results = http_json(f'{self.api}?{urllib.parse.urlencode({"q": query})}').get('results', [])
+            self.readings = bool(results) and all('yomi' in r for r in results)
+            if self.readings:
+                self.cache[query] = results
+        return self.readings
 
     def fetch(self, queries):
-        # Results cached before the API returned positions are searched again
-        missing = sorted({q for q in queries if any('yahoo_lat' not in r for r in self.cache.get(q, [{}]))})
+        # Results cached before the API returned positions are searched again,
+        # and those without readings once it gives them
+        queries = set(queries)
+        missing = {q for q in queries if self.lacks(q, 'yahoo_lat')}
+        stale = sorted(q for q in queries - missing if self.lacks(q, 'yomi'))
+        if stale and self.gives_readings(stale[0]):
+            missing.update(q for q in stale if self.lacks(q, 'yomi'))
+        missing = sorted(missing)
         if missing:
             print(f'searching {len(missing)} names ({len(self.cache)} cached)', file=sys.stderr)
 
@@ -252,6 +276,17 @@ class Search:
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         json.dump(self.cache, open(self.path, 'w', encoding='utf-8'), ensure_ascii=False)
+
+    def yomi(self):
+        # Each station code's reading, from every cached search result
+        found = {}
+        for query, results in self.cache.items():
+            if query == TIMETABLES_KEY:
+                continue
+            for r in results:
+                if r.get('type') == 'station' and r.get('yomi'):
+                    found.setdefault(r['code'], r['yomi'])
+        return found
 
     def candidates(self, name):
         def matching(results):
@@ -302,6 +337,7 @@ def main():
     parser.add_argument('--exceptions', default=Path(__file__).with_name('jp-station-exceptions.csv'))
     parser.add_argument('--api', default=API, help=f'station search endpoint (default: {API})')
     parser.add_argument('--out', required=True)
+    parser.add_argument('--readings', help="where to write the codes' readings")
     args = parser.parse_args()
 
     stations = osm_stations(args.osm)
@@ -368,6 +404,14 @@ def main():
         writer.writerows(sorted(rows, key=lambda r: (r[0], r[1])))
     print(f'{len(stations)} OSM stations with a name: ' + ', '.join(f'{k} {v}' for k, v in status.most_common()))
     print(f'{len(rows)} rows written to {out}')
+    if args.readings:
+        yomi = search.yomi()
+        codes = sorted({code for row in rows for code in row[3].split(';')}, key=lambda c: (len(c), c))
+        with open(args.readings, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['code', 'yomi'])
+            writer.writerows((code, yomi[code]) for code in codes if code in yomi)
+        print(f'{sum(code in yomi for code in codes)} of {len(codes)} codes with a reading, written to {args.readings}')
     for s, nearest in sorted(far, key=lambda f: yahoo_km(*f)):
         print(f"  far: {s['type']},{s['id']} {s['name']} ({s['operator'] or 'no operator'}): "
               f"nearest {nearest['name']} {nearest['code']} at {yahoo_km(s, nearest):.1f} km")

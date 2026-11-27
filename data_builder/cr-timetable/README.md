@@ -106,8 +106,11 @@ npx wrangler d1 execute cr --remote --file=cr.sql        # 在仓库根目录（
   回程车（起讫对调、车次号各差 1）说的是另一条时，CR200J 归普速，其余归高铁。
   京沪线/沪宁高速只在南京—上海、京九线/昌九城际只在九江—南昌之间算一对（`TWIN_STRETCH`）。
   上行/下行由本站车次号的奇偶决定（单数下行）。
-- **车次搜索**：`cr_search` 表按车次号排序存每个车次的始发、终到和开行起止（约 20 行），
-  Worker 的 `/api/v1/search` 整表读进内存，数据版本变了才重读，之后每次搜索只读一行版本号。
+- **车次搜索**：`build_d1.py --search` 另写 `cr-search.json`（构建步骤 `cr-search`），
+  按车次号排序存每个车次的始发、终到和开行起止，以及排好序的检索键（车次号和去掉期别字母的
+  每一半）和各自的车次，不进 D1：Worker 打包它
+  （`vite.config.js` 的 `build-data/`），`/api/v1/search` 在第一次搜索时解析进内存。
+  它只是车次列表、没有时刻，所以和其他输出不同，留在 CI 缓存里。
 - **OSM 对照**：`cr-station-trains.csv`（`../stations/cr-station-trains.py` 的输出）给出
   OSM 元素 → 车站名，地图可以直接用要素的 OSM id 查时刻表。
 - **按版本切换**：表名带数据版本（`cr_trains_20261114`），文件最后才把 `cr_*` 视图指向新表，

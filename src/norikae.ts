@@ -20,6 +20,8 @@ export type NorikaeStation = YahooStation & {
   // Yahoo's own position, bus stops included.
   yahoo_lat?: number | null;
   yahoo_lon?: number | null;
+  // The reading in katakana (シブヤ)
+  yomi?: string | null;
 };
 export type StationLines = {
   source_url: string;
@@ -336,9 +338,10 @@ export function crTrain(train: string, date: string, signal?: AbortSignal) {
   return get<CrTrainSchedule>(`/cr/trains/${encodeURIComponent(train)}`, { date }, signal);
 }
 
-// A China Railway train found by the start of its number (/api/v1/search,
-// which will find stations and lines too, each result with its `type`);
-// `train` is what /api/v1/cr/trains takes, one result per service period.
+// What /api/v1/search finds, each result with its `type`.
+//
+// A China Railway train found by the start of its number; `train` is what
+// /api/v1/cr/trains takes, one result per service period.
 export type CrTrainHit = {
   type: 'cr_train';
   train: string;
@@ -347,9 +350,30 @@ export type CrTrainHit = {
   service: { from: string; to: string | null };
 };
 
-export function searchCrTrains(query: string, limit: number, signal?: AbortSignal) {
-  return get<{ results: Array<{ type: string }> }>('/search', { q: query, limit: String(limit) }, signal).then((body) =>
-    body.results.filter((result): result is CrTrainHit => result.type === 'cr_train'),
+// A station in China or Japan found by its name or reading, with its region
+// (largest first), OSM features and their centre (null without any); in Japan
+// its Yahoo codes and reading in katakana, in China its telecode.
+export type StationHit = {
+  type: 'station';
+  country: 'cn' | 'jp';
+  name: string;
+  yomi?: string | null;
+  region: string[];
+  osm: string[];
+  lat: number | null;
+  lon: number | null;
+  codes?: string[];
+  telecode?: string | null;
+};
+
+// Trains (for text that could start a train number) and stations, at most
+// `limit` of each.
+export function search(query: string, limit: number, signal?: AbortSignal) {
+  return get<{ results: Array<{ type: string }> }>('/search', { q: query, limit: String(limit) }, signal).then(
+    (body) => ({
+      trains: body.results.filter((result): result is CrTrainHit => result.type === 'cr_train'),
+      stations: body.results.filter((result): result is StationHit => result.type === 'station'),
+    }),
   );
 }
 

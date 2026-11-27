@@ -6,6 +6,8 @@
 #
 # Usage: N02_DIR=<dir> ./data_builder/relations/relations.sh <box.osm.pbf> <line-groups dir> <out.sql> [version]
 #
+# STATION_RANKS, when set, is where the stations' ranks go as CSV too.
+#
 # <box.osm.pbf> is the extract after
 #   osmium extract -b 73,17,146,54 -s smart lines.osm.pbf
 # (China and Japan, with what lies in between: Korea, Taiwan, ...). The data
@@ -42,4 +44,5 @@ if [ ! -f "${stations}" ]; then
   exit 1
 fi
 
-${PYTHON} "$(dirname "$0")/build_relations.py" "${EXTRACT}" "${LINE_GROUPS}" "${stations}" "${version}" "${OUT}"
+${PYTHON} "$(dirname "$0")/build_relations.py" "${EXTRACT}" "${LINE_GROUPS}" "${stations}" "${version}" "${OUT}" \
+  ${STATION_RANKS:+"${STATION_RANKS}"}

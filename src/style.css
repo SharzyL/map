@@ -4234,6 +4234,60 @@ a.credits-name:hover {
   line-height: 1.3;
 }
 
+/* A found station: the row flies there, its button opens the timetable. */
+.poi-search-result-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.poi-search-result-row:last-child {
+  border-bottom: 0;
+}
+
+.poi-search-result-row .poi-search-result {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+
+.poi-search-result-reading {
+  margin-left: 6px;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+/* As the info box's Timetable button (.orm-popup-action) */
+.poi-search-result-action {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin: 0 10px 0 4px;
+  padding: 2px 8px 2px 6px;
+  border: none;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.poi-search-result-action svg {
+  color: #64748b;
+}
+
+.poi-search-result-action:hover,
+.poi-search-result-action:focus-visible {
+  background: #e2e8f0;
+  color: #0f172a;
+  outline: none;
+}
+
 .poi-search-popup {
   max-width: 280px;
   color: #111827;

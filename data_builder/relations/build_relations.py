@@ -7,7 +7,7 @@
 Worker's /api/v1/relations/{id} (src/worker/api/relations.ts).
 
 Usage:
-    python3 build_relations.py <extract.osm.pbf> <line-groups dir> <N02 Station.geojson> <version> <out.sql>
+    python3 build_relations.py <extract.osm.pbf> <line-groups dir> <N02 Station.geojson> <version> <out.sql> [ranks.csv]
 
 relations_sql.py drops other versions' tables once one is imported.
 
@@ -26,7 +26,8 @@ route's stops are its stop and platform members in order, one per station.
 Every stop carries a rank: how many passenger routes stop at its station
 (the stations of a stop area share it), which the map places stop labels
 by, the busiest first. The ranks of all stations go to D1 too
-(osm_station_ranks), for the stops of a train's route.
+(osm_station_ranks), for the stops of a train's route, and to [ranks.csv]
+(element, rank), by which the station search ranks Japan's stations.
 A line's stations are:
 - OSM lines: the stations it lists as members (Chinese lines mostly do),
   and those with a station node within 100 m of its track, a stop position
@@ -1115,9 +1116,10 @@ class Builder:
 
 
 def main():
-    if len(sys.argv) != 6:
+    if len(sys.argv) not in (6, 7):
         sys.exit(__doc__)
-    extract, groups_dir, n02_stations, version, out_path = sys.argv[1:]
+    extract, groups_dir, n02_stations, version, out_path = sys.argv[1:6]
+    ranks_path = sys.argv[6] if len(sys.argv) == 7 else None
     table_suffix(version)
     start = time.time()
     builder = Builder(extract)
@@ -1135,6 +1137,11 @@ def main():
     ranks = {ref(e): n for e, n in builder.station_ranks().items()}
     with open(out_path, "w", encoding="utf-8") as out:
         stats = write_sql(out, version, rows(), ranks)
+    if ranks_path:
+        with open(ranks_path, "w", newline="", encoding="utf-8") as out:
+            writer = csv.writer(out)
+            writer.writerow(["element", "rank"])
+            writer.writerows(sorted(ranks.items()))
     print(
         f"{out_path}: data {version}, {stats['rows']} relations in {stats['parts']} rows, "
         f"{stats['bytes'] / 1e6:.1f} MB of JSON (largest {stats['largest'][1]}, "

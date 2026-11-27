@@ -184,6 +184,7 @@ describe('stations', () => {
       address: '東京',
       yahoo_lat: 35.658516,
       yahoo_lon: 139.701773,
+      yomi: 'シブヤ',
       ...SHIBUYA_OSM,
     });
     expect(body.results.every((r: { type: string }) => r.type === 'station')).toBe(true);

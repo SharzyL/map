@@ -38,28 +38,35 @@ function mapResourceHints() {
   };
 }
 
-// The station files the Worker bundles (src/worker/api/osm-stations.ts) are
-// build outputs: the build's own (data_builder/steps.toml) when it ran here,
-// or where JP_STATION_CODES and STATION_COORDS say; else a few stations' worth
-// from the test fixtures, so the app still starts.
-function stationFile(name, variable, step) {
-  const candidates = [process.env[variable], `.build/out/${step}/${name}`, `src/worker/api/fixtures/stations/${name}`];
+// The data the Worker bundles, as `build-data/<file>`: the station files
+// (src/worker/api/osm-stations.ts) and the search's indexes of trains and
+// stations (search.ts, station-search.ts). They are build outputs: the
+// build's own (data_builder/steps.toml) when it ran here, or where the
+// variable says; else a few stations' and trains' worth from the test
+// fixtures, so the app still starts.
+const BUILD_DATA = [
+  ['jp-station-codes.csv', 'JP_STATION_CODES', 'jp-station-codes'],
+  ['station-coords.csv', 'STATION_COORDS', 'station-coords'],
+  ['cr-search.json', 'CR_SEARCH', 'cr-search'],
+  ['search-stations.json', 'SEARCH_STATIONS', 'station-index'],
+];
+
+function buildDataFile(name, variable, step) {
+  const candidates = [
+    process.env[variable],
+    `.build/out/${step}/${name}`,
+    `src/worker/api/fixtures/build-data/${name}`,
+  ];
   return resolve(candidates.find((path) => path && existsSync(path)));
 }
 
 export default defineConfig({
   resolve: {
     // Patterns: an alias by name does not match an import with a ?raw query
-    alias: [
-      {
-        find: /^station-data\/jp-station-codes\.csv/,
-        replacement: stationFile('jp-station-codes.csv', 'JP_STATION_CODES', 'jp-station-codes'),
-      },
-      {
-        find: /^station-data\/station-coords\.csv/,
-        replacement: stationFile('station-coords.csv', 'STATION_COORDS', 'station-coords'),
-      },
-    ],
+    alias: BUILD_DATA.map(([name, variable, step]) => ({
+      find: new RegExp(`^build-data/${name.replace(/\./g, '\\.')}`),
+      replacement: buildDataFile(name, variable, step),
+    })),
   },
   plugins: [
     mapResourceHints(),

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { metres } from './geo.js';
 import { JP, loadJp, match } from './osm-stations.js';
 
-// The tests run on fixtures/stations/, the stations the other fixtures name;
+// The tests run on fixtures/build-data/, the stations the other fixtures name;
 // data_builder/stations/check-stations.py checks the files the build makes.
 describe('JP', () => {
   it('gives typed OSM ids at the station', () => {

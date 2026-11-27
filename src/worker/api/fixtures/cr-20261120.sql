@@ -13,9 +13,6 @@ INSERT INTO cr_timetables_20261120 VALUES ('北京',0,'[]'),('北京南',0,'[["G
 DROP TABLE IF EXISTS cr_trains_20261120;
 CREATE TABLE cr_trains_20261120 (code TEXT PRIMARY KEY, body TEXT) WITHOUT ROWID;
 INSERT INTO cr_trains_20261120 VALUES ('G7','[{"train":"G7","start":20260101,"end":20501231,"period":1,"mask":1,"stops":[["北京南","VNP",null,"06:30",0,0,"17",null,"G7"],["天津南","TIP","07:00","07:02",0,120,"","G7","G7"],["上海虹桥","AOH","11:24",null,0,1318,"","G7",null]],"stock":[[20250101,20991231,"CR400AF",0,"京局北京动车段","CR400AF"],[20261120,20991231,"CR400AF-Z",1,"","CR400AF-Z型重联"]],"lines":[["京沪高速线",[["北京南",0],["廊坊",59],["天津南",120],["上海虹桥",1318]]]]}]');
-DROP TABLE IF EXISTS cr_search_20261120;
-CREATE TABLE cr_search_20261120 (part INTEGER PRIMARY KEY, body TEXT) WITHOUT ROWID;
-INSERT INTO cr_search_20261120 VALUES (0,'[["G7","北京南","上海虹桥",20260101,20501231]]');
 DROP VIEW IF EXISTS cr_stations;
 CREATE VIEW cr_stations AS SELECT * FROM cr_stations_20261120;
 DROP VIEW IF EXISTS cr_lookup;
@@ -27,6 +24,5 @@ CREATE VIEW cr_timetables AS SELECT * FROM cr_timetables_20261120;
 DROP VIEW IF EXISTS cr_trains;
 CREATE VIEW cr_trains AS SELECT * FROM cr_trains_20261120;
 DROP VIEW IF EXISTS cr_search;
-CREATE VIEW cr_search AS SELECT * FROM cr_search_20261120;
 DROP VIEW IF EXISTS cr_version;
 CREATE VIEW cr_version AS SELECT '20261120' AS version;

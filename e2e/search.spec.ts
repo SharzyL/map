@@ -7,7 +7,7 @@ test.describe('POI search in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
 
-    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('shanghai station');
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).fill('shanghai station');
     await expect(page.locator('.poi-search-result')).toHaveCount(2);
     await page.locator('.poi-search-result', { hasText: 'Shanghai Railway Station' }).click();
 
@@ -24,7 +24,7 @@ test.describe('POI search in a real browser', () => {
     const errors = await installBrowserErrorWatch(page);
     await openApp(page);
 
-    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('temple');
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).fill('temple');
     await page.locator('.poi-search-result').first().click();
     await expect.poll(() => searchSourceFeatureCount(page)).toBe(1);
 
@@ -44,7 +44,7 @@ test.describe('POI search in a real browser', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"features":[]}' });
     });
 
-    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('s');
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).fill('s');
     await page.waitForTimeout(450);
     expect(photonRequests).toBe(0);
     await expect(page.locator('.poi-search-result')).toHaveCount(0);
@@ -113,7 +113,7 @@ test.describe('POI search in a real browser', () => {
       return json(404, { error: { code: 'not_found', message: 'not found' } });
     });
 
-    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('G1');
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).fill('G1');
     const trains = page.locator('.poi-search-train');
     await expect(trains).toHaveCount(2);
     // Trains come before places.
@@ -127,10 +127,78 @@ test.describe('POI search in a real browser', () => {
     await expect(timetable.locator('.timetable-stop-name')).toHaveText(['北京南', '上海虹桥']);
     // The results fold away so they do not cover the timetable, and can come back.
     await expect(page.locator('.poi-search-results')).toBeHidden();
-    await expect(page.getByRole('searchbox', { name: 'Search places or trains' })).not.toBeFocused();
+    await expect(page.getByRole('searchbox', { name: 'Search places, stations or trains' })).not.toBeFocused();
     await expect(page.locator('.poi-search-results-toggle')).toHaveText('Show 4 results');
     await page.locator('.poi-search-results-toggle').dispatchEvent('click');
     await expect(trains.first()).toHaveAttribute('aria-selected', 'true');
+    errors.assertNoErrors();
+  });
+
+  test('finds stations, flies to one and opens its info box, or its timetable', async ({ page }) => {
+    const errors = await installBrowserErrorWatch(page);
+    await openApp(page);
+    const timetableRequests: string[] = [];
+    await page.route(/\/api\/v1\/.*/, (route) => {
+      const url = new URL(route.request().url());
+      const json = (status: number, body: unknown) =>
+        route.fulfill({
+          status,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': '*' },
+          body: JSON.stringify(body),
+        });
+      if (url.pathname === '/api/v1/search') {
+        return json(200, {
+          data_version: null,
+          stations_version: 'test',
+          query: '新宿',
+          results: [
+            {
+              type: 'station',
+              country: 'jp',
+              name: '新宿',
+              yomi: 'シンジュク',
+              region: ['東京都', '新宿区'],
+              osm: ['N1'],
+              lat: 35.6896,
+              lon: 139.7006,
+              codes: ['22741'],
+            },
+            {
+              type: 'station',
+              country: 'jp',
+              name: '新宿三丁目',
+              yomi: null,
+              region: ['東京都', '新宿区'],
+              osm: ['N2'],
+              lat: 35.6905,
+              lon: 139.7046,
+              codes: [],
+            },
+          ],
+        });
+      }
+      timetableRequests.push(url.pathname);
+      return json(404, { error: { code: 'not_found', message: 'not found' } });
+    });
+
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).fill('新宿');
+    const stations = page.locator('.poi-search-station');
+    await expect(stations).toHaveCount(2);
+    await expect(page.locator('.poi-search-result').first()).toHaveClass(/poi-search-station/);
+    await expect(stations.first()).toContainText('新宿シンジュク');
+    await expect(stations.first()).toContainText('東京都 新宿区');
+    // A timetable only where Yahoo has the station
+    await expect(page.getByRole('button', { name: 'Timetable of 新宿' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Timetable of 新宿三丁目' })).toHaveCount(0);
+
+    await stations.first().click();
+    await expect(page.locator('.orm-popup')).toContainText('新宿');
+    await expect(stations.first()).toHaveAttribute('aria-selected', 'true');
+
+    await page.getByRole('button', { name: 'Timetable of 新宿' }).click();
+    await expect(page.locator('.timetable-panel')).toBeVisible();
+    await expect.poll(() => timetableRequests.some((path) => path.includes('/norikae/stations/22741'))).toBe(true);
     errors.assertNoErrors();
   });
 
@@ -140,7 +208,7 @@ test.describe('POI search in a real browser', () => {
       route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"bad gateway"}' }),
     );
 
-    await page.getByRole('searchbox', { name: 'Search places or trains' }).fill('station');
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).fill('station');
     await expect(page.locator('.poi-search-status')).toHaveText('Search failed');
     await expect(page.locator('.poi-search-result')).toHaveCount(0);
   });

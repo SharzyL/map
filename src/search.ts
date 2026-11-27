@@ -1,8 +1,11 @@
-import { chinaNow, crTrainHitDate, searchCrTrains, type CrTrainHit } from './norikae.js';
-import { TIMETABLE_OPEN_EVENT, type TimetableRequest } from './timetable.js';
+import { chinaNow, crTrainHitDate, search, type CrTrainHit, type StationHit } from './norikae.js';
+import { STATION_OPEN_EVENT, type StationStop } from './route-highlight.js';
+import { CLOCK_ICON, TIMETABLE_OPEN_EVENT, type TimetableRequest } from './timetable.js';
 
-// Places come from Photon; China Railway trains, for text that could start a
-// train number, from the API's search, listed first.
+// Places come from Photon; China Railway trains (for text that could start a
+// train number) and stations in China and Japan from the API's search, listed
+// first. A station flies there and opens its info box, or its timetable from
+// the button beside it.
 const PHOTON_API_URL = 'https://photon.komoot.io/api/';
 const SEARCH_SOURCE_ID = 'search';
 const MIN_QUERY_LENGTH = 2;
@@ -11,13 +14,8 @@ const SEARCH_DEBOUNCE_MS = 320;
 const COMPACT_RESULTS_MEDIA_QUERY = '(max-width: 640px)';
 const PHOTON_SUPPORTED_LANGUAGES = new Set(['de', 'en', 'fr']);
 const TRAIN_LIMIT = 5;
-// An optional letter, then digits (G1, z157, Ｇ１, 4401), as the API matches them.
-const TRAIN_NUMBER_START = /^[A-Za-z]?\d/;
-
-export function looksLikeTrainNumber(query: string) {
-  return TRAIN_NUMBER_START.test(query.normalize('NFKC').replace(/\s+/g, ''));
-}
-
+const STATION_LIMIT = 5;
+const STATION_ZOOM = 14;
 const EMPTY_FEATURE_COLLECTION: { type: 'FeatureCollection'; features: PhotonPointFeature[] } = {
   type: 'FeatureCollection',
   features: [],
@@ -146,6 +144,19 @@ function trainKey(hit: CrTrainHit) {
   return `train|${hit.train}|${hit.service.from}`;
 }
 
+function stationKey(hit: StationHit) {
+  return `station|${hit.country}|${hit.name}|${hit.osm[0] ?? hit.codes?.[0] ?? hit.telecode ?? ''}`;
+}
+
+// The timetable a found station opens: Yahoo's by its codes, China Railway's
+// by its name; null for a Japanese station Yahoo has no code for.
+export function stationTimetableRequest(hit: StationHit): TimetableRequest | null {
+  if (hit.country === 'cn') return { name: hit.name, cr: [hit.name] };
+  return hit.codes?.length ? { name: hit.name, codes: hit.codes } : null;
+}
+
+const hasPosition = (hit: StationHit) => hit.lat !== null && hit.lon !== null;
+
 // A found train's service period, when today is outside it.
 export function servicePeriodNote(hit: Pick<CrTrainHit, 'service'>, today = chinaNow().date) {
   if (today < hit.service.from) return `Runs from ${hit.service.from}`;
@@ -217,6 +228,7 @@ class PhotonSearchControl {
   _popup: PopupLike | null;
   _lastResults: PhotonPointFeature[];
   _lastTrains: CrTrainHit[];
+  _lastStations: StationHit[];
   _selectedFeatureKey: string | null;
   _resultsCollapsed: boolean;
 
@@ -228,6 +240,7 @@ class PhotonSearchControl {
     this._popup = null;
     this._lastResults = [];
     this._lastTrains = [];
+    this._lastStations = [];
     this._selectedFeatureKey = null;
     this._resultsCollapsed = false;
   }
@@ -244,10 +257,10 @@ class PhotonSearchControl {
     const form = el('form', 'poi-search-form', this._container);
     this._input = el('input', 'poi-search-input', form);
     this._input.type = 'search';
-    this._input.placeholder = 'Search places or trains';
+    this._input.placeholder = 'Search places, stations or trains';
     this._input.autocomplete = 'off';
     this._input.spellcheck = false;
-    this._input.setAttribute('aria-label', 'Search places or trains');
+    this._input.setAttribute('aria-label', 'Search places, stations or trains');
 
     this._clearButton = el('button', 'poi-search-clear', form);
     this._clearButton.type = 'button';
@@ -273,6 +286,8 @@ class PhotonSearchControl {
       e.preventDefault();
       if (this._lastTrains.length > 0) {
         this._selectTrain(this._lastTrains[0]);
+      } else if (this._lastStations.length > 0) {
+        this._selectStation(this._lastStations[0]);
       } else if (this._lastResults.length > 0) {
         this._selectFeature(this._lastResults[0]);
       } else {
@@ -343,25 +358,27 @@ class PhotonSearchControl {
         return photonFeatures(await response.json());
       },
     );
-    const trains = looksLikeTrainNumber(query) ? searchCrTrains(query, TRAIN_LIMIT, signal) : Promise.resolve([]);
+    const found = search(query, Math.max(TRAIN_LIMIT, STATION_LIMIT), signal);
     // Each source on its own: one failing still shows the other's results.
-    const [placeResult, trainResult] = await Promise.allSettled([places, trains]);
+    const [placeResult, foundResult] = await Promise.allSettled([places, found]);
     if (requestId !== this._activeRequestId) return;
-    const failed = [placeResult, trainResult].filter((result) => result.status === 'rejected');
+    const failed = [placeResult, foundResult].filter((result) => result.status === 'rejected');
     for (const result of failed) {
       const error = (result as PromiseRejectedResult).reason;
       if (errorName(error) === 'AbortError') return;
       console.error(error);
     }
     const features = placeResult.status === 'fulfilled' ? placeResult.value : [];
-    const hits = trainResult.status === 'fulfilled' ? trainResult.value : [];
-    this._setResults(features, hits);
+    const trains = foundResult.status === 'fulfilled' ? foundResult.value.trains.slice(0, TRAIN_LIMIT) : [];
+    const stations = foundResult.status === 'fulfilled' ? foundResult.value.stations.slice(0, STATION_LIMIT) : [];
+    this._setResults(features, trains, stations);
     // Nothing found means "No results" only when every source asked answered.
-    this._setStatus(features.length + hits.length > 0 ? '' : failed.length > 0 ? 'Search failed' : 'No results');
+    const count = features.length + trains.length + stations.length;
+    this._setStatus(count > 0 ? '' : failed.length > 0 ? 'Search failed' : 'No results');
   }
 
   _resultCount() {
-    return this._lastResults.length + this._lastTrains.length;
+    return this._lastResults.length + this._lastTrains.length + this._lastStations.length;
   }
 
   _setStatus(message: string) {
@@ -369,9 +386,10 @@ class PhotonSearchControl {
     this._status.classList.toggle('visible', Boolean(message));
   }
 
-  _setResults(features: PhotonPointFeature[], trains: CrTrainHit[] = []) {
+  _setResults(features: PhotonPointFeature[], trains: CrTrainHit[] = [], stations: StationHit[] = []) {
     this._lastResults = features;
     this._lastTrains = trains;
+    this._lastStations = stations;
     this._resultsCollapsed = false;
     clearNode(this._results);
 
@@ -389,6 +407,34 @@ class PhotonSearchControl {
     }
 
     const center = this._map.getCenter();
+    for (const hit of stations) {
+      const row = el('div', 'poi-search-result-row', this._results);
+      const button = el('button', 'poi-search-result poi-search-station', row);
+      button.type = 'button';
+      button.setAttribute('role', 'option');
+      button.dataset.featureKey = stationKey(hit);
+      const name = el('span', 'poi-search-result-name', button);
+      name.textContent = hit.name;
+      if (hit.yomi) el('span', 'poi-search-result-reading', name).textContent = hit.yomi;
+      const distance = hasPosition(hit)
+        ? formatDistance(haversineDistanceMeters(center, { lng: hit.lon, lat: hit.lat }))
+        : '';
+      el('span', 'poi-search-result-meta', button).textContent = [distance, 'Station'].filter(Boolean).join(' - ');
+      if (hit.region.length) el('span', 'poi-search-result-address', button).textContent = hit.region.join(' ');
+      button.addEventListener('click', () => this._selectStation(hit));
+      button.addEventListener('keydown', (e: KeyboardEvent) => this._handleResultKeydown(e, button));
+
+      const request = stationTimetableRequest(hit);
+      if (request) {
+        const timetable = el('button', 'poi-search-result-action', row);
+        timetable.type = 'button';
+        timetable.innerHTML = CLOCK_ICON;
+        el('span', undefined, timetable).textContent = 'Timetable';
+        timetable.setAttribute('aria-label', `Timetable of ${hit.name}`);
+        timetable.addEventListener('click', () => this._openStationTimetable(hit, request));
+      }
+    }
+
     for (const feature of features) {
       const button = el('button', 'poi-search-result', this._results);
       button.type = 'button';
@@ -448,11 +494,12 @@ class PhotonSearchControl {
       return;
     }
 
-    const move = e.key === 'ArrowDown' ? 'nextElementSibling' : e.key === 'ArrowUp' ? 'previousElementSibling' : null;
-    if (!move) return;
+    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
 
     e.preventDefault();
-    const target = (button[move] as HTMLElement | null) || (e.key === 'ArrowUp' ? this._input : null);
+    const buttons = [...this._results.querySelectorAll<HTMLElement>('.poi-search-result')];
+    const target = buttons[buttons.indexOf(button) + step] ?? (step < 0 ? this._input : null);
     target?.focus();
   }
 
@@ -480,14 +527,44 @@ class PhotonSearchControl {
     this._clearButton.classList.add('visible');
   }
 
+  // Flies to a found station and opens its info box once there, as a click
+  // on it would; one without a position opens its timetable instead.
+  _selectStation(hit: StationHit) {
+    if (!hasPosition(hit)) {
+      const request = stationTimetableRequest(hit);
+      if (request) this._openStationTimetable(hit, request);
+      return;
+    }
+    this._selectedFeatureKey = stationKey(hit);
+    this._popup?.remove();
+    this._popup = null;
+    setSearchFeature(this._map, null);
+    const position: [number, number] = [hit.lon, hit.lat];
+    this._map.flyTo({ center: position, zoom: Math.max(this._map.getZoom(), STATION_ZOOM), essential: true });
+    const stop: StationStop = { name: hit.name, position, elements: hit.osm };
+    this._map.getContainer().dispatchEvent(new CustomEvent(STATION_OPEN_EVENT, { detail: stop }));
+    this._syncSelectedResultState();
+    if (isCompactViewport()) this._resultsCollapsed = true;
+    this._syncResultsVisibility();
+    this._clearButton.classList.add('visible');
+  }
+
+  _openStationTimetable(hit: StationHit, request: TimetableRequest) {
+    this._selectedFeatureKey = stationKey(hit);
+    this._openTimetable(request);
+  }
+
   // Opens a found train in the timetable panel, which draws its track, and
   // folds the results away so they do not cover it.
   _selectTrain(hit: CrTrainHit) {
     this._selectedFeatureKey = trainKey(hit);
+    this._openTimetable({ name: hit.train, crTrain: hit.train, date: crTrainHitDate(hit) });
+  }
+
+  _openTimetable(request: TimetableRequest) {
     this._popup?.remove();
     this._popup = null;
     setSearchFeature(this._map, null);
-    const request: TimetableRequest = { name: hit.train, crTrain: hit.train, date: crTrainHitDate(hit) };
     this._map.getContainer().dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { bubbles: true, detail: request }));
     this._syncSelectedResultState();
     this._resultsCollapsed = true;
@@ -503,6 +580,7 @@ class PhotonSearchControl {
     this._input.value = '';
     this._lastResults = [];
     this._lastTrains = [];
+    this._lastStations = [];
     this._selectedFeatureKey = null;
     this._resultsCollapsed = false;
     this._clearButton.classList.remove('visible');

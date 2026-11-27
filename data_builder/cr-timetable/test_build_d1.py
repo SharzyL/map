@@ -2,7 +2,8 @@
 standing in for D1, and the rules that label lines and numbers.
 
 The same timetable, built as versions 20261114 and 20261120, is what the
-Worker's tests load (src/worker/api/fixtures/cr-*.sql): when this output
+Worker's tests load (src/worker/api/fixtures/cr-*.sql, and the train search's
+index of the first, fixtures/build-data/cr-search.json): when this output
 changes, the fixtures are regenerated here and the Worker's tests show what
 that means for the API.
 
@@ -65,6 +66,7 @@ def fixture_sql() -> dict[str, str]:
         "cr-20261120.sql": build_d1.build_sql(
             "20261120", build_d1.rows(STATIONS, [("G7", *TRAINS[0][1:])], OSM)
         ),
+        "build-data/cr-search.json": build_d1.search_json("20261114", TRAINS),
     }
 
 
@@ -153,6 +155,33 @@ class SqlTest(unittest.TestCase):
         )
         conn.executescript(drop)
         self.assertEqual(conn.execute("SELECT count(*) FROM cr_stations").fetchone(), (4,))
+
+    def test_tables_gone_from_d1_are_dropped(self) -> None:
+        # The train search's table, of the version kept too
+        conn = make_db()
+        conn.executescript("CREATE TABLE cr_search_20261114 (part INTEGER PRIMARY KEY, body TEXT);"
+                           "CREATE VIEW cr_search AS SELECT * FROM cr_search_20261114;")
+        conn.executescript(fixture_sql()["cr-20261114.sql"])
+        self.assertIsNone(conn.execute("SELECT name FROM sqlite_master WHERE name = 'cr_search'").fetchone())
+        cur = conn.execute(build_d1.OLD_TABLES_SQL)
+        listing = [{"results": [{"name": name} for (name,) in cur]}]
+        self.assertEqual(build_d1.drop_old("20261114", listing), "DROP TABLE cr_search_20261114;")
+
+    def test_search_index(self) -> None:
+        index = json.loads(build_d1.search_json("20261114", TRAINS))
+        self.assertEqual(index["version"], "20261114")
+        self.assertEqual(index["trains"], [
+            ["4651/4654", "北京", "天津南", 20260101, 20501231],
+            ["4651/4654B", "北京", "天津南", 20260101, 20501231],
+            ["G1", "北京南", "上海虹桥", 20260101, 20501231],
+            ["G9", "北京南", "上海虹桥", 20260101, 20261031],
+            ["Z1/Z2", "北京", "上海虹桥", 20260101, 20501231],
+        ])
+        # Each number and half, sorted, with its train
+        self.assertEqual(list(zip(index["keys"], index["owners"])), [
+            ("4651", 0), ("4651", 1), ("4651/4654", 0), ("4651/4654B", 1), ("4654", 0), ("4654", 1),
+            ("G1", 2), ("G9", 3), ("Z1", 4), ("Z1/Z2", 4), ("Z2", 4),
+        ])
 
 
 def train(code: str, stations: list[tuple[str, int]], spans: list, stock: list | None = None):

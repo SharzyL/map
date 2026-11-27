@@ -1666,7 +1666,7 @@ const CHEVRON_RIGHT = chevron('M4 2l3 3-3 3');
 const LOCATE_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke-linecap="round"/></svg>';
 
-const CLOCK_ICON =
+export const CLOCK_ICON =
   '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.3 1.5"/></svg>';
 
 // Adds a Timetable button to a station's info box.

@@ -1,15 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { crTrainHitDate } from './norikae.js';
-import { looksLikeTrainNumber, servicePeriodNote } from './search.js';
+import { servicePeriodNote, stationTimetableRequest } from './search.js';
 
-describe('looksLikeTrainNumber', () => {
-  it('takes text that could start a train number, in any case or width', () => {
-    for (const query of ['G1', 'g1', 'Z157', 'Ｇ１', 'G 1', '4401', '1'])
-      expect(looksLikeTrainNumber(query)).toBe(true);
+describe('a found station’s timetable', () => {
+  const hit = {
+    type: 'station' as const,
+    region: [] as string[],
+    osm: [] as string[],
+    lat: null as number | null,
+    lon: null as number | null,
+  };
+
+  it('is Yahoo’s by its codes in Japan, China Railway’s by its name in China', () => {
+    expect(stationTimetableRequest({ ...hit, country: 'jp', name: '新宿', codes: ['22741', '29342'] })).toEqual({
+      name: '新宿',
+      codes: ['22741', '29342'],
+    });
+    expect(stationTimetableRequest({ ...hit, country: 'cn', name: '北京西', telecode: 'BXP' })).toEqual({
+      name: '北京西',
+      cr: ['北京西'],
+    });
   });
 
-  it('leaves place names to the place search', () => {
-    for (const query of ['Gion', 'shanghai station', '北京南', 'GZ1']) expect(looksLikeTrainNumber(query)).toBe(false);
+  it('is none for a Japanese station without a Yahoo code', () => {
+    expect(stationTimetableRequest({ ...hit, country: 'jp', name: '名無し', codes: [] })).toBeNull();
   });
 });
 

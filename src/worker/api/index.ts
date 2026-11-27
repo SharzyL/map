@@ -45,7 +45,7 @@ function index(): ApiResponse {
 
 export interface Context {
   fetch: Fetcher;
-  // D1, where the Worker has it; China Railway, relations and search answer 503 without
+  // D1, where the Worker has it; China Railway and relations answer 503 without
   db?: Query | null;
   now?: Date;
 }
@@ -58,7 +58,7 @@ async function dispatch(url: URL, ctx: Context): Promise<ApiResponse> {
   if (path.startsWith(NORIKAE_PREFIX)) return dispatchNorikae(path, url.searchParams, ctx.fetch, now);
   if (path.startsWith(CR_PREFIX)) return dispatchCr(path, url.searchParams, db, ctx.fetch, now);
   if (path.startsWith(RELATIONS_PREFIX)) return dispatchRelations(path, url.searchParams, db);
-  if (path === SEARCH_PATH) return dispatchSearch(path, url.searchParams, db);
+  if (path === SEARCH_PATH) return dispatchSearch(path, url.searchParams);
   if (path.startsWith(ANITABI_PREFIX)) return dispatchAnitabi(path, url.searchParams, ctx.fetch);
   throw notFound(path);
 }

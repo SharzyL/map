@@ -41,6 +41,12 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
         note: '出典：国土数値情報（鉄道データ）（国土交通省）を加工して作成 · CC BY 4.0',
       },
       {
+        name: '国土数値情報（行政区域データ）, 国土交通省',
+        href: 'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-2026.html',
+        use: "The prefecture and municipality of Japan's stations in search",
+        note: '出典：国土数値情報（行政区域データ）（国土交通省）を加工して作成 · CC BY 4.0',
+      },
+      {
         name: 'anitabi 巡礼地图',
         href: 'https://www.anitabi.cn/map',
         use: 'Anime pilgrimage spots and their screenshots (experimental layer)',
@@ -72,13 +78,17 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
   {
     title: 'Services',
     credits: [
-      { name: 'Yahoo!乗換案内', href: 'https://transit.yahoo.co.jp/', use: 'Station timetables in Japan' },
+      {
+        name: 'Yahoo!乗換案内',
+        href: 'https://transit.yahoo.co.jp/',
+        use: "Station timetables in Japan, and stations' readings",
+      },
       {
         name: 'レスキューナウ',
         href: 'https://www.rescuenow.co.jp/',
         use: 'Service notices (運行情報) in Japan, through Yahoo!乗換案内',
       },
-      { name: 'Photon by komoot', href: 'https://photon.komoot.io/', use: 'Search' },
+      { name: 'Photon by komoot', href: 'https://photon.komoot.io/', use: 'Search of places' },
       { name: 'OSRM', href: 'https://project-osrm.org/', use: 'Routes drawn with the Route tool' },
       {
         name: 'Open-Meteo',
@@ -109,6 +119,12 @@ export const CREDIT_GROUPS: Array<{ title: string; credits: Credit[] }> = [
         use: 'Contour lines',
       },
       { name: 'Lucide', href: 'https://lucide.dev/', use: 'Icons' },
+      {
+        name: 'OpenCC',
+        href: 'https://github.com/BYVoid/OpenCC',
+        use: 'Simplified, traditional and Japanese forms of characters, alike in station search',
+        note: 'Apache License 2.0',
+      },
     ],
   },
 ];

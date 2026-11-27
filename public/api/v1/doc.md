@@ -204,7 +204,8 @@ the message is Yahoo's own (e.g. `「zzqqxx」に該当する出発地はあり�
 
 ### `GET /api/v1/norikae/stations`
 
-Find stations (and bus stops) by name.
+Find stations (and bus stops) by name, as Yahoo's search does, each with its
+reading in katakana (`yomi`, `null` when Yahoo gives none).
 
 | Param  | Values                           | Default   |
 | ------ | -------------------------------- | --------- |
@@ -226,6 +227,7 @@ GET /api/v1/norikae/stations?q=渋谷
       "address": "東京",
       "yahoo_lat": 35.658516,
       "yahoo_lon": 139.701773,
+      "yomi": "シブヤ",
       "osm": ["N241896099", "N3623713008"],
       "lat": 35.658713,
       "lon": 139.701637
@@ -959,14 +961,15 @@ Errors: `400 bad_request` for a `{train}` that is not a train number;
 
 ### `GET /api/v1/search`
 
-Find China Railway trains by number, with each train's origin and terminus.
-Stations and lines will follow; every result has a `type` so they can join
-the same list.
+Find China Railway trains by number, and stations in China and Japan by name
+or reading. Every result has a `type` (`cr_train`, `station`); trains come
+first.
 
-| Param   | Values                                                         | Default |
-| ------- | -------------------------------------------------------------- | ------- |
-| `q`     | start of a train number (required): `G1`, `g1`, `Z157`, `Ｇ１` |         |
-| `limit` | `1`–`50`                                                       | `20`    |
+| Param   | Values                                                                  | Default |
+| ------- | ----------------------------------------------------------------------- | ------- |
+| `q`     | search text (required): `G1`, `Z157`, `新宿`, `涩谷`, `shinjuku`, `bjx` |         |
+| `type`  | `all`, `train`, `station`                                               | `all`   |
+| `limit` | `1`–`50`, results of each type                                          | `20`    |
 
 ```
 GET /api/v1/search?q=Z157
@@ -975,6 +978,7 @@ GET /api/v1/search?q=Z157
 ```json
 {
   "data_version": "20261120",
+  "stations_version": "dcaedbe83877",
   "query": "Z157",
   "results": [
     {
@@ -995,6 +999,34 @@ GET /api/v1/search?q=Z157
 }
 ```
 
+```
+GET /api/v1/search?q=涩谷
+```
+
+```json
+{
+  "data_version": null,
+  "stations_version": "dcaedbe83877",
+  "query": "涩谷",
+  "results": [
+    {
+      "type": "station",
+      "country": "jp",
+      "name": "渋谷",
+      "yomi": "シブヤ",
+      "region": ["東京都", "渋谷区"],
+      "osm": ["N241896099", "N3623713008"],
+      "lat": 35.658713,
+      "lon": 139.701637,
+      "codes": ["22715"]
+    }
+  ]
+}
+```
+
+**Trains** are searched with `type=train`, or with `all` when `q` could start
+a train number (a digit within its first three characters, or a lone letter).
+
 - Matches numbers that start with `q`, case-insensitively, ignoring spaces
   and full-width forms. Either half of a double number matches (`Z157`
   finds `Z156/Z157`), and so does the full number as a timetable writes it
@@ -1005,10 +1037,43 @@ GET /api/v1/search?q=Z157
   with its `service` (as in `cr/trains`); pass `train` to
   `/api/v1/cr/trains/{train}` for its stops.
 - `query` is `q` as matched: upper case, without spaces.
-- `results` is empty when nothing matches.
+- `data_version` is the version of the China Railway data the train index
+  was built from, `null` when trains were not searched. The index ships
+  with the API, so for a few minutes after new data it may be a version
+  behind `/api/v1/cr`'s.
 
-Errors: `400 bad_request` without `q`; `503 data_unavailable` when the
-China Railway data is not loaded.
+**Stations** are China Railway's (those with passenger trains in its
+timetable) and OpenStreetMap's railway stations in Japan, one result for the
+stations of one name that share a Yahoo code or lie within 1 km of each other
+(新宿's JR, Odakyu, Keio and subway stations).
+
+- Only names are matched, however they are written: simplified Chinese,
+  traditional and Japanese forms of a character alike (`涩谷`, `澀谷` and
+  `渋谷` all find 渋谷; `东京` finds 東京), hiragana and katakana alike,
+  case, full-width forms, spaces and punctuation ignored, and a trailing
+  `駅`, `站` or ` station` dropped.
+- A Japanese station is also found by its reading, in kana or romaji
+  (`しんじゅく`, `shinjuku`, `sinzyuku`, `Shin-Ōsaka`: long vowels and
+  kunrei or Hepburn spelling alike); a Chinese one by its pinyin or its
+  initials (`beijingxi`, `bjx`).
+- Sorted by how `q` matched: the whole name or reading, then its start, then
+  anywhere in it (for two characters or more, not in romaji); then the
+  busiest station first (trains a day in China, routes stopping in Japan),
+  then the shortest name.
+- `region` is display only, largest first: in China its province, city and
+  district (路路通's), in Japan its prefecture, municipality and ward
+  (国土数値情報 N03, at its position).
+- `osm` are its OpenStreetMap stations (empty for a Chinese station not
+  matched to OSM) and `lat` / `lon` their centre (`null` without them).
+- In Japan, `yomi` is its reading in katakana (`null` when not known) and
+  `codes` its Yahoo codes, which `/api/v1/norikae/stations/{code}/lines`
+  takes (empty when Yahoo has none). In China, `telecode` is its telegraph
+  code; `name` is what `/api/v1/cr/stations/{station}/timetable` takes.
+- `stations_version` is the station index's, `null` with `type=train`.
+
+`results` is empty when nothing matches.
+
+Errors: `400 bad_request` without `q` or with an unknown `type`.
 
 ## anitabi
 
