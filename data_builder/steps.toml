@@ -15,9 +15,9 @@
 #   this repository ───────────────────────────────────────── deploy-worker ──┘
 #
 # station-index reads the timetable, the station files, osm-stations' Japan
-# and the relations' station ranks besides N03. The Worker bundles the station
-# files and the search's indexes (cr-search's of trains, from lltskb, and
-# station-index's).
+# and the relations' station ranks besides N03, and gives the tiles Japan's
+# stations' readings. The Worker bundles the station files and the search's
+# indexes (cr-search's of trains, from lltskb, and station-index's).
 #
 # One pass over the planet makes two extracts, both brought to the same
 # hourly diff: worldwide, the line relations and railway ways the tiles add to
@@ -268,7 +268,7 @@ python3 data_builder/stations/station-index.py --cr-csv "$BUILD/lltskb/csv" \
   --cr-stations "$BUILD/cr-station-trains/cr-station-trains.csv" --coords "$BUILD/station-coords/station-coords.csv" \
   --jp-osm "$BUILD/osm-stations/japan.json" --jp-codes "$BUILD/jp-station-codes/jp-station-codes.csv" \
   --jp-readings "$BUILD/jp-station-codes/jp-station-readings.csv" --ranks "$BUILD/relations/station-ranks.csv" \
-  --n03 "$BUILD/n03/n03" --out "$OUT/stations.json"
+  --n03 "$BUILD/n03/n03" --out "$OUT/stations.json" --readings "$OUT/jp-readings.csv"
 node data_builder/stations/search-keys.mjs "$OUT/stations.json" "$OUT/search-stations.json"
 rm "$OUT/stations.json"
 """
@@ -290,7 +290,7 @@ needs = [
   "relations/station-ranks.csv",
   "n03/n03",
 ]
-outs = ["search-stations.json"]
+outs = ["search-stations.json", "jp-readings.csv"]
 
 # ── Trains' routes on OSM track ─────────────────────────
 
@@ -378,6 +378,7 @@ run = """
 LINE_RELATIONS_OPL="$BUILD/railway-extract/lines.opl" LINE_GROUPS_DIR="$BUILD/line-groups" \
 CR_STATION_TRAINS="$BUILD/cr-station-trains/cr-station-trains.csv" \
 JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
+JP_READINGS="$BUILD/station-index/jp-readings.csv" \
 MAX_ZOOM=15 LAYERS=standard CONCURRENCY=4 \
   data_builder/tiles/export-from-image.sh "ghcr.io/hiddewie/openrailwaymap-import-db@$SRC_ORM_DB" "$OUT/openrailwaymap.pmtiles"
 """
@@ -395,6 +396,7 @@ needs = [
   "line-groups/line_group_ways.csv",
   "cr-station-trains/cr-station-trains.csv",
   "jp-station-codes/jp-station-codes.csv",
+  "station-index/jp-readings.csv",
 ]
 outs = ["openrailwaymap.pmtiles"]
 keep = false

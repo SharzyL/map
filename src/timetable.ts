@@ -1694,11 +1694,15 @@ export const CLOCK_ICON =
 
 // Adds a Timetable button to a station's info box.
 export function timetableButton(feature: StationFeatureLike, content: HTMLElement) {
+  const label = content.querySelector<HTMLElement>('.orm-popup-label');
+  // A Japanese station's reading after its name, from the tiles (yomi: Yahoo's,
+  // else OSM's kana, data_builder/stations/station-index.py)
+  const yomi = feature.sourceLayer?.includes('stations') ? String(feature.properties?.yomi ?? '') : '';
+  if (yomi && label) el('span', 'orm-popup-reading', label).textContent = yomi;
   const request = timetableRequestFor(feature);
   if (!request) return;
   // At the end of the name row (or below the title), so it shows without
   // scrolling a long box and takes no row of its own.
-  const label = content.querySelector<HTMLElement>('.orm-popup-label');
   const actions = el('span', 'orm-popup-actions');
   if (label) {
     label.classList.add('orm-popup-label-with-actions');
@@ -1710,19 +1714,6 @@ export function timetableButton(feature: StationFeatureLike, content: HTMLElemen
   const button = el('button', 'orm-popup-action', actions);
   button.type = 'button';
   setTooltip(button, 'cr' in request ? 'Trains from the China Railway timetable' : 'Departures from Yahoo!乗換案内');
-  // A Yahoo station's reading after its name, from its lines, which its
-  // timetable opens on (cached for both)
-  if ('codes' in request && request.codes.length && label) {
-    stationLines(request.codes[0]).then(
-      ({ station }) => {
-        if (!station.yomi || !label.isConnected) return;
-        const reading = el('span', 'orm-popup-reading');
-        reading.textContent = station.yomi;
-        label.insertBefore(reading, actions);
-      },
-      () => {},
-    );
-  }
   button.innerHTML = CLOCK_ICON;
   el('span', undefined, button).textContent = 'Timetable';
   button.addEventListener('click', () =>

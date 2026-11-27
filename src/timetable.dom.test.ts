@@ -1341,7 +1341,30 @@ describe('Timetable button', () => {
     expect(china(116.32, 39.89, { name: 'Beijing West' })).toBeNull();
   });
 
-  it('shows a Yahoo station’s reading after its name, in its info box and its lines', async () => {
+  it('shows a Japanese station’s reading after its name, from the tiles', () => {
+    const box = (properties: Record<string, unknown>) => {
+      const content = document.createElement('div');
+      content.innerHTML = '<h5 class="orm-popup-title">Station</h5><h6 class="orm-popup-label">渋谷</h6>';
+      timetableButton(
+        {
+          sourceLayer: 'standard_railway_text_stations',
+          properties: { feature: 'station', name: '渋谷', ...properties },
+          geometry: { type: 'Point', coordinates: [139.7, 35.66] },
+        },
+        content,
+      );
+      return content;
+    };
+    const content = box({ yahoo_codes: '22715', yomi: 'シブヤ' });
+    expect(text(content, '.orm-popup-label .orm-popup-reading')).toEqual(['シブヤ']);
+    // Before the Timetable button, after the name
+    expect(content.querySelector('.orm-popup-reading').nextElementSibling.className).toBe('orm-popup-actions');
+    // A station without a timetable has its reading too, and one without a reading none
+    expect(text(box({ yomi: 'シブヤ' }), '.orm-popup-reading')).toEqual(['シブヤ']);
+    expect(box({ yahoo_codes: '22715' }).querySelector('.orm-popup-reading')).toBeNull();
+  });
+
+  it('shows a Yahoo station’s reading in its lines', async () => {
     const linesPath = '/api/v1/norikae/stations/22715/timetables';
     const before = API[linesPath];
     API[linesPath] = { ...(before as object), station: { code: '22715', name: '渋谷', yomi: 'シブヤ' } };
@@ -1358,10 +1381,6 @@ describe('Timetable button', () => {
         },
         content,
       );
-      await vi.waitFor(() => expect(text(content, '.orm-popup-label .orm-popup-reading')).toEqual(['シブヤ']));
-      // Before the Timetable button, after the name
-      expect(content.querySelector('.orm-popup-reading').nextElementSibling.className).toBe('orm-popup-actions');
-
       content.querySelector<HTMLButtonElement>('.orm-popup-action').click();
       await vi.waitFor(() => expect(text(panel.panel, '.timetable-title-reading')).toEqual(['シブヤ']));
       expect(panel.panel.querySelector('.timetable-title').firstChild.textContent).toBe('渋谷');

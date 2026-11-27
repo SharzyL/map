@@ -21,6 +21,8 @@ Environment variables:
                      sizes those stations by timetable instead of mapped routes
   JP_STATION_CODES   optional Yahoo! 乗換案内 station codes by OSM station in Japan
                      (data_builder/stations/jp-station-codes.py); the stations' yahoo_codes, which open their timetable
+  JP_READINGS        optional readings in katakana by OSM station in Japan (data_builder/stations/station-index.py
+                     --readings); the stations' yomi, shown after their name in their info box
 
 Needs psql, ogr2ogr and tippecanoe.
 """
@@ -53,6 +55,7 @@ class Config:
     line_groups_dir: str
     cr_station_trains: str
     jp_station_codes: str
+    jp_readings: str
 
     @classmethod
     def from_env(cls):
@@ -69,6 +72,7 @@ class Config:
             line_groups_dir=env('LINE_GROUPS_DIR', ''),
             cr_station_trains=env('CR_STATION_TRAINS', ''),
             jp_station_codes=env('JP_STATION_CODES', ''),
+            jp_readings=env('JP_READINGS', ''),
         )
 
 

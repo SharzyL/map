@@ -172,6 +172,10 @@ class JapanTest(unittest.TestCase):
         self.assertEqual(by_ref['N5',]['y'], 'フチュウ')
         self.assertEqual(by_ref['N5',]['k'], [])
         self.assertEqual(by_ref['N5',]['w'], 0)
+        # Every element of a station with a reading has it
+        self.assertEqual(si.readings_rows(stations), [
+            ('N', 1, 'シンジュク'), ('N', 2, 'シンジュク'), ('N', 3, 'シンジュク'), ('N', 4, 'フチュウ'), ('N', 5, 'フチュウ'),
+        ])
 
 
 # The stations the Worker's search tests find (src/worker/api/search.test.ts),

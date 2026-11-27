@@ -8,7 +8,7 @@
 # The image reference may be pinned by digest
 # (ghcr.io/hiddewie/openrailwaymap-import-db@sha256:...). export.py's
 # environment variables pass through (LINE_RELATIONS_OPL, LINE_GROUPS_DIR,
-# CR_STATION_TRAINS, JP_STATION_CODES, MAX_ZOOM, LAYERS, BBOX, ...).
+# CR_STATION_TRAINS, JP_STATION_CODES, JP_READINGS, MAX_ZOOM, LAYERS, BBOX, ...).
 #
 # Needs docker, psql, python3, ogr2ogr, tippecanoe and pmtiles; on CI (CI=true) it installs
 # the last three when missing and first frees the runner's disk, which the

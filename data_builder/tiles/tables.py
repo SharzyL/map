@@ -429,6 +429,32 @@ STATION_IMPORTANCE = 'coalesce(so.cr_importance, s.importance)'
 # Yahoo! 乗換案内 station codes for stations in Japan, the ids the timetable
 # (src/timetable.ts) asks the API for. A station grouped from several
 # OSM features gets the codes of all of them.
+# Japanese stations' readings in katakana (station-index.py's): a station
+# grouped from several OSM features takes the most common of theirs.
+def build_station_readings(db, jp_readings):
+    db.run("""
+DROP TABLE IF EXISTS station_readings, jp_readings;
+CREATE TABLE jp_readings (osm_type text, osm_id int8, yomi text);
+""")
+    if jp_readings and Path(jp_readings).is_file():
+        db.copy('jp_readings', jp_readings, header=True)
+    else:
+        print(f'  no JP_READINGS file ({jp_readings or "not set"}); stations have no reading')
+    db.run("""
+CREATE TABLE station_readings AS
+SELECT DISTINCT ON (gs.id) gs.id, j.yomi
+FROM grouped_stations_with_importance gs
+CROSS JOIN LATERAL unnest(gs.osm_ids, gs.osm_types) AS member(osm_id, osm_type)
+JOIN jp_readings j ON j.osm_id = member.osm_id AND j.osm_type = member.osm_type
+GROUP BY gs.id, j.yomi
+ORDER BY gs.id, count(*) DESC, j.yomi;
+CREATE UNIQUE INDEX ON station_readings (id);
+ANALYZE station_readings;
+""")
+    db.report("SELECT '  ' || count(*) || ' stations with a reading' FROM station_readings")
+    print()
+
+
 def build_station_yahoo_codes(db, jp_station_codes):
     db.run("""
 DROP TABLE IF EXISTS station_yahoo_codes, jp_station_codes;
@@ -541,10 +567,11 @@ STATION_ROUTES = r"""(SELECT nullif(array_to_string(array_agg(
   ))"""
 
 # Station label layers read railway_text_stations s through these: the
-# timetable's sizes (so), the Yahoo codes (sy), the station's routes, looked up
-# once (sr), and the dot color and kind they give (sc).
+# timetable's sizes (so), the Yahoo codes (sy), the reading (sk), the station's
+# routes, looked up once (sr), and the dot color and kind they give (sc).
 STATION_JOINS = f"""LEFT JOIN station_overrides so ON so.id = s.id
 LEFT JOIN station_yahoo_codes sy ON sy.id = s.id
+LEFT JOIN station_readings sk ON sk.id = s.id
 CROSS JOIN LATERAL (SELECT {STATION_ROUTES} AS station_routes) sr
 CROSS JOIN LATERAL orm_station_colors(sr.station_routes, s.state) sc"""
 
@@ -558,4 +585,5 @@ def build(db, config):
     build_neighbor_colors(db)
     build_station_overrides(db, config.cr_station_trains)
     build_station_yahoo_codes(db, config.jp_station_codes)
+    build_station_readings(db, config.jp_readings)
     build_station_color_functions(db)

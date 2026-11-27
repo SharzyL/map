@@ -92,6 +92,7 @@ STATION_LABEL_COLUMNS = (
     'sc.station_color',
     'sc.station_kind',
     'sy.yahoo_codes',
+    'sk.yomi',
     f'{STATION_DISCR_ISO} AS discr_iso',
 )
 

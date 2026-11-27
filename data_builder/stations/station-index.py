@@ -7,6 +7,7 @@ Usage:
                      --coords station-coords.csv --jp-osm japan.json
                      --jp-codes jp-station-codes.csv --jp-readings jp-station-readings.csv
                      --ranks station-ranks.csv --n03 <N03 dir> --out stations.json
+                     [--readings jp-readings.csv]
 
 China's stations are China Railway's, from 路路通's timetable (export_csv.py's
 CSV): every station with a passenger train, its telecode and pinyin (12306's
@@ -28,6 +29,9 @@ relations step's ranks, build_relations.py) in Japan.
 
 Writes the stations as a JSON array, a station a line; search-keys.mjs adds
 the keys they are found by, with the Worker's own folding, and the version.
+With --readings, also each Japanese OSM station element's reading, its
+station's (osm_type, osm_id, yomi), which the tile export gives the stations'
+labels (data_builder/tiles/tables.py) for their info box.
 Needs numpy.
 """
 
@@ -323,6 +327,13 @@ def japan(osm_json, codes_csv, readings_csv, ranks_csv, municipalities):
 
 # ---------------- Output ----------------
 
+def readings_rows(stations):
+    """(osm_type, osm_id, yomi) of every element of a Japanese station with
+    a reading, by element"""
+    rows = {(ref[0], int(ref[1:])): s['y'] for s in stations if s['c'] == 'jp' and s.get('y') for ref in s['o']}
+    return [(t, i, y) for (t, i), y in sorted(rows.items())]
+
+
 def stations_json(stations):
     """The stations as a JSON array, one a line"""
     lines = [json.dumps(station, ensure_ascii=False, separators=(',', ':')) for station in stations]
@@ -340,6 +351,7 @@ def main():
     parser.add_argument('--ranks', required=True, help="the relations step's station-ranks.csv")
     parser.add_argument('--n03', help="fetch-n03.sh's directory (without it, no regions in Japan)")
     parser.add_argument('--out', required=True)
+    parser.add_argument('--readings', help="where to write the Japanese elements' readings")
     args = parser.parse_args()
 
     coords = {r['osm_type'] + r['osm_id']: (float(r['lat']), float(r['lon'])) for r in read_csv(args.coords)}
@@ -348,6 +360,11 @@ def main():
     stations += japan(args.jp_osm, args.jp_codes, args.jp_readings, args.ranks, municipalities)
     text = stations_json(stations)
     Path(args.out).write_text(text, encoding='utf-8')
+    if args.readings:
+        with open(args.readings, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['osm_type', 'osm_id', 'yomi'])
+            writer.writerows(readings_rows(stations))
     count = collections.Counter(s['c'] for s in stations)
     print(f"{args.out}: {count['cn']} stations in China, {count['jp']} in Japan "
           f"({sum(1 for s in stations if s['c'] == 'jp' and s['y'])} with a reading, "
