@@ -282,8 +282,9 @@ hiragana), `null` where Yahoo has none.
 
 Service notices (運行情報, from レスキューナウ as Yahoo shows them) of the
 station's lines: only the lines that have one, named as in
-`/timetables`. A line Yahoo flags without saying what about comes with no
-`notices`; its notice is in its direction's status (below). Kept for 3
+`/timetables`, and the one line Yahoo's station page names without its
+notices (one per station, whatever its state), with no `notices`: whether it
+has any, and what they say, is in its direction's status (below). Kept for 3
 minutes.
 
 ```

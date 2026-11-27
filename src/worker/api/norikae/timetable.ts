@@ -102,8 +102,8 @@ export interface Notice {
   updated: string | null;
 }
 
-// A line's notices and Yahoo's page about them. A line the page flags without
-// saying what about has no notices.
+// A line's notices and Yahoo's page about them. The line a station's page
+// names without its notices (below) has none here.
 export interface LineStatus {
   line: string;
   notices: Notice[];
@@ -340,9 +340,12 @@ const lineKey = (name: string) =>
     .trim();
 
 // A station's lines with notices, from its lines page: the notices of the lines
-// it lists by name (`railNameDiaInfo`), and the lines it only flags by Yahoo's
-// line code (`DiaInfo`, a 運転見合わせ among them, so not to be left out), named
-// as the page's line list does.
+// it lists by name (`railNameDiaInfo`), and the line it names by Yahoo's line
+// code alone (`DiaInfo`), named as the page's line list does. Yahoo names one
+// line there per station whatever its state (東京's 山手線 running normally),
+// but a notice of that line shows only there and on its direction's page (新庄's
+// 陸羽東線, suspended), so it is listed, without notices, for its direction's
+// status to tell.
 export function parseStationStatus(html: string): LineStatus[] {
   const page = pageProps(html);
   const named: Obj = page.railNameDiaInfo ?? {};

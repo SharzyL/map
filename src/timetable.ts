@@ -35,6 +35,7 @@ import {
   stationStatus,
   directionStatus,
   type DirectionStatus,
+  type LineStatus,
   type ServiceNotice,
   trainRoute,
   trainStops,
@@ -88,7 +89,7 @@ const SEVERITY_LABELS: Record<NoticeSeverity, string> = {
   info: '運行情報',
 };
 const SEVERITY_ORDER: NoticeSeverity[] = ['stop', 'delay', 'info', 'normal'];
-// The weightiest of a line's notices; a line flagged without one is 'info'.
+// The weightiest of a line's notices.
 const worstSeverity = (notices: ServiceNotice[]) =>
   SEVERITY_ORDER.find((severity) => notices.some((notice) => noticeSeverity(notice) === severity)) ?? 'info';
 
@@ -1005,15 +1006,35 @@ class TimetablePanel {
       }
     }
     // A badge by each line with a service notice, once they come (a station's
-    // other tab, picked meanwhile, has its own). The station's page only flags
-    // some lines (a suspension among them), whose notices their direction's
-    // page has.
+    // other tab, picked meanwhile, has its own); the line Yahoo's station page
+    // names without its notices gets one only if its direction's page has
+    // some. A badge opens the line's (first) direction, whose view starts
+    // with the notices and a link to Yahoo's page about them; a line without
+    // directions links to that page.
     const signal = this._signal;
-    const label = (badge: HTMLElement, notices: ServiceNotice[]) => {
-      const severity = worstSeverity(notices);
+    const addBadge = (line: { slot: HTMLElement; gid: string | null }, status: LineStatus) => {
+      const severity = worstSeverity(status.notices);
+      let badge: HTMLElement;
+      if (line.gid) {
+        const button = el('button', 'timetable-notice-badge', line.slot);
+        button.type = 'button';
+        const gid = line.gid;
+        button.addEventListener('click', () =>
+          this._show({ kind: 'jp-departures', code: table.station.code, gid, station: table.station.name, day: null }),
+        );
+        badge = button;
+      } else if (status.url) {
+        const link = el('a', 'timetable-notice-badge', line.slot);
+        link.href = status.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        badge = link;
+      } else {
+        badge = el('span', 'timetable-notice-badge', line.slot);
+      }
       badge.dataset.severity = severity;
       badge.textContent = SEVERITY_LABELS[severity];
-      setTooltip(badge, notices.map(({ message }) => message).join('\n') || '運行情報があります');
+      setTooltip(badge, status.notices.map(({ message }) => message).join('\n'));
     };
     stationStatus(table.station.code, signal).then(
       ({ lines }) => {
@@ -1021,15 +1042,17 @@ class TimetablePanel {
         for (const status of lines) {
           const line = badgeSlots.get(status.line);
           if (!line) continue;
-          const badge = el('span', 'timetable-notice-badge', line.slot);
-          label(badge, status.notices);
-          if (status.notices.length > 0 || !line.gid) continue;
-          directionStatus(table.station.code, line.gid, signal).then(
-            ({ notices }) => {
-              if (notices.length > 0 && section.isConnected) label(badge, notices);
-            },
-            () => {},
-          );
+          if (status.notices.length > 0) {
+            addBadge(line, status);
+          } else if (line.gid) {
+            directionStatus(table.station.code, line.gid, signal).then(
+              (own) => {
+                if (own.notices.length > 0 && section.isConnected)
+                  addBadge(line, { line: status.line, notices: own.notices, url: own.url ?? status.url });
+              },
+              () => {},
+            );
+          }
         }
       },
       () => {},

@@ -2594,11 +2594,28 @@ button.timetable-stop-name:focus-visible {
   display: inline-block;
   margin-left: 6px;
   padding: 0 5px;
+  border: 0;
   border-radius: 3px;
+  font-family: inherit;
   font-size: 10.5px;
   font-weight: 700;
   line-height: 16px;
+  text-decoration: none;
   vertical-align: 1px;
+}
+
+/* It opens the line's direction, its notices first (or Yahoo's page). */
+button.timetable-notice-badge,
+a.timetable-notice-badge {
+  cursor: pointer;
+}
+
+button.timetable-notice-badge:hover,
+a.timetable-notice-badge:hover,
+button.timetable-notice-badge:focus-visible,
+a.timetable-notice-badge:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 0;
 }
 
 .timetable-notices {

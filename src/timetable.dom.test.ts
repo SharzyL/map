@@ -654,6 +654,13 @@ describe('timetable panel', () => {
       expect(badge.dataset.severity).toBe('delay');
       expect(tooltipText(badge)).toBe('大雨の影響で、列車に遅れが出ています。');
 
+      // The badge opens the line's direction, its notices first
+      expect(badge.tagName).toBe('BUTTON');
+      badge.click();
+      await vi.waitFor(() => expect(text(root, '.timetable-notice-message')).toHaveLength(1));
+      root.querySelector<HTMLButtonElement>('.timetable-back').click();
+      await vi.waitFor(() => expect(root.querySelector('.timetable-direction')).not.toBeNull());
+
       root.querySelector<HTMLButtonElement>('.timetable-direction').click();
       await vi.waitFor(() => expect(root.querySelector('.timetable-notice')).not.toBeNull());
       // First in the view, above the departures
@@ -674,7 +681,7 @@ describe('timetable panel', () => {
     }
   });
 
-  it('asks a line the station only flags for its notices, by its direction', async () => {
+  it('asks the line the station names without notices for them, by its direction', async () => {
     API['/api/v1/norikae/stations/22715/status'] = {
       source_url: 'https://transit.yahoo.co.jp/timetable/22715',
       lines: [{ line: 'ＪＲ湘南新宿ライン', notices: [], url: null }],
@@ -697,6 +704,37 @@ describe('timetable panel', () => {
       const { container, panel } = setup();
       container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
       await vi.waitFor(() => expect(text(panel.panel, '.timetable-notice-badge')).toEqual(['運転見合わせ']));
+    } finally {
+      delete API['/api/v1/norikae/stations/22715/status'];
+      delete API['/api/v1/norikae/stations/22715/timetables/1051/status'];
+    }
+  });
+
+  it('marks nothing on the line the station names when its direction has no notices', async () => {
+    API['/api/v1/norikae/stations/22715/status'] = {
+      source_url: 'https://transit.yahoo.co.jp/timetable/22715',
+      lines: [{ line: 'ＪＲ湘南新宿ライン', notices: [], url: null }],
+    };
+    let asked = false;
+    Object.defineProperty(API, '/api/v1/norikae/stations/22715/timetables/1051/status', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        asked = true;
+        return {
+          source_url: 'https://transit.yahoo.co.jp/timetable/22715/1051',
+          line: '湘南新宿ライン',
+          notices: [],
+          url: null,
+        };
+      },
+    });
+    try {
+      const { container, panel } = setup();
+      container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+      await vi.waitFor(() => expect(asked).toBe(true));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(panel.panel.querySelector('.timetable-notice-badge')).toBeNull();
     } finally {
       delete API['/api/v1/norikae/stations/22715/status'];
       delete API['/api/v1/norikae/stations/22715/timetables/1051/status'];
