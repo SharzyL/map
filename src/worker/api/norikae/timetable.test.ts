@@ -11,6 +11,7 @@ import trainExpected from '../fixtures/train.expected.json';
 import statusLinesHtml from '../fixtures/status-lines.html?raw';
 import statusTimetableHtml from '../fixtures/status-timetable.html?raw';
 import {
+  yahooColor,
   parseDirectionStatus,
   parseLines,
   parseSearch,
@@ -35,7 +36,12 @@ describe('Yahoo timetable pages', () => {
   it('parses a station lines page like the Python API', () => {
     const lines = parseLines(linesHtml, '22715');
     expect(lines).toEqual(linesExpected);
-    expect(lines.lines[0].directions[0]).toEqual({ direction: '新宿・高崎・宇都宮', gid: '1051' });
+    expect(lines.lines[0].directions[0]).toEqual({
+      direction: '新宿・高崎・宇都宮',
+      gid: '1051',
+      // Where its trains come from
+      source: '逗子・小田原',
+    });
   });
 
   it('parses a timetable like the Python API', () => {
@@ -55,6 +61,8 @@ describe('Yahoo timetable pages', () => {
       train_number: '2520Y',
       starts_here: false,
       green_car: true,
+      express_toll: false,
+      kind_color: null,
     });
     // Yahoo leaves the car count out for some trains
     expect(tt.departures.some((d) => d.cars === null)).toBe(true);
@@ -85,6 +93,36 @@ describe('Yahoo timetable pages', () => {
     expect(timetableUrl('22715', '1051', '1')).toBe('https://transit.yahoo.co.jp/timetable/22715/1051?kind=1');
     expect(timetableUrl('22715', '1051', null)).toBe('https://transit.yahoo.co.jp/timetable/22715/1051');
     expect(trainUrl('22715', '1051', '33471')).toBe('https://transit.yahoo.co.jp/timetable/22715/1051/33471');
+  });
+});
+
+describe('what else a Yahoo timetable says', () => {
+  it('reads Yahoo’s colors, decimal RGB three digits each without leading zeros', () => {
+    expect(['255', '255000000', '255125000', '0', '', null, '999'].map(yahooColor)).toEqual([
+      '#0000ff',
+      '#ff0000',
+      '#ff7d00',
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it('gives each type its color, where trains come from, and which need a limited-express ticket', () => {
+    const tt = parseTimetable(timetableHtml, '22715');
+    expect(tt.source).toBe('逗子・小田原');
+    const kinds = new Map(tt.departures.map((d) => [d.kind, d.kind_color]));
+    expect(Object.fromEntries(kinds)).toEqual({
+      快速: '#0000ff',
+      普通: null,
+      特別快速: '#ff7d00',
+      特急: '#ff0000',
+    });
+    // 成田エクスプレス and 湘南, and nothing else
+    const tolled = tt.departures.filter((d) => d.express_toll);
+    expect(tolled.length).toBe(29);
+    expect(tolled.every((d) => d.kind === '特急')).toBe(true);
   });
 });
 

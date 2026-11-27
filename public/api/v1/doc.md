@@ -262,8 +262,8 @@ GET /api/v1/norikae/stations/22715/timetables
     {
       "name": "ＪＲ湘南新宿ライン",
       "directions": [
-        { "direction": "新宿・高崎・宇都宮", "gid": "1051" },
-        { "direction": "横浜・大船", "gid": "1050" }
+        { "direction": "新宿・高崎・宇都宮", "gid": "1051", "source": "逗子・小田原" },
+        { "direction": "横浜・大船", "gid": "1050", "source": "宇都宮・新宿" }
       ]
     }
   ]
@@ -361,6 +361,7 @@ GET /api/v1/norikae/stations/22715/timetables/1051?day=weekday&hours=7-8
   },
   "line": "ＪＲ湘南新宿ライン",
   "direction": "新宿・高崎・宇都宮",
+  "source": "逗子・小田原",
   "day": "weekday",
   "departures": [
     {
@@ -376,7 +377,9 @@ GET /api/v1/norikae/stations/22715/timetables/1051?day=weekday&hours=7-8
       "cars": 15,
       "train_number": "2520Y",
       "starts_here": false,
-      "green_car": true
+      "green_car": true,
+      "express_toll": false,
+      "kind_color": null
     }
   ]
 }
@@ -397,6 +400,11 @@ GET /api/v1/norikae/stations/22715/timetables/1051?day=weekday&hours=7-8
   Yahoo's `train_id`.
 - `starts_here`: the train begins its run at this station.
 - `green_car`: the train has a Green Car (first class).
+- `express_toll`: a limited express, needing a ticket of its own (特急券).
+- `kind_color`: Yahoo's color for the type, `#rrggbb` (快速 `#0000ff`, 特急
+  `#ff0000`); `null` where it has none (普通).
+- `source` (here and for each direction in the lines' list): where the
+  direction's trains come from; `null` when Yahoo leaves it out.
 - `track`, `train_number` are `null` when Yahoo does not give them.
 - `day` in the response is the schedule Yahoo actually returned.
 

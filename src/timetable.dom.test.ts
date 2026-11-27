@@ -581,6 +581,50 @@ describe('timetable panel', () => {
     expect(shown.at(-1)).toBe('jpl:22715:渋谷');
   });
 
+  it('colors each type as Yahoo does, says where trains come from and which need a ticket', async () => {
+    const departuresPath = '/api/v1/norikae/stations/22715/timetables/1051';
+    const linesPath = '/api/v1/norikae/stations/22715/timetables';
+    const before = { departures: API[departuresPath], lines: API[linesPath] };
+    const table = structuredClone(before.departures) as { source?: string; departures: Array<Record<string, unknown>> };
+    table.source = '逗子・小田原';
+    Object.assign(table.departures[1], { kind_color: '#0000ff' });
+    Object.assign(table.departures[0], {
+      kind: '特急',
+      name: '特急湘南22号',
+      kind_mark: '特',
+      kind_color: '#ff0000',
+      express_toll: true,
+    });
+    const lines = structuredClone(before.lines) as { lines: Array<{ directions: Array<Record<string, unknown>> }> };
+    lines.lines[0].directions[0].source = '逗子・小田原';
+    API[departuresPath] = table;
+    API[linesPath] = lines;
+    try {
+      const { container, panel } = setup();
+      const root = panel.panel;
+      container.dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { detail: { name: '渋谷', codes: ['22715'] } }));
+      await vi.waitFor(() => expect(text(root, '.timetable-direction')).toHaveLength(2));
+      expect(tooltipText(root.querySelector('.timetable-direction'))).toBe('逗子・小田原 → 新宿・高崎・宇都宮方面');
+      root.querySelector<HTMLButtonElement>('.timetable-direction').click();
+      await vi.waitFor(() => expect(text(root, '.timetable-time')).toHaveLength(2));
+      expect(tooltipText(root.querySelector('.timetable-summary'))).toBe('逗子・小田原 → 新宿・高崎・宇都宮方面');
+      // Yahoo's colors for the types, in the list and the printed layout
+      const kinds = Array.from(root.querySelectorAll<HTMLElement>('.timetable-departure-button .timetable-kind'));
+      expect(kinds.map((kind) => kind.style.color)).toEqual(['#ff0000', '#0000ff']);
+      const minutes = Array.from(root.querySelectorAll<HTMLElement>('.timetable-grid-minute'));
+      expect(minutes.map((minute) => minute.style.color)).toEqual(['#ff0000', '#0000ff']);
+      expect(
+        Array.from(root.querySelectorAll<HTMLElement>('.timetable-legend b')).find((b) => b.textContent === '[特]')
+          .style.color,
+      ).toBe('#ff0000');
+      // A limited express says it needs its own ticket.
+      expect(tooltipText(root.querySelector('.timetable-departure-button'))).toContain('特急券が必要');
+    } finally {
+      API[departuresPath] = before.departures;
+      API[linesPath] = before.lines;
+    }
+  });
+
   it('marks lines with service notices, and says what at the top of a direction and its trains', async () => {
     const delay = {
       status: '列車遅延',

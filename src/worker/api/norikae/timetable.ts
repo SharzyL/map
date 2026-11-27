@@ -28,6 +28,8 @@ export interface StationMatch extends StationRef {
 export interface Direction {
   direction: string;
   gid: string;
+  // Where its trains come from (逗子・小田原), null when Yahoo leaves it out
+  source: string | null;
 }
 
 export interface Line {
@@ -54,12 +56,18 @@ export interface Departure {
   train_number: string | null;
   starts_here: boolean;
   green_car: boolean;
+  // A limited express, needing a ticket of its own (特急券)
+  express_toll: boolean;
+  // Yahoo's color for its type (快速 blue, 特急 red), #rrggbb; null for none
+  kind_color: string | null;
 }
 
 export interface Timetable {
   station: StationRef;
   line: string;
   direction: string;
+  // Where the direction's trains come from (逗子・小田原)
+  source: string | null;
   day: string;
   departures: Departure[];
 }
@@ -195,12 +203,27 @@ export function parseLines(html: string, code: string): StationLines {
       directions: (need(route, 'railGroup') as Obj[]).map((g) => ({
         direction: need(g, 'direction'),
         gid: need(g, 'groupId'),
+        source: text(g.source),
       })),
     })),
   };
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
+
+// Yahoo writes a color as decimal red, green and blue, three digits each,
+// without leading zeros (255 is blue, 255000000 red); 0, black, is its
+// "no color".
+export function yahooColor(value: unknown): string | null {
+  const digits = String(value ?? '').trim();
+  if (!/^\d{1,9}$/.test(digits) || Number(digits) === 0) return null;
+  const padded = digits.padStart(9, '0');
+  const parts = [0, 3, 6].map((at) => Number(padded.slice(at, at + 3)));
+  if (parts.some((part) => part > 255)) return null;
+  return `#${parts.map((part) => part.toString(16).padStart(2, '0')).join('')}`;
+}
+
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
 export function parseTimetable(html: string, code: string): Timetable {
   const tt = need(pageProps(html), 'timetableItem');
@@ -230,6 +253,8 @@ export function parseTimetable(html: string, code: string): Timetable {
         train_number: t.vendorTrainId || null,
         starts_here: t.firstStation === 'true' || t.firstStation === true,
         green_car: Object.values((t.greenCar || {}) as Obj).some(Boolean),
+        express_toll: t.expressToll === '1' || t.expressToll === 1 || t.expressToll === true,
+        kind_color: kind ? yahooColor(kind.color) : null,
       });
     }
   }
@@ -238,6 +263,7 @@ export function parseTimetable(html: string, code: string): Timetable {
     station: { code, name: need(tt, 'stationName') },
     line: need(tt, 'railName'),
     direction: need(tt, 'directionName'),
+    source: text(tt.departureStation),
     day: DAY_KINDS[day] ?? day,
     departures,
   };
@@ -275,8 +301,6 @@ export function parseTrain(html: string, code: string, gid: string | null = null
 }
 
 // ── Service notices ─────────────────────────────────
-
-const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
 function notices(diainfo: unknown): Notice[] {
   if (!Array.isArray(diainfo)) return [];

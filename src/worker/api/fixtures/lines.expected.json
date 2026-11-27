@@ -9,11 +9,13 @@
       "directions": [
         {
           "direction": "新宿・高崎・宇都宮",
-          "gid": "1051"
+          "gid": "1051",
+          "source": "逗子・小田原"
         },
         {
           "direction": "横浜・大船",
-          "gid": "1050"
+          "gid": "1050",
+          "source": "宇都宮・新宿"
         }
       ]
     },
@@ -22,11 +24,13 @@
       "directions": [
         {
           "direction": "川越・新宿",
-          "gid": "1061"
+          "gid": "1061",
+          "source": "新木場・海老名"
         },
         {
           "direction": "新木場・海老名",
-          "gid": "1060"
+          "gid": "1060",
+          "source": "川越・新宿"
         }
       ]
     },
@@ -35,7 +39,8 @@
       "directions": [
         {
           "direction": "新宿・池袋",
-          "gid": "7171"
+          "gid": "7171",
+          "source": "大崎・田町"
         }
       ]
     },
@@ -44,7 +49,8 @@
       "directions": [
         {
           "direction": "品川・東京",
-          "gid": "7170"
+          "gid": "7170",
+          "source": "大崎・池袋"
         }
       ]
     },
@@ -53,7 +59,8 @@
       "directions": [
         {
           "direction": "吉祥寺・富士見ケ丘",
-          "gid": "3081"
+          "gid": "3081",
+          "source": "渋谷"
         }
       ]
     },
@@ -62,7 +69,8 @@
       "directions": [
         {
           "direction": "横浜・元町・中華街",
-          "gid": "3141"
+          "gid": "3141",
+          "source": "和光市・渋谷"
         }
       ]
     },
@@ -71,7 +79,8 @@
       "directions": [
         {
           "direction": "中央林間・長津田",
-          "gid": "3161"
+          "gid": "3161",
+          "source": "押上・南栗橋"
         }
       ]
     },
@@ -80,7 +89,8 @@
       "directions": [
         {
           "direction": "浅草・上野",
-          "gid": "3270"
+          "gid": "3270",
+          "source": "渋谷"
         }
       ]
     },
@@ -89,7 +99,8 @@
       "directions": [
         {
           "direction": "押上・南栗橋",
-          "gid": "3351"
+          "gid": "3351",
+          "source": "中央林間・長津田"
         }
       ]
     },
@@ -98,7 +109,8 @@
       "directions": [
         {
           "direction": "和光市・小手指",
-          "gid": "3370"
+          "gid": "3370",
+          "source": "元町・中華街・湘南台"
         }
       ]
     }

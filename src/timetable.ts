@@ -478,6 +478,7 @@ export function departureTooltip(departure: Departure) {
     departure.train_number && `列車番号 ${departure.train_number}`,
     departure.kind && departure.kind !== name && `種別 ${departure.kind}`,
     [departure.cars && `${departure.cars}両`, departure.green_car && 'グリーン車'].filter(Boolean).join(' · '),
+    departure.express_toll && '特急券が必要',
     departure.starts_here && '当駅始発',
     departure.track && `${departure.track}番線`,
     departure.extra && '運転日注意',
@@ -522,11 +523,14 @@ export function crTrainTooltip(train: CrStationTrain) {
 // none (the most frequent among the unmarked departures).
 function departureLegend(departures: Departure[]) {
   const kinds = new Map<string, string>();
+  const colors = new Map<string, string>(); // kind mark -> Yahoo's color
   const destinations = new Map<string, string>();
   const usualCounts = { kind: new Map<string, number>(), destination: new Map<string, number>() };
   for (const departure of departures) {
-    if (departure.kind_mark && departure.kind) kinds.set(departure.kind_mark, departure.kind);
-    else if (departure.kind) usualCounts.kind.set(departure.kind, (usualCounts.kind.get(departure.kind) ?? 0) + 1);
+    if (departure.kind_mark && departure.kind) {
+      kinds.set(departure.kind_mark, departure.kind);
+      if (departure.kind_color) colors.set(departure.kind_mark, departure.kind_color);
+    } else if (departure.kind) usualCounts.kind.set(departure.kind, (usualCounts.kind.get(departure.kind) ?? 0) + 1);
     if (departure.destination_mark && departure.destination)
       destinations.set(departure.destination_mark, departure.destination);
     else if (departure.destination) {
@@ -537,6 +541,7 @@ function departureLegend(departures: Departure[]) {
   const mostFrequent = (counts: Map<string, number>) => [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   return {
     kinds: [...kinds],
+    colors,
     destinations: [...destinations],
     usualKind: mostFrequent(usualCounts.kind),
     usualDestination: mostFrequent(usualCounts.destination),
@@ -894,6 +899,7 @@ class TimetablePanel {
   private _setHeader(title: string, summary: string, source: Source | null, report: Report | null = null) {
     this._title.textContent = title;
     this._summary.textContent = summary;
+    setTooltip(this._summary, null);
     this._source.hidden = !source;
     if (source) {
       this._source.textContent = source.text;
@@ -977,12 +983,14 @@ class TimetablePanel {
       lineName.textContent = line.name;
       if (isHighSpeedLine(line.name)) lineName.classList.add('timetable-highspeed');
       badgeSlots.set(line.name, { slot: lineName, gid: line.directions[0]?.gid ?? null });
-      for (const { direction, gid } of line.directions) {
+      for (const { direction, gid, source } of line.directions) {
         const button = el('button', 'timetable-direction', group);
         button.type = 'button';
         // A 新幹線's directions in its name's purple
         if (isHighSpeedLine(line.name)) button.classList.add('timetable-highspeed');
         button.textContent = directionLabel(direction);
+        // Where its trains come from
+        if (source) setTooltip(button, `${source} → ${directionLabel(direction)}`);
         button.addEventListener('click', () =>
           this._show({
             kind: 'jp-departures',
@@ -1053,6 +1061,8 @@ class TimetablePanel {
         `Day: ${DAY_LABELS[table.day as TimetableDay] ?? table.day}`,
       ],
     });
+    // Where the direction's trains come from
+    if (table.source) setTooltip(this._summary, `${table.source} → ${directionLabel(table.direction)}`);
     this._setBack('路線');
     this._body.replaceChildren();
     this._showNotices(code, gid);
@@ -1097,8 +1107,10 @@ class TimetablePanel {
       el('span', 'timetable-time', button).textContent = departure.time;
       const kind = el('span', 'timetable-kind', button);
       kind.textContent = departure.name ?? departure.kind ?? '';
-      // A type other than the line's usual one carries a mark, and stands out.
-      if (departure.kind_mark) kind.classList.add('timetable-kind-special');
+      // In Yahoo's color for its type (快速 blue, 特急 red), else a type other
+      // than the line's usual one, which carries a mark, in red.
+      if (departure.kind_color) kind.style.color = departure.kind_color;
+      else if (departure.kind_mark) kind.classList.add('timetable-kind-special');
       el('span', 'timetable-destination', button).textContent =
         `${departure.destination ?? ''}${departure.extra ? ' ◆' : ''}`;
       const info = el('span', 'timetable-train-info', button);
@@ -1124,7 +1136,8 @@ class TimetablePanel {
       const button = el('button', 'timetable-grid-minute', row);
       button.type = 'button';
       if (index === next) button.classList.add('timetable-next');
-      if (departure.kind_mark) button.classList.add('timetable-kind-special');
+      if (departure.kind_color) button.style.color = departure.kind_color;
+      else if (departure.kind_mark) button.classList.add('timetable-kind-special');
       // As Yahoo writes them: the destination's mark, then the type's in brackets (上[特]).
       const marks = [
         departure.starts_here ? '●' : '',
@@ -1140,12 +1153,14 @@ class TimetablePanel {
     const legend = departureLegend(table.departures);
     // Each mark kept on one line with what it stands for.
     const key = el('ul', 'timetable-legend', printed);
-    const entry = (mark: string, meaning: string) => {
+    const entry = (mark: string, meaning: string, color?: string) => {
       const item = el('li', undefined, key);
-      el('b', undefined, item).textContent = mark;
+      const term = el('b', undefined, item);
+      term.textContent = mark;
+      if (color) term.style.color = color;
       item.append(` ${meaning}`);
     };
-    for (const [mark, kindName] of legend.kinds) entry(`[${mark}]`, kindName);
+    for (const [mark, kindName] of legend.kinds) entry(`[${mark}]`, kindName, legend.colors.get(mark));
     for (const [mark, destination] of legend.destinations) entry(mark, `${destination}行`);
     if (table.departures.some((departure) => departure.starts_here)) entry('●', '当駅始発');
     if (table.departures.some((departure) => departure.extra)) entry('◆', '運転日注意');

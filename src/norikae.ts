@@ -24,7 +24,8 @@ export type NorikaeStation = YahooStation & {
 export type StationLines = {
   source_url: string;
   station: YahooStation;
-  lines: Array<{ name: string; directions: Array<{ direction: string; gid: string }> }>;
+  // `source`: where a direction's trains come from (逗子・小田原)
+  lines: Array<{ name: string; directions: Array<{ direction: string; gid: string; source?: string | null }> }>;
 };
 // A line's service notice (運行情報), as Yahoo shows レスキューナウ's.
 export type ServiceNotice = {
@@ -60,12 +61,18 @@ export type Departure = {
   train_number?: string | null;
   starts_here?: boolean;
   green_car?: boolean;
+  // A limited express, needing a ticket of its own (特急券)
+  express_toll?: boolean;
+  // Yahoo's color for its type (快速 #0000ff, 特急 #ff0000); null for none
+  kind_color?: string | null;
 };
 export type DepartureTable = {
   source_url: string;
   station: YahooStation;
   line: string;
   direction: string;
+  // Where the direction's trains come from (逗子・小田原)
+  source?: string | null;
   day: TimetableDay;
   departures: Departure[];
 };

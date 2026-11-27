@@ -212,7 +212,12 @@ describe('stations', () => {
     expect(resp.status).toBe(200);
     expect(yahoo.calls.at(-1)).toEqual(['https://transit.yahoo.co.jp/timetable/22715', 86400]);
     expect(body.station).toEqual({ code: '22715', name: '渋谷', ...SHIBUYA_OSM });
-    expect(body.lines[0].directions[0]).toEqual({ direction: '新宿・高崎・宇都宮', gid: '1051' });
+    expect(body.lines[0].directions[0]).toEqual({
+      direction: '新宿・高崎・宇都宮',
+      gid: '1051',
+      // Where its trains come from
+      source: '逗子・小田原',
+    });
   });
 
   it('gives a timetable, filtered by hour', async () => {
@@ -236,6 +241,8 @@ describe('stations', () => {
       train_number: '2520Y',
       starts_here: false,
       green_car: true,
+      express_toll: false,
+      kind_color: null,
     });
     // Yahoo leaves the car count out for some trains
     expect(body.departures.map((d: { cars: number | null }) => d.cars)).toContain(null);
