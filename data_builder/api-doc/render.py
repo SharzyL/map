@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""The API's doc (public/api/v1/doc.md) as an HTML page, served at /api/v1/doc
-beside the Markdown (vite.config.js adds it to the app's static assets).
+"""The API's doc as it is served: its Markdown with the response types filled
+in, at /api/v1/doc.md, and as an HTML page, at /api/v1/doc (vite.config.js
+adds both to the app's static assets).
 
-Usage: render.py <doc.md> <doc.html> [--url URL]
+Usage: render.py <doc.md> <types.ts> <out-dir> [--url URL]
+
+The doc (src/worker/api/doc.md) holds a line `<!-- types: <name> -->` where
+each endpoint's response types go; types.ts holds them all, each `// @doc
+<name>` line starting the section named so, up to the next. The section
+fills the line in as a TypeScript block, without its `export`s. A name the
+types do not have, a section no line uses, and two of one name are errors.
+Writes <out-dir>/doc.md and <out-dir>/doc.html.
 
 Laid out as the pastebin's Markdown pages are (pb's /a/, e.g.
 https://shz.al/a/yShz): GitHub's Markdown styles, a table of contents of the
@@ -113,8 +121,38 @@ SCROLL_SPY = '''
 })();
 '''
 
+# Fences in a language Pygments knows by another name: JSON with comments
+# (jsonc, as GitHub calls it), which its JSON lexer reads
+FENCE_ALIASES = {'jsonc': 'json'}
+FENCE = re.compile(r'^(\s*```)(\w+)\s*$', re.M)
+PLACEHOLDER = re.compile(r'^<!-- types: ([\w-]+) -->$', re.M)
+SECTION = re.compile(r'^// @doc ([\w-]+)$', re.M)
 CODE_BLOCK = re.compile(r'<div class="highlight"><pre><span></span><code>(.*?)</code></pre></div>', re.S)
 TAG = re.compile(r'<[^>]+>')
+
+
+def type_sections(types):
+    """{name: code} of types.ts's sections, without their exports"""
+    marks = list(SECTION.finditer(types))
+    sections = {}
+    for mark, after in zip(marks, marks[1:] + [None]):
+        name = mark.group(1)
+        if name in sections:
+            raise ValueError(f'two type sections named {name}')
+        code = types[mark.end():after.start() if after else len(types)].strip('\n')
+        sections[name] = re.sub(r'^export ', '', code, flags=re.M)
+    return sections
+
+
+def fill_types(doc, types):
+    """The doc with each placeholder line replaced by its section's types"""
+    sections = type_sections(types)
+    used = PLACEHOLDER.findall(doc)
+    unknown = sorted(set(used) - sections.keys())
+    unused = sorted(sections.keys() - set(used))
+    if unknown or unused:
+        raise ValueError(f'type sections unknown: {unknown}, unused: {unused}')
+    return PLACEHOLDER.sub(lambda m: f'```ts\n{sections[m.group(1)]}\n```', doc)
 
 
 def plain(fragment):
@@ -122,15 +160,26 @@ def plain(fragment):
     return html.unescape(TAG.sub('', fragment)).strip()
 
 
-def code_blocks(body):
-    """Pygments' blocks laid out with a gutter of their line numbers"""
+def fence_languages(text):
+    """The language of each fenced block, in order ('' for none)"""
+    return [m.group(1) or '' for m in re.finditer(r'^ *```(\w*)\s*$\n.*?^ *```\s*$', text, re.M | re.S)]
+
+
+def code_blocks(body, languages):
+    """Pygments' blocks laid out with a gutter of their line numbers, each
+    marked with its language as pb marks them (language-json)"""
+    if len(CODE_BLOCK.findall(body)) != len(languages):
+        raise ValueError('a fenced block did not render as code (indented in a list?)')
+    names = iter(languages)
 
     def block(match):
         code = match.group(1)
         lines = code.rstrip('\n').count('\n') + 1
         gutter = '<span></span>' * lines
+        language = next(names)
+        attr = f' class="language-{language}"' if language else ''
         return (f'<div class="code-block"><span class="line-number-rows" aria-hidden="true">{gutter}</span>'
-                f'<pre><code>{code.rstrip(chr(10))}</code></pre></div>')
+                f'<pre><code{attr}>{code.rstrip(chr(10))}</code></pre></div>')
 
     return CODE_BLOCK.sub(block, body)
 
@@ -188,7 +237,9 @@ def render(text, url=URL):
         'toc': {'permalink': '#', 'permalink_class': 'header-anchor', 'permalink_title': 'Link to this section',
                 'permalink_leading': True},
     })
-    body = code_blocks(md.convert(text))
+    languages = fence_languages(text)
+    text = FENCE.sub(lambda m: m.group(1) + FENCE_ALIASES.get(m.group(2), m.group(2)), text)
+    body = code_blocks(md.convert(text), languages)
     toc = render_toc(toc_entries(md.toc_tokens))
     title, description = title_and_description(body)
     e = html.escape
@@ -220,13 +271,18 @@ def render(text, url=URL):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('doc', help='the Markdown')
-    parser.add_argument('out', help='where to write the page')
+    parser.add_argument('doc', help='the Markdown, with placeholders')
+    parser.add_argument('types', help='the response types (types.ts)')
+    parser.add_argument('out', help='where to write doc.md and doc.html')
     parser.add_argument('--url', default=URL, help=f"the page's address (default: {URL})")
     args = parser.parse_args()
-    page = render(Path(args.doc).read_text(encoding='utf-8'), args.url)
-    Path(args.out).write_text(page, encoding='utf-8')
-    print(f'{args.out}: {len(page.encode()) / 1e3:.0f} kB')
+    doc = fill_types(Path(args.doc).read_text(encoding='utf-8'), Path(args.types).read_text(encoding='utf-8'))
+    page = render(doc, args.url)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / 'doc.md').write_text(doc, encoding='utf-8')
+    (out / 'doc.html').write_text(page, encoding='utf-8')
+    print(f'{out}/doc.md, {out}/doc.html: {len(page.encode()) / 1e3:.0f} kB')
 
 
 if __name__ == '__main__':

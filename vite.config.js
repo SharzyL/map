@@ -60,30 +60,43 @@ function buildDataFile(name, variable, step) {
   return resolve(candidates.find((path) => path && existsSync(path)));
 }
 
-// The API doc's page (/api/v1/doc), which the data build renders from
-// public/api/v1/doc.md (data_builder/api-doc/render.py): the build's own, or
-// where API_DOC_HTML says, as the static asset api/v1/doc.html, which the
-// Worker's assets serve at /api/v1/doc. Without one the Worker sends that path
-// to the Markdown.
-function apiDocPage() {
-  const file = [process.env.API_DOC_HTML, '.build/out/api-doc/doc.html'].find((path) => path && existsSync(path));
+// The API's doc, as the data build writes it (data_builder/api-doc/render.py:
+// src/worker/api/doc.md with its response types filled in from types.ts):
+// the build's own, or in the directory API_DOC_DIR names, as the static assets
+// api/v1/doc.md and api/v1/doc.html, which the Worker's assets serve at
+// /api/v1/doc.md and /api/v1/doc. Without a build here there is no page (the
+// Worker sends /api/v1/doc to the Markdown), and the Markdown is the source,
+// its types left as placeholders.
+const API_DOC_SOURCE = 'src/worker/api/doc.md';
+const API_DOC_FILES = { 'api/v1/doc.md': 'doc.md', 'api/v1/doc.html': 'doc.html' };
+
+function apiDoc() {
+  const dir = [process.env.API_DOC_DIR, '.build/out/api-doc'].find((path) => path && existsSync(`${path}/doc.md`));
+  // Published path -> file
+  const files = dir
+    ? Object.fromEntries(Object.entries(API_DOC_FILES).map(([path, name]) => [path, `${dir}/${name}`]))
+    : { 'api/v1/doc.md': API_DOC_SOURCE };
+  const types = { md: 'text/markdown; charset=utf-8', html: 'text/html; charset=utf-8' };
   return [
     {
-      name: 'api-doc-page',
+      name: 'api-doc',
       applyToEnvironment: (environment) => environment.name === 'client',
       generateBundle() {
-        if (file) this.emitFile({ type: 'asset', fileName: 'api/v1/doc.html', source: readFileSync(file) });
+        for (const [fileName, file] of Object.entries(files)) {
+          this.emitFile({ type: 'asset', fileName, source: readFileSync(file) });
+        }
       },
     },
     // Apart: a plugin of one environment gets no server hooks
     {
-      name: 'api-doc-page-dev',
+      name: 'api-doc-dev',
       apply: 'serve',
       configureServer(server) {
-        if (!file) return;
         server.middlewares.use((req, res, next) => {
-          if (req.url?.split('?')[0] !== '/api/v1/doc') return next();
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          const path = req.url?.split('?')[0].replace(/^\//, '');
+          const file = files[path] ?? files[`${path}.html`];
+          if (!file) return next();
+          res.setHeader('Content-Type', types[file.split('.').pop()]);
           res.end(readFileSync(file));
         });
       },
@@ -101,7 +114,7 @@ export default defineConfig({
   },
   plugins: [
     mapResourceHints(),
-    apiDocPage(),
+    apiDoc(),
     cloudflare({
       remoteBindings: process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0',
     }),

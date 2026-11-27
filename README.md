@@ -135,7 +135,7 @@ get them all: `gh run download <run-id> -n build-outputs -D .build/out`.
 - `src/main.ts` builds the map: it merges the OpenFreeMap base style with the OpenRailwayMap style,
   adds terrain, contours and satellite imagery, and installs the feature modules.
 - `src/worker/` is the Cloudflare Worker: static assets, `/tiles/*` served from PMTiles in R2, and the
-  API under `/api/v1` (`src/worker/api/`, documented in [`public/api/v1/doc.md`](public/api/v1/doc.md)).
+  API under `/api/v1` (`src/worker/api/`, documented in [`src/worker/api/doc.md`](src/worker/api/doc.md), its response types in [`types.ts`](src/worker/api/types.ts); served at `/api/v1/doc`).
 - Panels: `map-layers-panel.ts` (Layers: base map, labels, terrain), `railway-filter-panel.ts`
   (Railways: filter, tunnel and bridge marks, and line colors by route, usage, speed, electrification or gauge from `railway-colors.ts`), `annotation-tools.ts` (Annotations: drawing tools, with the layer list and
   GPX/GeoJSON import from `layer-manager.ts` mounted inside), the weather picker, and Locate
@@ -243,7 +243,7 @@ archive before it deploys the Worker.
 Chinese stations are sized by China Railway's timetable rather than by mapped train routes, which OSM
 rarely has for China: the export sizes the stations in `cr-station-trains.csv` by their trains per day
 (large from 120, normal from 24) and picks the zoomed-out stations by it. Stations in Japan open a
-timetable from Yahoo! 乗換案内 through the map's own API ([`/api/v1/doc.md`](public/api/v1/doc.md)):
+timetable from Yahoo! 乗換案内 through the map's own API ([`/api/v1/doc`](src/worker/api/doc.md)):
 the export writes the codes in `jp-station-codes.csv` to the station layers as `yahoo_codes`, and a
 Japanese station without codes gets no Timetable button. China Railway stations open one from China
 Railway's timetable through the same API, which finds them by their OSM elements.

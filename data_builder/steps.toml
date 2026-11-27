@@ -404,12 +404,12 @@ keep = false
 # ── The app ─────────────────────────────────────────────
 
 [steps.api-doc]
-about = "The API's doc as an HTML page, served at /api/v1/doc beside the Markdown"
+about = "The API's doc with its response types filled in, as Markdown (/api/v1/doc.md) and as a page (/api/v1/doc)"
 run = """
-python3 data_builder/api-doc/render.py public/api/v1/doc.md "$OUT/doc.html"
+python3 data_builder/api-doc/render.py src/worker/api/doc.md src/worker/api/types.ts "$OUT"
 """
-files = ["data_builder/api-doc/render.py", "public/api/v1/doc.md"]
-outs = ["doc.html"]
+files = ["data_builder/api-doc/render.py", "src/worker/api/doc.md", "src/worker/api/types.ts"]
+outs = ["doc.md", "doc.html"]
 
 # ── Checks ──────────────────────────────────────────────
 
@@ -517,7 +517,7 @@ check = true
 [steps.check-api-doc]
 about = "Tests of the API doc's page"
 run = "python3 -m unittest discover -s data_builder/api-doc -p 'test_*.py'"
-files = ["data_builder/api-doc", "public/api/v1/doc.md"]
+files = ["data_builder/api-doc", "src/worker/api/doc.md", "src/worker/api/types.ts"]
 check = true
 
 [steps.check-routing]
@@ -587,13 +587,13 @@ deploy = true
 # Last: the Worker's code may read what the deploys before it publish, and
 # goes out only when every check of the app passed
 [steps.deploy-worker]
-about = "Build the app and deploy the Worker, with the station files and search indexes it bundles, and the API doc's page"
+about = "Build the app and deploy the Worker, with the station files and search indexes it bundles, and the API's doc"
 run = """
 JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
 STATION_COORDS="$BUILD/station-coords/station-coords.csv" \
 CR_SEARCH="$BUILD/cr-search/cr-search.json" \
 SEARCH_STATIONS="$BUILD/station-index/search-stations.json" \
-API_DOC_HTML="$BUILD/api-doc/doc.html" pnpm build
+API_DOC_DIR="$BUILD/api-doc" pnpm build
 pnpm exec wrangler deploy
 """
 files = [
@@ -614,6 +614,7 @@ needs = [
   "station-coords/station-coords.csv",
   "cr-search/cr-search.json",
   "station-index/search-stations.json",
+  "api-doc/doc.md",
   "api-doc/doc.html",
 ]
 after = [

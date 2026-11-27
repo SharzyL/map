@@ -9,6 +9,8 @@ Base URL: `https://map.shz.al`, the map's own Worker; everything is under
 `/api/v1` (`GET /api/v1` lists the endpoints). Each section below lists its
 own.
 
+<!-- types: index -->
+
 | Section                                 | Under               | What, and from where                                                                              |
 | --------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
 | [Japan](#japan)                         | `/api/v1/norikae`   | Routes, stations, timetables, trains and service notices, live from Yahoo! 乗換案内               |
@@ -27,6 +29,8 @@ zone, units).
 - Unknown query parameters are rejected with `400`, to catch typos.
 - Errors are `{ "error": { "code", "message" } }` with an HTTP status (see
   [Errors](#errors)).
+- Each endpoint gives its response's type in TypeScript, after its example.
+  A field marked `?` may be left out; one typed `| null` is always there.
 - Where an answer comes from: one read live from another site carries
   `source_url`, the page or request it came from; one built from data the
   map imports carries `data_version`, the version of that data.
@@ -71,6 +75,13 @@ Japan, since Yahoo refuses requests from some regions), under
 - Times are scheduled; delays are not applied. Service notices
   (運行情報, from レスキューナウ as Yahoo shows them) come from the `status`
   endpoints.
+- Besides its own errors, any of these may answer what Yahoo does:
+  `502 upstream_error` or `upstream_parse_error`, `503 region_unavailable`,
+  `504 upstream_timeout` (see [Errors](#errors)).
+
+Objects with a Yahoo station code share these types, used below:
+
+<!-- types: japan -->
 
 | Endpoint                                                         | Purpose                                  |
 | ---------------------------------------------------------------- | ---------------------------------------- |
@@ -206,6 +217,8 @@ GET /api/v1/norikae/routes?from=東京&to=新大阪&seat=reserved&date=2026-11-1
 }
 ```
 
+<!-- types: routes -->
+
 Notes:
 
 - `legs[i].to` and `legs[i+1].from` are the same place; `to.time` is the
@@ -256,9 +269,12 @@ GET /api/v1/norikae/stations?q=渋谷
 }
 ```
 
-An empty `results` list means nothing matched. Yahoo rejects some symbols
-in `q` (`<`, `&`, `/`, `'`, `"`, `\`); those searches return
-`400 bad_request`.
+<!-- types: stations -->
+
+An empty `results` list means nothing matched.
+
+Errors: `400 bad_request` without `q`, or with a symbol Yahoo rejects in it
+(`<`, `&`, `/`, `'`, `"`, `\`).
 
 ---
 
@@ -293,8 +309,12 @@ GET /api/v1/norikae/stations/22715/timetables
 }
 ```
 
+<!-- types: lines -->
+
 `station.yomi` is the station's reading in katakana (Yahoo gives it in
 hiragana), `null` where Yahoo has none.
+
+Errors: `404 not_found` for an unknown station code.
 
 ---
 
@@ -304,8 +324,7 @@ Service notices (運行情報, from レスキューナウ as Yahoo shows them) o
 station's lines: only the lines that have one, named as in
 `/timetables`, and the one line Yahoo's station page names without its
 notices (one per station, whatever its state), with no `notices`: whether it
-has any, and what they say, is in its direction's status (below). Kept for 3
-minutes.
+has any, and what they say, is in its direction's status (below).
 
 ```
 GET /api/v1/norikae/stations/21338/status
@@ -333,8 +352,12 @@ GET /api/v1/norikae/stations/21338/status
 }
 ```
 
+<!-- types: station-status -->
+
 `status` is Yahoo's: 列車遅延, 運転見合わせ, 運転再開, その他 and others.
 `updated` is Japan time. `url` is Yahoo's page about the line's service.
+
+Errors: `404 not_found` for an unknown station code.
 
 ---
 
@@ -342,7 +365,11 @@ GET /api/v1/norikae/stations/21338/status
 
 The service notices of one direction's line, as above; `line` is Yahoo's
 name for it in its service information (`陸羽東線`), and `notices` is empty
-when there are none. Kept for 3 minutes.
+when there are none.
+
+```
+GET /api/v1/norikae/stations/21338/timetables/510/status
+```
 
 ```json
 {
@@ -360,6 +387,10 @@ when there are none. Kept for 3 minutes.
   "url": "https://transit.yahoo.co.jp/traininfo/detail/460/0/"
 }
 ```
+
+<!-- types: direction-status -->
+
+Errors: `404 not_found` for an unknown station code or `gid`.
 
 ---
 
@@ -412,6 +443,8 @@ GET /api/v1/norikae/stations/22715/timetables/1051?day=weekday&hours=7-8
 }
 ```
 
+<!-- types: timetable -->
+
 - `kind`: train type (普通, 快速, 特急, ...).
 - `extra: true`: runs only on specific days.
 - `name`: the train's name as Yahoo shows it: the type for most trains, the
@@ -434,6 +467,9 @@ GET /api/v1/norikae/stations/22715/timetables/1051?day=weekday&hours=7-8
   direction's trains come from; `null` when Yahoo leaves it out.
 - `track`, `train_number` are `null` when Yahoo does not give them.
 - `day` in the response is the schedule Yahoo actually returned.
+
+Errors: `400 bad_request` for a malformed `day` or `hours`; `404 not_found`
+for an unknown station code or `gid`.
 
 ---
 
@@ -482,7 +518,13 @@ GET /api/v1/norikae/stations/22715/timetables/1051/trains/33471
 }
 ```
 
+<!-- types: train -->
+
 `arrival` is `null` at the origin, `departure` is `null` at the terminus.
+
+Errors: `404 not_found` for an unknown train.
+
+---
 
 ### `GET /api/v1/norikae/stations/{code}/timetables/{gid}/trains/{train_id}/route`
 
@@ -506,6 +548,8 @@ GET /api/v1/norikae/stations/22715/timetables/1051/trains/33471/route
 }
 ```
 
+<!-- types: train-route -->
+
 | Field          |                                                                                                                                                                                                     |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `data_version` | the OSM data's time (its `osmosis_replication_timestamp`)                                                                                                                                           |
@@ -517,8 +561,10 @@ GET /api/v1/norikae/stations/22715/timetables/1051/trains/33471/route
 | `legs`         | the route between consecutive stops: `line`, the OSM route it follows (`null` if none); `method`, `line` (along it) or `straight` (no route found; `straight` is a straight line to draw instead)   |
 
 Geometry is a Google encoded polyline with precision 6 (latitude first); a
-line in several pieces is an array of them. Errors are the train endpoint's,
-and `503 data_unavailable` while the route data is not loaded.
+line in several pieces is an array of them.
+
+Errors: the train endpoint's, and `503 data_unavailable` while the route
+data is not loaded.
 
 ---
 
@@ -537,6 +583,8 @@ asks 12306 live.
   `source_url` instead, the 12306 request.
 - Station names are **Chinese** (`北京南`). Search also matches pinyin and
   its initials (`beijingnan`, `bjn`) and telegraph codes (`VNP`).
+- Besides its own errors, any of these but `cr/trainsets` answers
+  `503 data_unavailable` while the timetable is not loaded.
 - Times are scheduled; cancellations and temporary changes are not applied.
   Days after midnight are inferred from the clock times, since the data has
   no dates per stop.
@@ -576,7 +624,11 @@ GET /api/v1/cr/stations?q=bjn
 }
 ```
 
+<!-- types: cr-stations -->
+
 `pinyin` is `null` for the few stations the data has no pinyin for.
+
+Errors: `400 bad_request` without `q`.
 
 ---
 
@@ -637,6 +689,8 @@ GET /api/v1/cr/stations/N124205138/timetable?date=2026-11-16&hours=6
 }
 ```
 
+<!-- types: cr-timetable -->
+
 - Lists every train that stops at the station on `date`, sorted by time:
   `departure`, or `arrival` at the train's terminus (`departure` is `null`
   there, `arrival` at its origin).
@@ -693,7 +747,7 @@ full number from a timetable.
 GET /api/v1/cr/trains/G1?date=2026-11-16
 ```
 
-```json
+```jsonc
 {
   "data_version": "20261114",
   "train": "G1",
@@ -707,7 +761,7 @@ GET /api/v1/cr/trains/G1?date=2026-11-16
         "model": "CR400BF-S",
         "coupled": true,
         "depot": "上局上海段",
-        "description": "CR400BF-S型重联，G1955/6/7/8石家庄调向"
+        "description": "CR400BF-S型重联，G1955/6/7/8石家庄调向",
       },
       "lines": [
         {
@@ -717,9 +771,9 @@ GET /api/v1/cr/trains/G1?date=2026-11-16
             { "name": "廊坊", "km": 60 },
             { "name": "京津所", "km": 110 },
             // ...
-            { "name": "上海虹桥", "km": 1318 }
-          ]
-        }
+            { "name": "上海虹桥", "km": 1318 },
+          ],
+        },
       ],
       "stops": [
         {
@@ -734,7 +788,7 @@ GET /api/v1/cr/trains/G1?date=2026-11-16
           "position": [116.372399, 39.863483],
           "arrival_number": null,
           "departure_number": "G1",
-          "bound": "下行"
+          "bound": "下行",
         },
         {
           "name": "沧州西",
@@ -748,13 +802,15 @@ GET /api/v1/cr/trains/G1?date=2026-11-16
           "position": [116.760262, 38.305767],
           "arrival_number": "G1",
           "departure_number": "G1",
-          "bound": "下行"
-        }
-      ]
-    }
-  ]
+          "bound": "下行",
+        },
+      ],
+    },
+  ],
 }
 ```
+
+<!-- types: cr-train -->
 
 - `trains` usually has one entry. A number can have several, each with its
   own `service` period: `Z156` returns `Z156/Z157` until 2026-11-24 and
@@ -797,6 +853,8 @@ GET /api/v1/cr/trains/G1?date=2026-11-16
 
 Errors: `404 not_found` for an unknown train.
 
+---
+
 ### `GET /api/v1/cr/trains/{train}/route`
 
 The track the train runs on, for drawing it on a map of OpenStreetMap data:
@@ -806,6 +864,12 @@ one in service), routed along the lines of its timetable path.
 | Param  | Values                                            | Default       |
 | ------ | ------------------------------------------------- | ------------- |
 | `date` | `YYYY-MM-DD`, the day the train leaves its origin | today (China) |
+
+```
+GET /api/v1/cr/trains/G1/route?date=2026-11-16
+```
+
+<!-- types: cr-train-route -->
 
 The response is the Yahoo train route's (above), with `data_version` the
 OSM data's time; `legs` are the legs of the timetable path, named by its
@@ -861,6 +925,8 @@ GET /api/v1/cr/trainsets/G2705?date=2026-11-14
 }
 ```
 
+<!-- types: cr-trainset -->
+
 - `trainset` is `null` when 12306 has none: unknown numbers, and trains
   that are not EMUs (`K551`). A `200` with `null` does not mean the train
   does not exist.
@@ -904,7 +970,7 @@ can highlight its own features by id.
 `light_rail`, `tram`, `monorail`, `funicular`), a line (`route=railway`) or a
 `route_master`. In Japan it can also be one of the official lines (路線) of
 MLIT's railway data, 国土数値情報 N02: `jp-` and 10 hex digits
-(`jp-15e84d7cdd` is 山陰本線). No parameters.
+(`jp-15e84d7cdd` is 山陰本線).
 
 ```
 GET /api/v1/relations/1972920
@@ -938,6 +1004,8 @@ GET /api/v1/relations/1972920
   ]
 }
 ```
+
+<!-- types: relation -->
 
 - `relation`: `kind` is `route`, `line` or `master`, and `type` the
   `route=` (or `route_master=`) value. `name`, `ref`, `from`, `to`,
@@ -1044,6 +1112,8 @@ GET /api/v1/search?q=涩谷
 }
 ```
 
+<!-- types: search -->
+
 **Trains** are searched with `type=train`, or with `all` when `q` could start
 a train number (a digit within its first three characters, or a lone letter).
 
@@ -1104,7 +1174,8 @@ Errors: `400 bad_request` without `q` or with an unknown `type`.
 Experimental. anitabi's anime pilgrimage spots, the files its own map at
 [anitabi.cn/map](https://www.anitabi.cn/map) loads, passed on unchanged from
 `https://www.anitabi.cn/d/{file}`, which sends no CORS headers. The map's
-anitabi layer reads them (`src/anitabi.ts` describes their fields).
+anitabi layer reads them (`src/anitabi.ts` describes their fields); being
+anitabi's own formats, they have no type here.
 
 | `file`                  | What                                                                                           |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -1116,14 +1187,23 @@ anitabi layer reads them (`src/anitabi.ts` describes their fields).
 | ----- | ------------------------------------------------------------------------------------------ | ------- |
 | `d`   | anitabi's cache key, passed on: base 36 of `floor(ms / 1440000) + 6`, new every 24 minutes | none    |
 
+```
+GET /api/v1/anitabi/g.json
+GET /api/v1/anitabi/g0.json?d=qq8l
+```
+
 Errors: `404 not_found` for a chunk past the last; `502`/`504` when anitabi
 errs or is slow.
+
+---
 
 ## Errors
 
 ```json
 { "error": { "code": "bad_request", "message": "time must be HH:MM (00:00–23:59)" } }
 ```
+
+<!-- types: error -->
 
 | HTTP | `code`                 | Meaning                                                                                                                       |
 | ---- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |

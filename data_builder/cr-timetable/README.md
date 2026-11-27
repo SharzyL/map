@@ -80,7 +80,7 @@ python3 fetch.py --version 20261120 --db <an.db> --out <an 目录>
 ### 导入 D1（Worker 的 `/api/v1/cr/*` 接口）
 
 Worker（`src/worker/api/cr.ts`）的 `/api/v1/cr/stations`、`/api/v1/cr/trains` 从 Cloudflare D1
-数据库 `cr` 读数据，接口说明见 [`public/api/v1/doc.md`](../../public/api/v1/doc.md#china-railway)。
+数据库 `cr` 读数据，接口说明见 [`src/worker/api/doc.md`](../../src/worker/api/doc.md#china-railway)。
 `build_d1.py` 生成的 SQL 把当前版本导入 D1：
 
 ```bash

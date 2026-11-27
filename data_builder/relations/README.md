@@ -1,7 +1,7 @@
 # Railway relations for `/api/v1/relations`
 
 The Worker's `GET /api/v1/relations/{id}` (see
-[`public/api/v1/doc.md`](../../public/api/v1/doc.md#railway-relations)) answers from the
+[`src/worker/api/doc.md`](../../src/worker/api/doc.md#railway-relations)) answers from the
 D1 database `cr`, which also holds the China Railway timetables. Each answer is prefilled from
 OSM's railway extract: the routes and lines of China, Japan and what lies between, and Japan's
 official lines (路線) from MLIT's railway data, 国土数値情報 N02 (`../official-lines`).

@@ -6,7 +6,9 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).parent
-DOC = HERE.parent.parent / 'public/api/v1/doc.md'
+API = HERE.parent.parent / 'src/worker/api'
+DOC = (API / 'doc.md').read_text(encoding='utf-8')
+TYPES = (API / 'types.ts').read_text(encoding='utf-8')
 spec = importlib.util.spec_from_file_location('render', HERE / 'render.py')
 render = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(render)
@@ -79,6 +81,17 @@ class RenderTest(unittest.TestCase):
         self.assertIn('.code-block .s, ', self.page)
         self.assertIn('渋谷', self.page)
 
+    def test_json_with_comments_is_highlighted_as_json(self):
+        page = render.render('```jsonc\n{\n  "a": 1, // one\n}\n```\n')
+        self.assertIn('<span class="nt">"a"</span>', page)
+        self.assertIn('<span class="c1">// one</span>', page)
+
+    def test_code_blocks_are_marked_with_their_language(self):
+        self.assertEqual(re.findall(r'<pre><code(?: class="([^"]+)")?>', self.page), ['', 'language-json'])
+        # A fence the Markdown cannot render as code fails the page
+        with self.assertRaises(ValueError):
+            render.render('- item\n\n  ```ts\n  type A = 1;\n\n  type B = 2;\n  ```\n')
+
     def test_tables_and_raw_html(self):
         self.assertIn('<table>', self.page)
         self.assertIn('<a href="#japan">Japan</a> &amp; <b>this</b>', self.page)
@@ -87,12 +100,57 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(render.render(SAMPLE), self.page)
 
 
+class FillTypesTest(unittest.TestCase):
+    TYPES = '''// The header, left out
+// @doc one
+// What one is
+export interface One {
+  a: number;
+}
+
+export type Two = One;
+// @doc three
+export interface Three {
+  b: string; // export stays inside
+}
+'''
+
+    def test_placeholders_become_typescript_blocks(self):
+        doc = '# T\n\n<!-- types: three -->\n\ntext\n\n<!-- types: one -->\n'
+        self.assertEqual(render.fill_types(doc, self.TYPES), (
+            '# T\n\n```ts\nexport interface Three {\n  b: string; // export stays inside\n}\n```\n\ntext\n\n'
+            '```ts\n// What one is\ninterface One {\n  a: number;\n}\n\ntype Two = One;\n```\n'
+        ).replace('export interface Three', 'interface Three'))
+
+    def test_every_placeholder_and_section_matches_one(self):
+        with self.assertRaisesRegex(ValueError, r"unknown: \['four'\]"):
+            render.fill_types('<!-- types: one -->\n<!-- types: three -->\n<!-- types: four -->\n', self.TYPES)
+        with self.assertRaisesRegex(ValueError, r"unused: \['three'\]"):
+            render.fill_types('<!-- types: one -->\n', self.TYPES)
+        with self.assertRaisesRegex(ValueError, 'two type sections named one'):
+            render.fill_types('<!-- types: one -->\n', self.TYPES + '// @doc one\n')
+
+    def test_the_api_doc_uses_every_section(self):
+        doc = render.fill_types(DOC, TYPES)
+        self.assertNotIn('<!-- types:', doc)
+        self.assertIn('```ts\ninterface RoutesResponse {', doc)
+        self.assertNotRegex(doc, r'^export ', doc)
+
+
 class DocTest(unittest.TestCase):
     """The API's own doc"""
 
     @classmethod
     def setUpClass(cls):
-        cls.page = render.render(DOC.read_text(encoding='utf-8'))
+        cls.page = render.render(render.fill_types(DOC, TYPES))
+
+    def test_every_json_block_is_highlighted_without_errors(self):
+        blocks = re.findall(r'<div class="code-block">.*?</div>', self.page, re.S)
+        json_blocks = [b for b in blocks if re.search(r'<code class="language-jsonc?">', b)]
+        self.assertGreater(len(json_blocks), 10)
+        for block in json_blocks:
+            self.assertNotIn('class="err"', block)
+            self.assertIn('<span class="nt">', block)
 
     def test_every_link_in_the_page_has_its_target(self):
         ids = set(re.findall(r'\bid="([^"]+)"', self.page))
@@ -102,7 +160,7 @@ class DocTest(unittest.TestCase):
 
     def test_every_endpoint_is_in_the_table_of_contents(self):
         toc = re.search(r'<nav class="toc".*?</nav>', self.page, re.S).group(0)
-        endpoints = re.findall(r'^### `GET (/api/v1/[^`]+)`', DOC.read_text(encoding='utf-8'), re.M)
+        endpoints = re.findall(r'^### `GET (/api/v1/[^`]+)`', DOC, re.M)
         self.assertGreater(len(endpoints), 10)
         for endpoint in endpoints:
             self.assertIn(endpoint.replace('/', '/<wbr>'), toc)

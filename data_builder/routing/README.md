@@ -1,7 +1,7 @@
 # Train routes
 
 The routes of timetable trains on OSM track, in the shape the API answers
-(the train route endpoints in [`public/api/v1/doc.md`](../../public/api/v1/doc.md)):
+(the train route endpoints in [`src/worker/api/doc.md`](../../src/worker/api/doc.md)):
 the railway ways a route covers whole, the parts it covers partly as
 geometry, an overview, where it passes each stop, and its legs. They are
 built here, on the railway extract, and imported into the Worker's D1
