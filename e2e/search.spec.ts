@@ -128,9 +128,19 @@ test.describe('POI search in a real browser', () => {
     // The results fold away so they do not cover the timetable, and can come back.
     await expect(page.locator('.poi-search-results')).toBeHidden();
     await expect(page.getByRole('searchbox', { name: 'Search places, stations or trains' })).not.toBeFocused();
-    await expect(page.locator('.poi-search-results-toggle')).toHaveText('Show 4 results');
-    await page.locator('.poi-search-results-toggle').dispatchEvent('click');
+    // Clicking into the search field brings them back, over the timetable
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).click();
+    await expect(page.locator('.poi-search-results')).toBeVisible();
     await expect(trains.first()).toHaveAttribute('aria-selected', 'true');
+    const last = page.locator('.poi-search-result').last();
+    const box = await last.boundingBox();
+    const panelBox = await timetable.boundingBox();
+    expect(box.y + box.height / 2).toBeGreaterThan(panelBox.y);
+    const onTop = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('.poi-search-results') !== null,
+      [box.x + box.width / 2, box.y + box.height / 2],
+    );
+    expect(onTop).toBe(true);
     errors.assertNoErrors();
   });
 
@@ -194,6 +204,9 @@ test.describe('POI search in a real browser', () => {
 
     await stations.first().click();
     await expect(page.locator('.orm-popup')).toContainText('新宿');
+    // The results fold away from what it opened
+    await expect(page.locator('.poi-search-results')).toBeHidden();
+    await page.getByRole('searchbox', { name: 'Search places, stations or trains' }).click();
     await expect(stations.first()).toHaveAttribute('aria-selected', 'true');
 
     await page.getByRole('button', { name: 'Timetable of 新宿' }).click();

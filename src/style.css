@@ -35,6 +35,12 @@ body,
   top: env(safe-area-inset-top, 0px);
 }
 
+/* The search box and its results over the side panels below it (z-index 19),
+   which MapLibre's own z-index (2) for the corner would put them under. */
+#map .maplibregl-ctrl-top-left {
+  z-index: 20;
+}
+
 #map .maplibregl-ctrl-top-left,
 #map .maplibregl-ctrl-bottom-left {
   left: env(safe-area-inset-left, 0px);
@@ -4071,17 +4077,18 @@ a.credits-name:hover {
 }
 
 .poi-search {
-  width: min(360px, calc(100vw - 76px));
+  /* As wide as the side panels below it (.timetable-panel and the others) */
+  width: min(340px, calc(100vw - 76px));
   overflow: hidden;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
+  /* Opaque: its results may lie over a side panel as well as the map */
+  background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(10px);
 }
 
 .poi-search-form {
   display: grid;
-  grid-template-columns: 1fr 34px;
+  grid-template-columns: 1fr 38px;
   align-items: center;
   min-height: 38px;
 }
@@ -4112,15 +4119,25 @@ a.credits-name:hover {
   color: #6b7280;
 }
 
+/* Focus rings the whole box, not the field alone, so it runs on unbroken
+   past the results and the selected one's stripe inside it. */
 .poi-search-input:focus {
-  box-shadow: inset 0 0 0 2px #2563eb;
+  outline: none;
+}
+
+.poi-search:focus-within {
+  box-shadow:
+    0 0 0 2px #2563eb,
+    0 2px 8px rgba(0, 0, 0, 0.22);
 }
 
 .poi-search-clear {
   display: none;
+  justify-self: end;
   width: 28px;
   height: 28px;
-  margin-right: 4px;
+  /* Its × above the side panel's close button (.timetable-close) */
+  margin-right: 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -4136,7 +4153,7 @@ a.credits-name:hover {
   display: block;
 }
 
-.poi-search-clear:hover,
+button.poi-search-clear:not(:disabled):hover,
 .poi-search-clear:focus {
   background: #f3f4f6;
   color: #111827;
@@ -4171,12 +4188,7 @@ a.credits-name:hover {
   cursor: pointer;
 }
 
-/* Wider screens fold the results only for an opened train, offering them back. */
-.poi-search-results-toggle.visible[aria-expanded='false'] {
-  display: block;
-}
-
-.poi-search-results-toggle:hover,
+button.poi-search-results-toggle:not(:disabled):hover,
 .poi-search-results-toggle:focus {
   background: #eef6ff;
   outline: none;
@@ -4209,7 +4221,8 @@ a.credits-name:hover {
   border-bottom: 0;
 }
 
-.poi-search-result:hover,
+/* :not(:disabled) to outrank MapLibre's hover for buttons in controls */
+button.poi-search-result:not(:disabled):hover,
 .poi-search-result:focus {
   background: #eef6ff;
   outline: none;
@@ -4268,6 +4281,24 @@ a.credits-name:hover {
   border-bottom: 0;
 }
 
+/* The whole row hovered or selected, its Timetable button too */
+.poi-search-result-row button.poi-search-result:not(:disabled):hover,
+.poi-search-result-row .poi-search-result:focus,
+.poi-search-result-row .poi-search-result.selected {
+  background: transparent;
+  box-shadow: none;
+}
+
+.poi-search-result-row:hover,
+.poi-search-result-row:has(> .poi-search-result:focus) {
+  background: #eef6ff;
+}
+
+.poi-search-result-row:has(> .poi-search-result.selected) {
+  background: #dbeafe;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
 .poi-search-result-reading {
   margin-left: 6px;
   color: #64748b;
@@ -4298,7 +4329,7 @@ a.credits-name:hover {
   color: #64748b;
 }
 
-.poi-search-result-action:hover,
+button.poi-search-result-action:not(:disabled):hover,
 .poi-search-result-action:focus-visible {
   background: #e2e8f0;
   color: #0f172a;

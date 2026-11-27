@@ -11,7 +11,6 @@ const SEARCH_SOURCE_ID = 'search';
 const MIN_QUERY_LENGTH = 2;
 const SEARCH_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 320;
-const COMPACT_RESULTS_MEDIA_QUERY = '(max-width: 640px)';
 const PHOTON_SUPPORTED_LANGUAGES = new Set(['de', 'en', 'fr']);
 const TRAIN_LIMIT = 5;
 const STATION_LIMIT = 5;
@@ -71,10 +70,6 @@ function getPhotonLanguage() {
   const language = navigator.languages?.[0] || navigator.language || '';
   const normalized = language.split('-')[0].toLowerCase();
   return PHOTON_SUPPORTED_LANGUAGES.has(normalized) ? normalized : 'default';
-}
-
-function isCompactViewport() {
-  return window.matchMedia?.(COMPACT_RESULTS_MEDIA_QUERY).matches ?? false;
 }
 
 function textValue(value: unknown): string {
@@ -295,6 +290,8 @@ class PhotonSearchControl {
       }
     });
     this._input.addEventListener('input', () => this._scheduleSearch());
+    this._input.addEventListener('focus', () => this._expandResults());
+    this._input.addEventListener('click', () => this._expandResults());
     this._input.addEventListener('keydown', (e: KeyboardEvent) => this._handleInputKeydown(e));
     this._clearButton.addEventListener('click', () => this._clear());
 
@@ -519,12 +516,7 @@ class PhotonSearchControl {
       essential: true,
     });
 
-    this._syncSelectedResultState();
-    if (isCompactViewport()) {
-      this._resultsCollapsed = true;
-    }
-    this._syncResultsVisibility();
-    this._clearButton.classList.add('visible');
+    this._picked();
   }
 
   // Flies to a found station and opens its info box once there, as a click
@@ -543,10 +535,7 @@ class PhotonSearchControl {
     this._map.flyTo({ center: position, zoom: Math.max(this._map.getZoom(), STATION_ZOOM), essential: true });
     const stop: StationStop = { name: hit.name, position, elements: hit.osm };
     this._map.getContainer().dispatchEvent(new CustomEvent(STATION_OPEN_EVENT, { detail: stop }));
-    this._syncSelectedResultState();
-    if (isCompactViewport()) this._resultsCollapsed = true;
-    this._syncResultsVisibility();
-    this._clearButton.classList.add('visible');
+    this._picked();
   }
 
   _openStationTimetable(hit: StationHit, request: TimetableRequest) {
@@ -566,11 +555,24 @@ class PhotonSearchControl {
     this._popup = null;
     setSearchFeature(this._map, null);
     this._map.getContainer().dispatchEvent(new CustomEvent(TIMETABLE_OPEN_EVENT, { bubbles: true, detail: request }));
+    this._picked();
+  }
+
+  // Whatever a result opened, the results fold away so they do not cover it
+  // (or the side panels below the search box); clicking into the search field
+  // brings them back, as does the toggle on phones.
+  _picked() {
     this._syncSelectedResultState();
     this._resultsCollapsed = true;
     this._syncResultsVisibility();
     this._clearButton.classList.add('visible');
     this._input.blur();
+  }
+
+  _expandResults() {
+    if (!this._resultsCollapsed || this._resultCount() === 0) return;
+    this._resultsCollapsed = false;
+    this._syncResultsVisibility();
   }
 
   _clear() {
