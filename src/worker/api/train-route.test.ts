@@ -10,17 +10,21 @@ import { TRAIN_ROUTE, trainRoute } from './train-route.js';
 
 const EXTRACT = '2026-11-12T16:00:00Z';
 // Three stations 1 km apart along a line, and 4 only the 新幹線 serves
+// Three stations 1 km apart along a line, 4 only the 新幹線 serves, and 5
+// only the line relation reaches (no service route stops there)
 const STATIONS: Record<string, [number, number]> = {
   '1': [35.0, 139.0],
   '2': [35.0, 139.011],
   '3': [35.0, 139.022],
   '4': [35.001, 139.022],
+  '5': [35.0, 139.033],
 };
 
 // routing/export_d1.py's JP_TABLES
 const JP_TABLES: Record<string, string> = {
   stations: 'code TEXT PRIMARY KEY, lat REAL, lon REAL, elements TEXT',
-  routes: 'id INTEGER PRIMARY KEY, name TEXT, shinkansen INTEGER, loop INTEGER, stops INTEGER, train TEXT',
+  routes:
+    'id INTEGER PRIMARY KEY, name TEXT, shinkansen INTEGER, loop INTEGER, stops INTEGER, train TEXT, line INTEGER',
   route_stops: 'code TEXT, route_id INTEGER, seq INTEGER, PRIMARY KEY (code, route_id, seq)',
   hops:
     'route_id INTEGER, seq INTEGER, from_code TEXT, to_code TEXT, length_m INTEGER, ways TEXT, partial TEXT,' +
@@ -52,11 +56,12 @@ function hop(routeId: number, seq: number, a: string, b: string, ways: number[],
 
 const TABLES: Record<string, Value[][]> = {
   stations: Object.entries(STATIONS).map(([c, [la, lo]]) => [c, la, lo, JSON.stringify([`N${c}`])]),
-  // id, name, shinkansen, loop, stops, train pattern
+  // id, name, shinkansen, loop, stops, train pattern, line relation
   routes: [
-    [10, 'JRテスト線 普通', 0, 0, 3, null],
-    [20, 'テスト新幹線', 1, 0, 2, null],
-    [-1, '特急 鎌倉 (1 => 3)', 0, 0, 2, '特急 鎌倉'],
+    [10, 'JRテスト線 普通', 0, 0, 3, null, 0],
+    [20, 'テスト新幹線', 1, 0, 2, null, 0],
+    [-1, '特急 鎌倉 (1 => 3)', 0, 0, 2, '特急 鎌倉', 0],
+    [30, 'テスト本線', 0, 0, 4, null, 1],
   ],
   route_stops: [
     ['1', 10, 0],
@@ -66,12 +71,19 @@ const TABLES: Record<string, Value[][]> = {
     ['4', 20, 1],
     ['1', -1, 0],
     ['3', -1, 1],
+    ['1', 30, 0],
+    ['2', 30, 1],
+    ['3', 30, 2],
+    ['5', 30, 3],
   ],
   hops: [
     hop(10, 0, '1', '2', [101]),
     hop(10, 1, '2', '3', [102]),
     hop(20, 0, '1', '4', [201, 202], 1.0),
     hop(-1, 0, '1', '3', [301, 302]),
+    hop(30, 0, '1', '2', [501]),
+    hop(30, 1, '2', '3', [502]),
+    hop(30, 2, '3', '5', [503]),
   ],
 };
 
@@ -155,6 +167,30 @@ describe('trainRoute', () => {
     const [status, body] = await route(train('特急 鎌倉', ['1', '3']), db);
     expect(status).toBe(200);
     expect([body.ways, body.legs[0].line]).toEqual([[301, 302], '特急 鎌倉 (1 => 3)']);
+  });
+
+  it('takes the line where no service route goes', async () => {
+    // 5 is on the line relation only: its service routes first, the line for
+    // the leg they do not cover
+    const [status, body] = await route(train('普通', ['1', '2', '3', '5']), db);
+    expect(status).toBe(200);
+    expect(body.ways).toEqual([101, 102, 503]);
+    expect(body.legs.map((x: any) => [x.line, x.method])).toEqual([
+      ['JRテスト線 普通', 'line'],
+      ['JRテスト線 普通', 'line'],
+      ['テスト本線', 'line'],
+    ]);
+  });
+
+  it('routes on data imported before line relations were', async () => {
+    // A store without the `line` column: its routes are all services
+    const old = makeDb();
+    old.exec('CREATE TABLE r AS SELECT id, name, shinkansen, loop, stops, train FROM jp_routes WHERE line = 0');
+    old.exec('DROP TABLE jp_routes');
+    old.exec('ALTER TABLE r RENAME TO jp_routes');
+    const [status, body] = await route(train('普通', ['1', '2', '3']), old);
+    expect(status).toBe(200);
+    expect(body.ways).toEqual([101, 102]);
   });
 
   it('draws a stop not in the data straight', async () => {

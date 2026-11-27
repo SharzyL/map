@@ -10,6 +10,8 @@ const LEG_DETOUR_SLACK_M = 2000;
 const CANDIDATES = 8; // routes tried per leg
 // A route made from a rule for the train, before type, name and direction
 const RULE_SCORE = 8;
+// A line relation's route (jp_store.py): only where no service route will do
+const LINE_SCORE = -100;
 // D1 binds at most 100 parameters per query
 const MAX_PARAMS = 90;
 
@@ -122,7 +124,8 @@ async function assemble(
   const routeIds = [...new Set(commons.flatMap((c) => [...c]))].sort((x, y) => x - y);
   const routeRows = await rowsIn(
     db,
-    'SELECT id, name, shinkansen, loop, stops, train FROM jp_routes WHERE id IN ({marks})',
+    // Every column: `line` is new, and data imported before it has none
+    'SELECT * FROM jp_routes WHERE id IN ({marks})',
     routeIds,
   );
   const routes = new Map(routeRows.map((r) => [r.id as number, r]));
@@ -142,6 +145,8 @@ async function assemble(
     if (!patterns.has(pattern)) patterns.set(pattern, new RegExp(pattern));
     return patterns.get(pattern).test(text);
   };
+  // A line relation's route, for legs no service route covers
+  const line = (r: number) => !!routes.get(r).line;
   const seqsOf = (r: number, a: string, b: string) => {
     const route = routes.get(r);
     return hopSeqs(at.get(a).get(r), at.get(b).get(r), route.stops as number, !!route.loop);
@@ -152,7 +157,11 @@ async function assemble(
   // when picking, below)
   const cands = legPairs.map(([a, b], k) => {
     const score = (r: number) =>
-      RULE_SCORE * +ruled(r) + 4 * +(!!routes.get(r).shinkansen === shinkansen) + 2 * +named(r) + forward(r, a, b);
+      RULE_SCORE * +ruled(r) +
+      LINE_SCORE * +line(r) +
+      4 * +(!!routes.get(r).shinkansen === shinkansen) +
+      2 * +named(r) +
+      forward(r, a, b);
     return [...commons[k]]
       .filter((r) => routes.has(r))
       .sort((x, y) => x - y)
@@ -223,6 +232,7 @@ async function assemble(
       if (!shinkansen && hsShare >= 0.5 && hsShare * length >= 1000) continue;
       const score =
         RULE_SCORE * +ruled(r) +
+        LINE_SCORE * +line(r) +
         4 * +(hsShare >= 0.5 === shinkansen) +
         2 * +named(r) +
         forward(r, a, b) +

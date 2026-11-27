@@ -42,7 +42,7 @@ OLD_TABLES_SQL = (
 JP_TABLES = {
     "stations": "code TEXT PRIMARY KEY, lat REAL, lon REAL, elements TEXT",
     "routes": "id INTEGER PRIMARY KEY, name TEXT, shinkansen INTEGER,"
-    " loop INTEGER, stops INTEGER, train TEXT",
+    " loop INTEGER, stops INTEGER, train TEXT, line INTEGER",
     "route_stops": "code TEXT, route_id INTEGER, seq INTEGER,"
     " PRIMARY KEY (code, route_id, seq)",
     "hops": "route_id INTEGER, seq INTEGER, from_code TEXT, to_code TEXT,"

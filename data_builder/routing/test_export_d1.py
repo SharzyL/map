@@ -111,7 +111,7 @@ class JapanTest(unittest.TestCase):
     def test_store_tables_come_back(self) -> None:
         tables = {
             "stations": [("1", 35.0, 139.0, '["N1"]')],
-            "routes": [(10, "JRテスト線 普通", 0, 0, 2, None), (-1, "it's a rule", 0, 0, 2, "特急")],
+            "routes": [(10, "JRテスト線 普通", 0, 0, 2, None, 0), (-1, "it's a rule", 0, 0, 2, "特急", 0)],
             "route_stops": [("1", 10, 0), ("2", 10, 1)],
             "hops": [(10, 0, "1", "2", 1000, "[101]", "[]", "_p~iF~ps|U", "[139.0,35.0]", "[139.011,35.0]", 0.0)],
         }

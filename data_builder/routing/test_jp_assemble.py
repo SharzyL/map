@@ -21,12 +21,14 @@ import jp_assemble  # noqa: E402
 from geo import encode_polyline  # noqa: E402
 
 EXTRACT = "2026-11-12T16:00:00Z"
-# Three stations 1 km apart along a line, and 4 only the 新幹線 serves
+# Three stations 1 km apart along a line, 4 only the 新幹線 serves, and 5
+# only the line relation reaches (no service route stops there)
 STATIONS = {
     "1": (35.0, 139.0),
     "2": (35.0, 139.011),
     "3": (35.0, 139.022),
     "4": (35.001, 139.022),
+    "5": (35.0, 139.033),
 }
 
 
@@ -51,11 +53,12 @@ TABLES = {
     "stations": [
         (c, la, lo, json.dumps([f"N{c}"])) for c, (la, lo) in STATIONS.items()
     ],
-    # id, name, shinkansen, loop, stops, train pattern
+    # id, name, shinkansen, loop, stops, train pattern, line relation
     "routes": [
-        (10, "JRテスト線 普通", 0, 0, 3, None),
-        (20, "テスト新幹線", 1, 0, 2, None),
-        (-1, "特急 鎌倉 (1 => 3)", 0, 0, 2, "特急 鎌倉"),
+        (10, "JRテスト線 普通", 0, 0, 3, None, 0),
+        (20, "テスト新幹線", 1, 0, 2, None, 0),
+        (-1, "特急 鎌倉 (1 => 3)", 0, 0, 2, "特急 鎌倉", 0),
+        (30, "テスト本線", 0, 0, 4, None, 1),
     ],
     "route_stops": [
         ("1", 10, 0),
@@ -65,12 +68,19 @@ TABLES = {
         ("4", 20, 1),
         ("1", -1, 0),
         ("3", -1, 1),
+        ("1", 30, 0),
+        ("2", 30, 1),
+        ("3", 30, 2),
+        ("5", 30, 3),
     ],
     "hops": [
         hop(10, 0, "1", "2", [101]),
         hop(10, 1, "2", "3", [102]),
         hop(20, 0, "1", "4", [201, 202], highspeed=1.0),
         hop(-1, 0, "1", "3", [301, 302]),
+        hop(30, 0, "1", "2", [501]),
+        hop(30, 1, "2", "3", [502]),
+        hop(30, 2, "3", "5", [503]),
     ],
 }
 
@@ -140,6 +150,21 @@ class TrainRouteTest(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertEqual(
             (body["ways"], body["legs"][0]["line"]), ([301, 302], "特急 鎌倉 (1 => 3)")
+        )
+
+    def test_line_where_no_service_route_goes(self) -> None:
+        # 5 is on the line relation only: its service routes first, the line
+        # for the leg they do not cover
+        status, body = route(train("普通", "1", "2", "3", "5"), self.conn)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["ways"], [101, 102, 503])
+        self.assertEqual(
+            [(x["line"], x["method"]) for x in body["legs"]],
+            [
+                ("JRテスト線 普通", "line"),
+                ("JRテスト線 普通", "line"),
+                ("テスト本線", "line"),
+            ],
         )
 
     def test_stop_not_in_the_data(self) -> None:

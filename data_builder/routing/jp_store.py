@@ -18,6 +18,12 @@ names their lines and ends; each is routed once along those lines, both
 ways, and stored as a route stopping at every station on the way, which
 trains matching the rule take before any other.
 
+And a leg no service route covers at all, a stop missing from them (特急
+オホーツク's route ends at 女満別, not 網走), takes the line it runs on: each
+OSM line relation (route=railway) is stored as a route stopping at every
+station on its track, in track order, marked `line` for a request to take
+only where no service route will do.
+
 Usage: jp_store.py build <graph.pkl> <jp-station-codes.csv> <out.sqlite>
 """
 
@@ -101,6 +107,8 @@ class Japan:
         for code, att in self.attach.items():
             for v in att:
                 by_vertex[v].add(code)
+        # The stations attached at each vertex, for the lines' stations
+        self.codes_at: dict[int, set[str]] = dict(by_vertex)
         codes = list(self.position)
         tree = cKDTree(
             to_xyz(
@@ -199,7 +207,8 @@ SCHEMA = """
 CREATE TABLE jp_stations (code TEXT PRIMARY KEY, lat REAL, lon REAL, elements TEXT) WITHOUT ROWID;
 CREATE TABLE jp_routes (
   id INTEGER PRIMARY KEY, name TEXT, shinkansen INTEGER, loop INTEGER, stops INTEGER,
-  train TEXT      -- for a route made from jp-rules.csv: the pattern of the trains taking it
+  train TEXT,     -- for a route made from jp-rules.csv: the pattern of the trains taking it
+  line INTEGER    -- 1 for a line relation's: taken only where no service route will do
 );
 CREATE TABLE jp_route_stops (code TEXT, route_id INTEGER, seq INTEGER, PRIMARY KEY (code, route_id, seq)) WITHOUT ROWID;
 CREATE TABLE jp_hops (
@@ -295,11 +304,12 @@ def store_route(
     stops: list[str],
     hops: list[tuple],
     train: str | None = None,
+    line: bool = False,
 ) -> tuple[int, int]:
     """Insert one route, its stops and hops: (hops stored, hops without a path)."""
     db.execute(
-        "INSERT INTO jp_routes VALUES (?, ?, ?, ?, ?, ?)",
-        (rid, name, shinkansen, loop, len(stops), train),
+        "INSERT INTO jp_routes VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (rid, name, shinkansen, loop, len(stops), train, int(line)),
     )
     db.executemany(
         "INSERT INTO jp_route_stops VALUES (?, ?, ?)",
@@ -441,6 +451,37 @@ def rule_routes(jp: Japan, rules: Path, names: dict[str, str]) -> list[tuple]:
     return out
 
 
+def line_stations(jp: Japan, ways: frozenset[int]) -> list[str]:
+    """The stations a line's track passes: those attached to a node of its
+    ways (a station is attached to every line within reach, graph.py).
+    China's lines, in the same graph, have none."""
+    return sorted(
+        {c for w in ways for n in jp.g.ways[w].nodes for c in jp.codes_at.get(n, ())}
+    )
+
+
+def line_routes(jp: Japan) -> list[tuple]:
+    """Routes along the line relations, stopping at every station on their
+    track in track order: (id, name, shinkansen, stops, hops) each."""
+    out = []
+    for rid, ways in jp.line_ways.items():
+        stations = line_stations(jp, ways)
+        if len(stations) < 2:
+            continue
+        share = sum(jp.g.ways[w].highspeed for w in ways) / len(ways)
+        shinkansen = share >= 0.3 or "新幹線" in jp.line_name[rid]
+        prefs = Prefs(highspeed="prefer" if shinkansen else "avoid", ways=ways)
+        # In track order from one end; a branch's stations fall among the
+        # main line's, and their hops, too long for the straight distance,
+        # are left out at request time
+        stops = reorder(jp, stations, prefs, track_length(jp.g, ways) * 2)
+        if len(stops) < 2:
+            continue
+        hops = route_hops(jp, stops, prefs, False)
+        out.append((rid, jp.line_name[rid], shinkansen, stops, hops))
+    return out
+
+
 def build(graph: Path, codes: Path, out: Path) -> None:
     g = Graph.load(graph)
     jp = Japan(g, codes)
@@ -505,6 +546,18 @@ def build(graph: Path, codes: Path, out: Path) -> None:
             db, g, jp, -k, name, False, False, stops, hops, train
         )
         n_hops, failed = n_hops + stored, failed + lost
+    # Lines, for legs no service route covers; their ids are OSM's, as the
+    # service routes' (relations share one id space)
+    lines = line_routes(jp)
+    for rid, name, shinkansen, stops, hops in lines:
+        stored, lost = store_route(
+            db, g, jp, rid, name, shinkansen, False, stops, hops, line=True
+        )
+        n_hops, failed = n_hops + stored, failed + lost
+    print(
+        f"{len(lines)} lines stored as routes for legs no service covers",
+        file=sys.stderr,
+    )
     db.commit()
     routes = db.execute("SELECT count(*) FROM jp_routes").fetchone()[0]
     print(

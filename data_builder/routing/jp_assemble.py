@@ -28,6 +28,8 @@ LEG_DETOUR_RATIO, LEG_DETOUR_SLACK_M = 2.0, 2000
 CANDIDATES = 8  # routes tried per leg
 # A route made from a rule for the train, before type, name and direction
 RULE_SCORE = 8
+# A line relation's route (jp_store.py): only where no service route will do
+LINE_SCORE = -100
 # D1 binds at most 100 parameters per query
 MAX_PARAMS = 90
 
@@ -107,8 +109,8 @@ def assemble(train: dict) -> Generator[Query, Rows, tuple[list[dict], dict, dict
         set(at.get(a, {})) & set(at.get(b, {})) for a, b in itertools.pairwise(codes)
     ]
     rows = yield from _rows_in(
-        "SELECT id, name, shinkansen, loop, stops, train FROM jp_routes"
-        " WHERE id IN ({marks})",
+        # Every column: `line` is new, and a store imported before it has none
+        "SELECT * FROM jp_routes WHERE id IN ({marks})",
         sorted(set().union(*commons)),
     )
     routes = {r["id"]: r for r in rows}
@@ -125,6 +127,10 @@ def assemble(train: dict) -> Generator[Query, Rows, tuple[list[dict], dict, dict
         pattern = routes[r]["train"]
         return bool(pattern) and re.search(pattern, text) is not None
 
+    def line(r: int) -> bool:
+        """A line relation's route, for legs no service route covers"""
+        return bool(routes[r].get("line"))
+
     def seqs_of(r: int, a: str, b: str) -> list[tuple[int, bool]]:
         return _hop_seqs(
             at[a][r], at[b][r], routes[r]["stops"], bool(routes[r]["loop"])
@@ -139,6 +145,7 @@ def assemble(train: dict) -> Generator[Query, Rows, tuple[list[dict], dict, dict
             key=lambda r, a=a, b=b: (
                 -(
                     RULE_SCORE * ruled(r)
+                    + LINE_SCORE * line(r)
                     + 4 * (bool(routes[r]["shinkansen"]) == shinkansen)
                     + 2 * named(r)
                     + (at[a][r] < at[b][r])
@@ -221,6 +228,7 @@ def assemble(train: dict) -> Generator[Query, Rows, tuple[list[dict], dict, dict
                 continue
             score = (
                 RULE_SCORE * ruled(r)
+                + LINE_SCORE * line(r)
                 + 4 * ((hs_share >= 0.5) == shinkansen)
                 + 2 * named(r)
                 + (at[a][r] < at[b][r])

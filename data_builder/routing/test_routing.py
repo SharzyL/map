@@ -14,6 +14,7 @@ from pathlib import Path
 
 from cr_route import retrace
 from graph import build
+from jp_store import Japan, line_routes
 from route import Prefs, encode_polyline, path_response, route_leg
 
 OSM = """<?xml version='1.0' encoding='UTF-8'?>
@@ -41,6 +42,10 @@ OSM = """<?xml version='1.0' encoding='UTF-8'?>
   <relation id="20">
     <member type="node" ref="8" role=""/><member type="node" ref="5" role="stop"/>
     <tag k="public_transport" v="stop_area"/>
+  </relation>
+  <relation id="30">
+    <member type="way" ref="101" role=""/><member type="way" ref="102" role=""/><member type="way" ref="103" role=""/>
+    <tag k="type" v="route"/><tag k="route" v="railway"/><tag k="name" v="L30"/>
   </relation>
 </osm>
 """
@@ -215,3 +220,33 @@ class RetraceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LineRoutesTest(unittest.TestCase):
+    """Japan's line relations stored as routes (jp_store.py), for legs no
+    service route covers: line L30 runs the track R10 runs on."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "net.osm"
+            path.write_text(OSM)
+            g = build(path)
+            codes = Path(d) / "codes.csv"
+            codes.write_text(
+                "osm_type,osm_id,name,codes,status\n"
+                "N,1,A,100,unique\nN,8,B,200,unique\nN,10,C,300,unique\n"
+            )
+            cls.jp = Japan(g, codes)
+
+    def test_a_line_stops_at_every_station_on_its_track_in_order(self) -> None:
+        routes = {
+            rid: (name, stops, hops)
+            for rid, name, _, stops, hops in line_routes(self.jp)
+        }
+        self.assertEqual(list(routes), [30])
+        name, stops, hops = routes[30]
+        self.assertEqual(name, "L30")
+        self.assertIn(stops, (["100", "200", "300"], ["300", "200", "100"]))
+        # Each hop on the track, not straight
+        self.assertTrue(all(found for _, _, found in hops))
