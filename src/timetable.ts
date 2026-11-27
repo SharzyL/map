@@ -900,6 +900,7 @@ class TimetablePanel {
   private _setHeader(title: string, summary: string, source: Source | null, report: Report | null = null) {
     this._title.textContent = title;
     this._summary.textContent = summary;
+    this._summary.hidden = !summary;
     setTooltip(this._summary, null);
     this._source.hidden = !source;
     if (source) {
@@ -919,7 +920,8 @@ class TimetablePanel {
 
   private async _renderLines(request: YahooRequest) {
     const signal = this._signal;
-    this._setHeader(request.name, '路線', null);
+    // A station's lines need no subtitle: the station's name says it
+    this._setHeader(request.name, '', null);
     const stations = request.codes.length
       ? request.codes.map((code) => ({ code, name: null as string | null }))
       : (await findStationsByName(request.name, signal)).map(({ code, name }) => ({ code, name }));
@@ -972,7 +974,7 @@ class TimetablePanel {
   private _renderStationLines(name: string, table: StationLines) {
     this._body.replaceChildren();
     const badgeSlots = new Map<string, { slot: HTMLElement; gid: string | null }>();
-    this._setHeader(name, '路線', yahooSource(table.source_url), {
+    this._setHeader(name, '', yahooSource(table.source_url), {
       title: `Timetable error at ${table.station.name}`,
       details: [`Station: ${table.station.name} (Yahoo code ${table.station.code})`],
     });

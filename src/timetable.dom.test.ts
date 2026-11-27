@@ -1384,6 +1384,8 @@ describe('Timetable button', () => {
       content.querySelector<HTMLButtonElement>('.orm-popup-action').click();
       await vi.waitFor(() => expect(text(panel.panel, '.timetable-title-reading')).toEqual(['シブヤ']));
       expect(panel.panel.querySelector('.timetable-title').firstChild.textContent).toBe('渋谷');
+      // No subtitle: the station's name says these are its lines
+      expect(panel.panel.querySelector<HTMLElement>('.timetable-summary').hidden).toBe(true);
     } finally {
       API[linesPath] = before;
     }
