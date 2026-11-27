@@ -975,6 +975,8 @@ class TimetablePanel {
       title: `Timetable error at ${table.station.name}`,
       details: [`Station: ${table.station.name} (Yahoo code ${table.station.code})`],
     });
+    // The station's reading after its name
+    if (table.station.yomi) el('span', 'timetable-title-reading', this._title).textContent = table.station.yomi;
     const section = el('section', 'timetable-station', this._body);
     if (table.lines.length === 0) el('div', 'timetable-status', section).textContent = '路線がありません。';
     for (const line of table.lines) {
@@ -1685,6 +1687,19 @@ export function timetableButton(feature: StationFeatureLike, content: HTMLElemen
   const button = el('button', 'orm-popup-action', actions);
   button.type = 'button';
   setTooltip(button, 'cr' in request ? 'Trains from the China Railway timetable' : 'Departures from Yahoo!乗換案内');
+  // A Yahoo station's reading after its name, from its lines, which its
+  // timetable opens on (cached for both)
+  if ('codes' in request && request.codes.length && label) {
+    stationLines(request.codes[0]).then(
+      ({ station }) => {
+        if (!station.yomi || !label.isConnected) return;
+        const reading = el('span', 'orm-popup-reading');
+        reading.textContent = station.yomi;
+        label.insertBefore(reading, actions);
+      },
+      () => {},
+    );
+  }
   button.innerHTML = CLOCK_ICON;
   el('span', undefined, button).textContent = 'Timetable';
   button.addEventListener('click', () =>

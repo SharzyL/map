@@ -1303,7 +1303,41 @@ describe('Timetable button', () => {
     expect(china(116.32, 39.89, { name: 'Beijing West' })).toBeNull();
   });
 
+  it('shows a Yahoo station’s reading after its name, in its info box and its lines', async () => {
+    const linesPath = '/api/v1/norikae/stations/22715/timetables';
+    const before = API[linesPath];
+    API[linesPath] = { ...(before as object), station: { code: '22715', name: '渋谷', yomi: 'シブヤ' } };
+    try {
+      const { container, panel } = setup();
+      const content = document.createElement('div');
+      content.innerHTML = '<h5 class="orm-popup-title">Station</h5><h6 class="orm-popup-label">渋谷</h6>';
+      container.appendChild(content);
+      timetableButton(
+        {
+          sourceLayer: 'standard_railway_text_stations',
+          properties: { feature: 'station', name: '渋谷', yahoo_codes: '22715' },
+          geometry: { type: 'Point', coordinates: [139.7, 35.66] },
+        },
+        content,
+      );
+      await vi.waitFor(() => expect(text(content, '.orm-popup-label .orm-popup-reading')).toEqual(['シブヤ']));
+      // Before the Timetable button, after the name
+      expect(content.querySelector('.orm-popup-reading').nextElementSibling.className).toBe('orm-popup-actions');
+
+      content.querySelector<HTMLButtonElement>('.orm-popup-action').click();
+      await vi.waitFor(() => expect(text(panel.panel, '.timetable-title-reading')).toEqual(['シブヤ']));
+      expect(panel.panel.querySelector('.timetable-title').firstChild.textContent).toBe('渋谷');
+    } finally {
+      API[linesPath] = before;
+    }
+  });
+
   it('opens the timetable from the info box', () => {
+    // Its reading is asked for too; none here
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{"error":{"message":"not found"}}', { status: 404 })),
+    );
     const content = document.createElement('div');
     content.innerHTML =
       '<h5 class="orm-popup-title">Station</h5><h6 class="orm-popup-label">渋谷</h6><div class="orm-popup-section"></div>';

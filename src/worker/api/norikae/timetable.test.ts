@@ -11,6 +11,7 @@ import trainExpected from '../fixtures/train.expected.json';
 import statusLinesHtml from '../fixtures/status-lines.html?raw';
 import statusTimetableHtml from '../fixtures/status-timetable.html?raw';
 import {
+  katakana,
   yahooColor,
   parseDirectionStatus,
   parseLines,
@@ -97,6 +98,12 @@ describe('Yahoo timetable pages', () => {
 });
 
 describe('what else a Yahoo timetable says', () => {
+  it('gives a station’s reading in katakana, as signs write it', () => {
+    expect(parseLines(linesHtml, '22715').station.yomi).toBe('シブヤ');
+    expect(parseLines(statusLinesHtml, '21338').station.yomi).toBe('シンジョウ');
+    expect(katakana('しんじょう・ゝゞ')).toBe('シンジョウ・ヽヾ');
+  });
+
   it('reads Yahoo’s colors, decimal RGB three digits each without leading zeros', () => {
     expect(['255', '255000000', '255125000', '0', '', null, '999'].map(yahooColor)).toEqual([
       '#0000ff',

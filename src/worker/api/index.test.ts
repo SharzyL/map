@@ -211,7 +211,7 @@ describe('stations', () => {
     const { resp, body } = await call('/api/v1/norikae/stations/22715/timetables/', yahoo);
     expect(resp.status).toBe(200);
     expect(yahoo.calls.at(-1)).toEqual(['https://transit.yahoo.co.jp/timetable/22715', 86400]);
-    expect(body.station).toEqual({ code: '22715', name: '渋谷', ...SHIBUYA_OSM });
+    expect(body.station).toEqual({ code: '22715', name: '渋谷', yomi: 'シブヤ', ...SHIBUYA_OSM });
     expect(body.lines[0].directions[0]).toEqual({
       direction: '新宿・高崎・宇都宮',
       gid: '1051',

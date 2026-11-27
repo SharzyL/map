@@ -23,7 +23,8 @@ export type NorikaeStation = YahooStation & {
 };
 export type StationLines = {
   source_url: string;
-  station: YahooStation;
+  // `yomi`: its reading in katakana (シブヤ)
+  station: YahooStation & { yomi?: string | null };
   // `source`: where a direction's trains come from (逗子・小田原)
   lines: Array<{ name: string; directions: Array<{ direction: string; gid: string; source?: string | null }> }>;
 };

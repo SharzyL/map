@@ -1,7 +1,8 @@
 {
   "station": {
     "code": "22715",
-    "name": "渋谷"
+    "name": "渋谷",
+    "yomi": "シブヤ"
   },
   "lines": [
     {

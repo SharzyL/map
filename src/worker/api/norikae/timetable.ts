@@ -38,7 +38,8 @@ export interface Line {
 }
 
 export interface StationLines {
-  station: StationRef;
+  // `yomi`: the station's reading in katakana (シブヤ), null without one
+  station: StationRef & { yomi: string | null };
   lines: Line[];
 }
 
@@ -194,10 +195,18 @@ function routeInfos(detail: Obj): Obj[] {
   return need(need(detail, 'directionItem'), 'routeInfos');
 }
 
+// Hiragana as katakana (しぶや → シブヤ), the way stations' readings are
+// written on signs and in timetables
+export const katakana = (text: string) =>
+  text.replace(/[\u3041-\u3096\u309d\u309e]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+
 export function parseLines(html: string, code: string): StationLines {
-  const detail = need(pageProps(html), 'directionDetail');
+  const page = pageProps(html);
+  const detail = need(page, 'directionDetail');
+  // The page's place is the station, with its reading in hiragana
+  const yomi = text(page.lipFeature?.Yomi);
   return {
-    station: { code, name: need(detail, 'stationName') },
+    station: { code, name: need(detail, 'stationName'), yomi: yomi && katakana(yomi) },
     lines: routeInfos(detail).map((route) => ({
       name: need(route, 'railName'),
       directions: (need(route, 'railGroup') as Obj[]).map((g) => ({

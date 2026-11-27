@@ -5022,3 +5022,18 @@ a.credits-name:hover {
 .tooltip-head {
   font-weight: 650;
 }
+
+/* A Japanese station's reading in katakana, after its name: in the
+   timetable's header and the station's info box */
+.timetable-title-reading,
+.orm-popup-reading {
+  margin-left: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* The name row of an info box spaces its items itself. */
+.orm-popup-label-with-actions .orm-popup-reading {
+  margin-left: 0;
+}

@@ -254,6 +254,7 @@ GET /api/v1/norikae/stations/22715/timetables
   "station": {
     "code": "22715",
     "name": "渋谷",
+    "yomi": "シブヤ",
     "osm": ["N241896099", "N3623713008"],
     "lat": 35.658713,
     "lon": 139.701637
@@ -269,6 +270,9 @@ GET /api/v1/norikae/stations/22715/timetables
   ]
 }
 ```
+
+`station.yomi` is the station's reading in katakana (Yahoo gives it in
+hiragana), `null` where Yahoo has none.
 
 ---
 
