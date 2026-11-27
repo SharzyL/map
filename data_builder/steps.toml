@@ -12,7 +12,7 @@
 #   Yahoo ───── jp-station-codes                 │                            │
 #   N03 ─────── n03 ─── station-index ────────────────────────────────────────┤
 #   image ────────────────────────────────── tiles ──────── deploy-tiles ─────┤
-#   this repository ───────────────────────────────────────── deploy-worker ──┘
+#   this repository ── api-doc ────────────────────────────── deploy-worker ──┘
 #
 # station-index reads the timetable, the station files, osm-stations' Japan
 # and the relations' station ranks besides N03, and gives the tiles Japan's
@@ -401,6 +401,16 @@ needs = [
 outs = ["openrailwaymap.pmtiles"]
 keep = false
 
+# ── The app ─────────────────────────────────────────────
+
+[steps.api-doc]
+about = "The API's doc as an HTML page, served at /api/v1/doc beside the Markdown"
+run = """
+python3 data_builder/api-doc/render.py public/api/v1/doc.md "$OUT/doc.html"
+"""
+files = ["data_builder/api-doc/render.py", "public/api/v1/doc.md"]
+outs = ["doc.html"]
+
 # ── Checks ──────────────────────────────────────────────
 
 # The tests, each run again only when what it reads changed. Deploys come
@@ -504,6 +514,12 @@ run = "python3 -m unittest discover -s data_builder/stations -p 'test_*.py'"
 files = ["data_builder/stations/station-index.py", "data_builder/stations/test_station_index.py"]
 check = true
 
+[steps.check-api-doc]
+about = "Tests of the API doc's page"
+run = "python3 -m unittest discover -s data_builder/api-doc -p 'test_*.py'"
+files = ["data_builder/api-doc", "public/api/v1/doc.md"]
+check = true
+
 [steps.check-routing]
 about = "Tests of the routing scripts"
 run = "python3 -m unittest discover -s data_builder/routing -p 'test_*.py'"
@@ -571,12 +587,13 @@ deploy = true
 # Last: the Worker's code may read what the deploys before it publish, and
 # goes out only when every check of the app passed
 [steps.deploy-worker]
-about = "Build the app and deploy the Worker, with the station files and search indexes it bundles"
+about = "Build the app and deploy the Worker, with the station files and search indexes it bundles, and the API doc's page"
 run = """
 JP_STATION_CODES="$BUILD/jp-station-codes/jp-station-codes.csv" \
 STATION_COORDS="$BUILD/station-coords/station-coords.csv" \
 CR_SEARCH="$BUILD/cr-search/cr-search.json" \
-SEARCH_STATIONS="$BUILD/station-index/search-stations.json" pnpm build
+SEARCH_STATIONS="$BUILD/station-index/search-stations.json" \
+API_DOC_HTML="$BUILD/api-doc/doc.html" pnpm build
 pnpm exec wrangler deploy
 """
 files = [
@@ -597,6 +614,7 @@ needs = [
   "station-coords/station-coords.csv",
   "cr-search/cr-search.json",
   "station-index/search-stations.json",
+  "api-doc/doc.html",
 ]
 after = [
   "deploy-timetable",
@@ -604,6 +622,7 @@ after = [
   "deploy-routes",
   "deploy-tiles",
   "check-stations",
+  "check-api-doc",
   "check-format",
   "check-lint",
   "check-types",

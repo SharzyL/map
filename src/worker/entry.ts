@@ -19,7 +19,10 @@ export default {
 
     const url = new URL(request.url);
 
-    // The doc (/api/v1/doc.md) is a static asset, served before the Worker runs
+    // The doc (/api/v1/doc.md, and its page /api/v1/doc, vite.config.js) is a
+    // static asset, served before the Worker runs; a build without the page
+    // (pnpm dev) sends its path to the Markdown.
+    if (url.pathname === '/api/v1/doc') return Response.redirect(new URL('/api/v1/doc.md', url).toString(), 302);
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return handleApiRequest(request, env);
 
     // The build dashboard's page is a static asset; its data comes from the bucket

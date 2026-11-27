@@ -9,6 +9,7 @@ import {
   API_PREFIX,
   ApiError,
   type ApiResponse,
+  DOC_MARKDOWN_PATH,
   DOC_PATH,
   errorResponse,
   type Fetcher,
@@ -40,7 +41,7 @@ const ENDPOINTS = [
 ].map((path) => API_PREFIX + path);
 
 function index(): ApiResponse {
-  return json(200, { name: 'atlas-realm', doc: DOC_PATH, endpoints: ENDPOINTS }, 3600);
+  return json(200, { name: 'atlas-realm', doc: DOC_PATH, doc_markdown: DOC_MARKDOWN_PATH, endpoints: ENDPOINTS }, 3600);
 }
 
 export interface Context {

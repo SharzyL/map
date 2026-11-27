@@ -3,7 +3,9 @@
 // handlers run under Node in tests with fixtures and SQLite.
 
 export const API_PREFIX = '/api/v1';
-export const DOC_PATH = `${API_PREFIX}/doc.md`;
+// The doc, as a page and as Markdown
+export const DOC_PATH = `${API_PREFIX}/doc`;
+export const DOC_MARKDOWN_PATH = `${API_PREFIX}/doc.md`;
 
 export const MAX_TEXT_LEN = 64;
 

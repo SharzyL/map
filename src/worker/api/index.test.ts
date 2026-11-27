@@ -323,7 +323,7 @@ describe('protocol', () => {
   it('lists the endpoints and the doc', async () => {
     const { resp, body } = await call('/api/v1');
     expect(resp.status).toBe(200);
-    expect(body.doc).toBe('/api/v1/doc.md');
+    expect([body.doc, body.doc_markdown]).toEqual(['/api/v1/doc', '/api/v1/doc.md']);
     expect(body.endpoints).toContain('/api/v1/cr/trains/{train}');
   });
 

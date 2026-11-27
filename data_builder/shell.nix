@@ -4,6 +4,6 @@
 pkgs.mkShell {
   packages = [
     pkgs.osmium-tool
-    (pkgs.python3.withPackages (ps: [ ps.osmium ps.numpy ps.scipy ps.shapely ]))
+    (pkgs.python3.withPackages (ps: [ ps.osmium ps.numpy ps.scipy ps.shapely ps.markdown ps.pygments ]))
   ];
 }

@@ -1,6 +1,9 @@
-# What the data scripts import beyond the standard library (relations, routing
-# and stations); data_builder/shell.nix gives the same on NixOS.
+# What the data scripts import beyond the standard library (relations, routing,
+# stations and the API's doc page); data_builder/shell.nix gives the same on
+# NixOS.
+markdown
 numpy
 osmium
+pygments
 scipy
 shapely

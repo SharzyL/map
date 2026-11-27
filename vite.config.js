@@ -60,6 +60,37 @@ function buildDataFile(name, variable, step) {
   return resolve(candidates.find((path) => path && existsSync(path)));
 }
 
+// The API doc's page (/api/v1/doc), which the data build renders from
+// public/api/v1/doc.md (data_builder/api-doc/render.py): the build's own, or
+// where API_DOC_HTML says, as the static asset api/v1/doc.html, which the
+// Worker's assets serve at /api/v1/doc. Without one the Worker sends that path
+// to the Markdown.
+function apiDocPage() {
+  const file = [process.env.API_DOC_HTML, '.build/out/api-doc/doc.html'].find((path) => path && existsSync(path));
+  return [
+    {
+      name: 'api-doc-page',
+      applyToEnvironment: (environment) => environment.name === 'client',
+      generateBundle() {
+        if (file) this.emitFile({ type: 'asset', fileName: 'api/v1/doc.html', source: readFileSync(file) });
+      },
+    },
+    // Apart: a plugin of one environment gets no server hooks
+    {
+      name: 'api-doc-page-dev',
+      apply: 'serve',
+      configureServer(server) {
+        if (!file) return;
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.split('?')[0] !== '/api/v1/doc') return next();
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.end(readFileSync(file));
+        });
+      },
+    },
+  ];
+}
+
 export default defineConfig({
   resolve: {
     // Patterns: an alias by name does not match an import with a ?raw query
@@ -70,6 +101,7 @@ export default defineConfig({
   },
   plugins: [
     mapResourceHints(),
+    apiDocPage(),
     cloudflare({
       remoteBindings: process.env.CLOUDFLARE_VITE_REMOTE_BINDINGS !== '0',
     }),
